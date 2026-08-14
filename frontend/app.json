@@ -4,7 +4,7 @@
     "slug": "frontend",
     "version": "1.0.0",
     "cli": {
-        "appVersionSource": "remote"
+      "appVersionSource": "remote"
     },
     "orientation": "portrait",
     "icon": "./assets/images/gopal.jpeg",
@@ -49,8 +49,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "3739a109-386f-4cec-a6ba-e7cf9b19a7b4"
+        "projectId": "49f2af85-52f5-4a74-affe-431ee3daeda6"
       }
-    }
+    },
+    "owner": "sahilo.0"
   }
 }

@@ -173,11 +173,11 @@ export const SiteSelector = ({ compact = false, onSelectSite, style }) => {
           activeOpacity={1}
           onPress={() => setModalVisible(false)}
         >
-          {/* Inner card — stop tap propagation so it doesn't close */}
+          {/* Inner card */}
           <TouchableOpacity
             activeOpacity={1}
             style={styles.modalContainer}
-            onPress={(e) => e.stopPropagation()}
+            onPress={() => {}}
           >
             {/* Header */}
             <View style={styles.modalHeader}>

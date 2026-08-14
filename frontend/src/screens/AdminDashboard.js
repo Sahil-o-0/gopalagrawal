@@ -81,8 +81,6 @@ export default function AdminDashboard({ navigation, route }) {
   const [createUserStep, setCreateUserStep] = useState(1); // 1: Select Designation, 2: Fill Form
   const [desigSearchText, setDesigSearchText] = useState('');
 
-  const { sites } = useSite();
-
   const takeUserPhoto = async (setter) => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {

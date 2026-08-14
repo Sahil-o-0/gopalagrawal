@@ -57,7 +57,7 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (e) {
       console.log(e);
-      Alert.alert('Network Error', 'Could not connect to the server');
+      Alert.alert('Network Error', `Could not connect to: ${API_BASE_URL}\n\nError details: ${e.message || e}`);
     }
     setIsLoading(false);
   };

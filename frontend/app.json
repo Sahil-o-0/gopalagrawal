@@ -40,9 +40,11 @@
       ],
       "@react-native-community/datetimepicker"
     ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/49f2af85-52f5-4a74-affe-431ee3daeda6"
     },
     "extra": {
       "eas": {

@@ -3,9 +3,6 @@
     "name": "Gopal Agrawal Enterprises",
     "slug": "frontend",
     "version": "1.0.0",
-    "cli": {
-      "appVersionSource": "remote"
-    },
     "orientation": "portrait",
     "icon": "./assets/images/gopal.jpeg",
     "scheme": "frontend",

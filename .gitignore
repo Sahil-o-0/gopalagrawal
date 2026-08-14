@@ -1,20 +1,19 @@
-# Ignore root temp scripts & images
-*.py
-!backend/
-!frontend/
-!tests/
+# Root temp files
 *.db
 *.sqlite3
-*.png
-*.jpeg
-*.jpg
 *.pdf
 caveman/
 .agents/
 .pytest_cache/
 __pycache__/
 
-# Backends and Frontends have their own gitignores, but let's double down here:
+# Root python scripts only (don't ignore subfolders)
+/*.py
+/*.png
+/*.jpeg
+/*.jpg
+
+# Ignore frontend/backend build artifacts
 **/node_modules/
 **/.expo/
 **/dist/

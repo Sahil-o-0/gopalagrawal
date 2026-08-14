@@ -11,6 +11,7 @@ import { API_BASE_URL } from '../config';
 
 export default function AdminDashboard({ navigation, route }) {
   const { user, userToken, logout } = useContext(AuthContext);
+  const { selectedSite } = useSite();
   const [activeTab, setActiveTab] = useState(route?.params?.initialTab || 'trips');
   const [isDrawerVisible, setIsDrawerVisible] = useState(false);
 
@@ -20,6 +21,10 @@ export default function AdminDashboard({ navigation, route }) {
       setActiveTab(route.params.initialTab);
     }
   }, [route?.params?.initialTab]);
+
+  useEffect(() => {
+    fetchData();
+  }, [selectedSite?.id]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -172,48 +177,61 @@ export default function AdminDashboard({ navigation, route }) {
       if (tripStartDate) params.append('start_date', tripStartDate);
       if (tripEndDate) params.append('end_date', tripEndDate);
       if (vehicleSearch) params.append('vehicle_number', vehicleSearch);
+      if (selectedSite?.id) params.append('site_id', selectedSite.id);
       
       if (activeTab === 'trips') {
-        const resp = await fetch(`${API_BASE_URL}/trips/?${params.toString()}`, { headers });
-        if (resp.ok) setTrips(await resp.json());
+        try {
+          const resp = await fetch(`${API_BASE_URL}/trips/?${params.toString()}`, { headers });
+          if (resp.ok) setTrips(await resp.json());
+        } catch (tripErr) { console.error("Trips fetch error", tripErr); }
       } else if (activeTab === 'users') {
-        const resp = await fetch(`${API_BASE_URL}/auth/users`, { headers });
-        if (resp.ok) setUsers(await resp.json());
+        try {
+          const resp = await fetch(`${API_BASE_URL}/auth/users`, { headers });
+          if (resp.ok) setUsers(await resp.json());
+        } catch (userErr) { console.error("Users fetch error", userErr); }
       } else if (activeTab === 'hr') {
-        const [lRes, aRes, atRes, uRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/workforce/leaves`, { headers }),
-          fetch(`${API_BASE_URL}/workforce/advances`, { headers }),
-          fetch(`${API_BASE_URL}/workforce/attendance`, { headers }),
-          fetch(`${API_BASE_URL}/auth/users`, { headers })
-        ]);
-        if (lRes.ok) setLeaves(await lRes.json());
-        if (aRes.ok) setAdvances(await aRes.json());
-        if (atRes.ok) setAttendance(await atRes.json());
-        if (uRes.ok) {
-           const allUsers = await uRes.json();
-           setUsers(allUsers.filter(u => u.role !== 'ADMIN'));
-        }
+        try {
+          const [lRes, aRes, atRes, uRes] = await Promise.allSettled([
+            fetch(`${API_BASE_URL}/workforce/leaves${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`, { headers }),
+            fetch(`${API_BASE_URL}/workforce/advances${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`, { headers }),
+            fetch(`${API_BASE_URL}/workforce/attendance${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`, { headers }),
+            fetch(`${API_BASE_URL}/auth/users`, { headers })
+          ]);
+          if (lRes.status === 'fulfilled' && lRes.value.ok) setLeaves(await lRes.value.json());
+          if (aRes.status === 'fulfilled' && aRes.value.ok) setAdvances(await aRes.value.json());
+          if (atRes.status === 'fulfilled' && atRes.value.ok) setAttendance(await atRes.value.json());
+          if (uRes.status === 'fulfilled' && uRes.value.ok) {
+             const allUsers = await uRes.value.json();
+             setUsers(allUsers.filter(u => u.role !== 'ADMIN'));
+          }
+        } catch (hrErr) { console.error("HR fetch error", hrErr); }
       } else if (activeTab === 'emi') {
-        const resp = await fetch(`${API_BASE_URL}/workforce/emi`, { headers });
-        if (resp.ok) setEmis(await resp.json());
+        try {
+          const resp = await fetch(`${API_BASE_URL}/workforce/emi${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`, { headers });
+          if (resp.ok) setEmis(await resp.json());
+        } catch (emiErr) { console.error("EMI fetch error", emiErr); }
       }
-    } catch (e) { Alert.alert("Error fetching data"); } finally {
-      const staffLedgerResp = await fetch(`${API_BASE_URL}/workforce/staff-ledger`, {
-        headers: { 'Authorization': `Bearer ${userToken}` }
-      });
-      if (staffLedgerResp.ok) {
-        setDailyLedgerEntries(await staffLedgerResp.json());
-      }
+    } catch (e) { 
+      console.error("fetchData top-level error", e);
+    } finally {
+      try {
+        const staffLedgerResp = await fetch(`${API_BASE_URL}/workforce/staff-ledger${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`, {
+          headers: { 'Authorization': `Bearer ${userToken}` }
+        });
+        if (staffLedgerResp.ok) {
+          setDailyLedgerEntries(await staffLedgerResp.json());
+        }
+      } catch (ledgerErr) { console.error("Staff ledger fetch error", ledgerErr); }
 
-      // Also fetch general Business Income
-      const bizResp = await fetch(`${API_BASE_URL}/workforce/daily-ledger?month=${new Date().getMonth()+1}&year=${new Date().getFullYear()}`, {
-        headers: { 'Authorization': `Bearer ${userToken}` }
-      });
-      if (bizResp.ok) {
-        const bizData = await bizResp.json();
-        // We'll merge these later in the renderer
-        setBusinessIncomeEntries(bizData);
-      }
+      try {
+        const bizResp = await fetch(`${API_BASE_URL}/workforce/daily-ledger?month=${new Date().getMonth()+1}&year=${new Date().getFullYear()}${selectedSite?.id ? `&site_id=${selectedSite.id}` : ''}`, {
+          headers: { 'Authorization': `Bearer ${userToken}` }
+        });
+        if (bizResp.ok) {
+          const bizData = await bizResp.json();
+          setBusinessIncomeEntries(bizData);
+        }
+      } catch (bizErr) { console.error("Biz daily ledger fetch error", bizErr); }
 
       try {
         const desigResp = await fetch(`${API_BASE_URL}/auth/designations/`, {
@@ -1132,8 +1150,12 @@ export default function AdminDashboard({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.navigate('Home')} style={{ paddingRight: 10 }}>
           <MaterialCommunityIcons name="arrow-left" size={24} color="#111827" />
         </TouchableOpacity>
-        <Text style={styles.mainHeaderTitle}>GOPAL AGRAWAL ENT.</Text>
-        <TouchableOpacity onPress={() => setIsDrawerVisible(true)}><MaterialCommunityIcons name="menu" size={28} color="#111827" /></TouchableOpacity>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <SiteSelector compact={true} />
+        </View>
+        <TouchableOpacity onPress={() => setIsDrawerVisible(true)} style={{ paddingLeft: 10 }}>
+          <MaterialCommunityIcons name="menu" size={28} color="#111827" />
+        </TouchableOpacity>
       </View>
       {renderDrawer()}
       <View style={{flex: 1}}>

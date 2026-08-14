@@ -3,10 +3,13 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, TextInpu
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { AuthContext } from '../context/AuthContext';
+import { useSite } from '../context/SiteContext';
+import SiteSelector from '../components/SiteSelector';
 import { API_BASE_URL } from '../config';
 
 export default function DailyLedgerScreen({ navigation }) {
     const { userToken } = useContext(AuthContext);
+    const { selectedSite } = useSite();
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [ledgerData, setLedgerData] = useState([]);
@@ -25,7 +28,7 @@ export default function DailyLedgerScreen({ navigation }) {
 
     useEffect(() => {
         fetchLedger();
-    }, [selectedDate, filterMode]);
+    }, [selectedDate, filterMode, selectedSite?.id]);
 
     const fetchLedger = async () => {
         setIsLoading(true);
@@ -35,6 +38,9 @@ export default function DailyLedgerScreen({ navigation }) {
                 url += `date=${selectedDate.toISOString().split('T')[0]}`;
             } else {
                 url += `month=${selectedDate.getMonth() + 1}&year=${selectedDate.getFullYear()}`;
+            }
+            if (selectedSite?.id) {
+                url += `&site_id=${selectedSite.id}`;
             }
 
             const response = await fetch(url, {
@@ -106,9 +112,8 @@ export default function DailyLedgerScreen({ navigation }) {
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <MaterialCommunityIcons name="arrow-left" size={24} color="#091426" />
                 </TouchableOpacity>
-                <View>
-                    <Text style={styles.headerTitle}>Daily Ledger</Text>
-                    <Text style={styles.headerSubtitle}>Centralized Cash Flow • Admin</Text>
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                    <SiteSelector compact={true} />
                 </View>
                 <TouchableOpacity style={styles.addBtn} onPress={() => setIsModalVisible(true)}>
                     <MaterialCommunityIcons name="plus-circle" size={32} color="#006c49" />

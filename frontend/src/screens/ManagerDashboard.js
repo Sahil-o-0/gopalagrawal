@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, TextInput, ScrollView, ActivityIndicator, Image, Modal, StatusBar, Platform, FlatList } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
+import { useSite } from '../context/SiteContext';
+import SiteSelector from '../components/SiteSelector';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -8,6 +10,7 @@ import { API_BASE_URL } from '../config';
 
 export default function ManagerDashboard({ navigation, route }) {
   const { user, userToken, logout } = useContext(AuthContext);
+  const { selectedSite } = useSite();
   
   const [activeTab, setActiveTab] = useState(route?.params?.initialTab || 'trips'); // trips, attendance, advances
 
@@ -52,7 +55,7 @@ export default function ManagerDashboard({ navigation, route }) {
 
   useEffect(() => {
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, selectedSite?.id]);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -275,13 +278,12 @@ export default function ManagerDashboard({ navigation, route }) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity onPress={() => navigation.navigate('Home')} style={{ paddingRight: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <TouchableOpacity onPress={() => navigation.navigate('Home')} style={{ paddingRight: 10 }}>
             <MaterialCommunityIcons name="arrow-left" size={26} color="#111827" />
           </TouchableOpacity>
-          <View>
-            <Text style={styles.headerTitle}>Manager Dashboard</Text>
-            <Text style={styles.headerSubtitle}>Oversight & Tracking</Text>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <SiteSelector compact={true} />
           </View>
         </View>
         <TouchableOpacity onPress={logout} style={styles.logoutBtn}>

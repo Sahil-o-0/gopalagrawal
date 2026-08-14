@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, TextInput, ScrollView, ActivityIndicator, StatusBar, Platform, Image } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
+import { useSite } from '../context/SiteContext';
+import SiteSelector from '../components/SiteSelector';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -10,6 +12,7 @@ import { API_BASE_URL } from '../config';
 
 export default function StaffDashboard({ navigation, route }) {
   const { user, userToken, logout } = useContext(AuthContext);
+  const { selectedSite } = useSite();
   const [activeTab, setActiveTab] = useState(route?.params?.initialTab || 'trips'); // 'trips' or 'hr'
 
   // Sync activeTab when route parameters change
@@ -174,13 +177,12 @@ export default function StaffDashboard({ navigation, route }) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity onPress={() => navigation.navigate('Home')} style={{ paddingRight: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <TouchableOpacity onPress={() => navigation.navigate('Home')} style={{ paddingRight: 10 }}>
             <MaterialCommunityIcons name="arrow-left" size={26} color="#1F2937" />
           </TouchableOpacity>
-          <View>
-            <Text style={styles.headerTitle}>Staff Portal</Text>
-            <Text style={styles.headerSubtitle}>Logs & HR</Text>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <SiteSelector compact={true} />
           </View>
         </View>
         <TouchableOpacity onPress={logout} style={styles.logoutBtn}>

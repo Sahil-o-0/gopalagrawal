@@ -12,7 +12,7 @@ import { API_BASE_URL } from '../config';
 
 export default function AdminDashboard({ navigation, route }) {
   const { user, userToken, logout } = useContext(AuthContext);
-  const { selectedSite } = useSite();
+  const { selectedSite, sites = [] } = useSite();
   const [activeTab, setActiveTab] = useState(route?.params?.initialTab || 'trips');
   const [isDrawerVisible, setIsDrawerVisible] = useState(false);
 
@@ -35,6 +35,8 @@ export default function AdminDashboard({ navigation, route }) {
   const [advances, setAdvances] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [emis, setEmis] = useState([]);
+  const [dailyLedgerEntries, setDailyLedgerEntries] = useState([]);
+  const [businessIncomeEntries, setBusinessIncomeEntries] = useState([]);
 
   // Filters
   const [tripStartDate, setTripStartDate] = useState('');

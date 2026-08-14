@@ -11,8 +11,8 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./fleet_app.db
     ports:
-      # Map HTTP port 80 directly to FastAPI on port 8000
-      - "80:8000"
+      # Map VPS port 8000 to FastAPI backend on port 8000
+      - "8000:8000"
     restart: always
 
 volumes:

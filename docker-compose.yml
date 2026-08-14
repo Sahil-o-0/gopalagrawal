@@ -7,23 +7,12 @@ services:
       dockerfile: Dockerfile
     container_name: gopal_backend
     volumes:
-      # Persistent volume for sqlite database storage
       - backend_data:/app
     environment:
       - DATABASE_URL=sqlite:///./fleet_app.db
     ports:
-      - "8000:8000"
-    restart: always
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: gopal_frontend
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
+      # Map HTTP port 80 directly to FastAPI on port 8000
+      - "80:8000"
     restart: always
 
 volumes:

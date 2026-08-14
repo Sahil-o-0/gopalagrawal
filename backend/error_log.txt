@@ -1,0 +1,135 @@
+Traceback (most recent call last):
+  File "D:\GopalAgrawal\backend\test_fastapi.py", line 19, in <module>
+    response = client.get("/workforce/daily-ledger?month=3&year=2026", headers={"Authorization": f"Bearer {token}"})
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\testclient.py", line 473, in get
+    return super().get(
+           ~~~~~~~~~~~^
+        url,
+        ^^^^
+    ...<6 lines>...
+        extensions=extensions,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\httpx\_client.py", line 1053, in get
+    return self.request(
+           ~~~~~~~~~~~~^
+        "GET",
+        ^^^^^^
+    ...<7 lines>...
+        extensions=extensions,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\testclient.py", line 445, in request
+    return super().request(
+           ~~~~~~~~~~~~~~~^
+        method,
+        ^^^^^^^
+    ...<11 lines>...
+        extensions=extensions,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\httpx\_client.py", line 825, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\httpx\_client.py", line 914, in send
+    response = self._send_handling_auth(
+        request,
+    ...<2 lines>...
+        history=[],
+    )
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\httpx\_client.py", line 942, in _send_handling_auth
+    response = self._send_handling_redirects(
+        request,
+        follow_redirects=follow_redirects,
+        history=history,
+    )
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\httpx\_client.py", line 979, in _send_handling_redirects
+    response = self._send_single_request(request)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\httpx\_client.py", line 1014, in _send_single_request
+    response = transport.handle_request(request)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\testclient.py", line 348, in handle_request
+    raise exc
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\testclient.py", line 345, in handle_request
+    portal.call(self.app, scope, receive, send)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\anyio\from_thread.py", line 334, in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\concurrent\futures\_base.py", line 450, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\concurrent\futures\_base.py", line 395, in __get_result
+    raise self._exception
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\anyio\from_thread.py", line 259, in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\fastapi\applications.py", line 1160, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\cors.py", line 87, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\fastapi\routing.py", line 130, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\fastapi\routing.py", line 116, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\fastapi\routing.py", line 453, in app
+    solved_result = await solve_dependencies(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\fastapi\dependencies\utils.py", line 685, in solve_dependencies
+    query_values, query_errors = request_params_to_args(
+                                 ~~~~~~~~~~~~~~~~~~~~~~^
+        dependant.query_params, request.query_params
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\fastapi\dependencies\utils.py", line 856, in request_params_to_args
+    v_, errors_ = _validate_value_with_model_field(
+                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        field=field, value=value, values=values, loc=loc
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\fastapi\dependencies\utils.py", line 743, in _validate_value_with_model_field
+    return field.validate(value, values, loc=loc)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\fastapi\_compat\v2.py", line 169, in validate
+    self._type_adapter.validate_python(value, from_attributes=True),
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\pydantic\type_adapter.py", line 441, in validate_python
+    return self.validator.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sahil\AppData\Roaming\Python\Python314\site-packages\pydantic\_internal\_mock_val_ser.py", line 100, in __getattr__
+    raise PydanticUserError(self._error_message, code=self._code)
+pydantic.errors.PydanticUserError: `TypeAdapter[typing.Annotated[ForwardRef('Optional[__annotationlib_name_2__]', owner=<function get_daily_financial_ledger at 0x0000024EB1496E50>), FieldInfo(annotation=NoneType, required=False, default=None, alias='month', alias_priority=2, json_schema_extra={})]]` is not fully defined; you should define `typing.Annotated[ForwardRef('Optional[__annotationlib_name_2__]', owner=<function get_daily_financial_ledger at 0x0000024EB1496E50>), FieldInfo(annotation=NoneType, required=False, default=None, alias='month', alias_priority=2, json_schema_extra={})]` and all referenced types, then call `.rebuild()` on the instance.
+
+For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined

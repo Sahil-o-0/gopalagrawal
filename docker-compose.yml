@@ -7,9 +7,9 @@ services:
       dockerfile: Dockerfile
     container_name: gopal_backend
     volumes:
-      - backend_data:/app
+      - backend_data:/app/data
     environment:
-      - DATABASE_URL=sqlite:///./fleet_app.db
+      - DATABASE_URL=sqlite:///./data/fleet_app.db
     ports:
       # Map VPS port 8000 to FastAPI backend on port 8000
       - "8000:8000"

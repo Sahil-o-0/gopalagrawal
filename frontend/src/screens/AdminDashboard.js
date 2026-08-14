@@ -5,6 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { AuthContext } from '../context/AuthContext';
 import { useSite } from '../context/SiteContext';
+import SiteSelector from '../components/SiteSelector';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import TripLogForm from '../components/TripLogForm';
 import { API_BASE_URL } from '../config';

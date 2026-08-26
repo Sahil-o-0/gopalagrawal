@@ -8,11 +8,12 @@ import SiteSelector from '../components/SiteSelector';
 import { API_BASE_URL } from '../config';
 
 export default function DailyLedgerScreen({ navigation }) {
-    const { userToken } = useContext(AuthContext);
+    const { userToken, user } = useContext(AuthContext);
     const { selectedSite } = useSite();
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [ledgerData, setLedgerData] = useState([]);
+    const [staffList, setStaffList] = useState([]);
     
     // Filter State
     const [selectedDate, setSelectedDate] = useState(new Date());
@@ -25,10 +26,31 @@ export default function DailyLedgerScreen({ navigation }) {
     const [category, setCategory] = useState('');
     const [amount, setAmount] = useState('');
     const [description, setDescription] = useState('');
+    const [selectedStaffId, setSelectedStaffId] = useState('');
+    const [isStaffPickerVisible, setIsStaffPickerVisible] = useState(false);
+
+    // Preset category tags
+    const expenseCategories = ['WAGE_PAYOUT', 'ADVANCE', 'FUEL', 'MAINTENANCE', 'SITE_EXPENSE', 'TEA_SNACKS', 'OTHER'];
+    const incomeCategories = ['TRIP_INCOME', 'CLIENT_PAYMENT', 'MISC_INCOME', 'OTHER'];
 
     useEffect(() => {
         fetchLedger();
+        fetchStaff();
     }, [selectedDate, filterMode, selectedSite?.id]);
+
+    const fetchStaff = async () => {
+        try {
+            const resp = await fetch(`${API_BASE_URL}/users/`, {
+                headers: { 'Authorization': `Bearer ${userToken}` }
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                setStaffList(data);
+            }
+        } catch (e) {
+            console.log("Error fetching staff:", e);
+        }
+    };
 
     const fetchLedger = async () => {
         setIsLoading(true);
@@ -63,7 +85,45 @@ export default function DailyLedgerScreen({ navigation }) {
             return;
         }
 
+        const isStaffPayment = category === 'WAGE_PAYOUT' || category === 'ADVANCE' || category === 'SALARY';
+        if (isStaffPayment && !selectedStaffId) {
+            Alert.alert("Required", "Please select a staff member for this wage / advance payment");
+            return;
+        }
+
+        const chosenStaff = staffList.find(s => s.id.toString() === selectedStaffId);
+        const staffName = chosenStaff ? (chosenStaff.full_name || chosenStaff.username) : '';
+
         try {
+            if (isStaffPayment) {
+                // If it's a wage or advance payment, record it through staff-ledger so it updates user balance & daily ledger
+                const tType = category === 'ADVANCE' ? 'ADVANCE' : 'PAYMENT';
+                const sResp = await fetch(`${API_BASE_URL}/workforce/staff-ledger`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${userToken}`
+                    },
+                    body: JSON.stringify({
+                        staff_id: parseInt(selectedStaffId),
+                        site_id: selectedSite?.id || 1,
+                        amount: category === 'ADVANCE' ? -Math.abs(parseFloat(amount)) : -Math.abs(parseFloat(amount)),
+                        transaction_type: tType,
+                        description: description ? `${description} (${staffName})` : `${category.replace(/_/g, ' ')} to ${staffName}`,
+                        date: selectedDate.toISOString().split('T')[0]
+                    })
+                });
+
+                if (sResp.ok) {
+                    Alert.alert("Success", `Payment recorded for ${staffName} and logged in Accounting!`);
+                    setIsModalVisible(false);
+                    resetModal();
+                    fetchLedger();
+                    return;
+                }
+            }
+
+            // General Daily Ledger Entry
             const response = await fetch(`${API_BASE_URL}/workforce/daily-ledger`, {
                 method: 'POST',
                 headers: {
@@ -74,20 +134,28 @@ export default function DailyLedgerScreen({ navigation }) {
                     transaction_type: entryType,
                     category: category,
                     amount: parseFloat(amount),
-                    description: description,
-                    date: selectedDate.toISOString().split('T')[0]
+                    description: description ? (staffName ? `${description} (${staffName})` : description) : (staffName ? `${category} - ${staffName}` : ''),
+                    date: selectedDate.toISOString().split('T')[0],
+                    site_id: selectedSite?.id || 1
                 })
             });
 
             if (response.ok) {
                 Alert.alert("Success", "Entry added to daily ledger");
                 setIsModalVisible(false);
-                setAmount(''); setCategory(''); setDescription('');
+                resetModal();
                 fetchLedger();
             }
         } catch (error) {
             Alert.alert("Error", "Network error");
         }
+    };
+
+    const resetModal = () => {
+        setAmount('');
+        setCategory('');
+        setDescription('');
+        setSelectedStaffId('');
     };
 
     const totals = ledgerData.reduce((acc, curr) => {
@@ -288,66 +356,150 @@ export default function DailyLedgerScreen({ navigation }) {
             {/* Add Entry Modal */}
             <Modal visible={isModalVisible} animationType="slide" transparent={true}>
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
+                    <View style={[styles.modalContent, { maxHeight: '90%' }]}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Manual Cash Entry</Text>
-                            <TouchableOpacity onPress={() => setIsModalVisible(false)}>
-                                <MaterialCommunityIcons name="close" size={24} color="#091426" />
+                            <View>
+                                <Text style={styles.modalTitle}>New Cash Entry</Text>
+                                <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>Record daily revenue, operations, or staff wages/advances</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => { setIsModalVisible(false); resetModal(); }}>
+                                <MaterialCommunityIcons name="close" size={24} color="#0F172A" />
                             </TouchableOpacity>
                         </View>
 
-                        <View style={styles.typeSwitcher}>
-                            <TouchableOpacity 
-                                style={[styles.typeBtn, entryType === 'INCOME' && styles.typeBtnIncome]} 
-                                onPress={() => setEntryType('INCOME')}
-                            >
-                                <Text style={[styles.typeBtnText, entryType === 'INCOME' && styles.typeBtnTextActive]}>Income</Text>
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            {/* Type Switcher */}
+                            <View style={styles.typeSwitcher}>
+                                <TouchableOpacity 
+                                    style={[styles.typeBtn, entryType === 'INCOME' && styles.typeBtnIncome]} 
+                                    onPress={() => { setEntryType('INCOME'); setCategory('TRIP_INCOME'); }}
+                                >
+                                    <MaterialCommunityIcons name="arrow-bottom-left" size={16} color={entryType === 'INCOME' ? '#FFFFFF' : '#059669'} />
+                                    <Text style={[styles.typeBtnText, entryType === 'INCOME' && styles.typeBtnTextActive]}>Cash Inflow</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                    style={[styles.typeBtn, entryType === 'EXPENSE' && styles.typeBtnExpense]} 
+                                    onPress={() => { setEntryType('EXPENSE'); setCategory('WAGE_PAYOUT'); }}
+                                >
+                                    <MaterialCommunityIcons name="arrow-top-right" size={16} color={entryType === 'EXPENSE' ? '#FFFFFF' : '#DC2626'} />
+                                    <Text style={[styles.typeBtnText, entryType === 'EXPENSE' && styles.typeBtnTextActive]}>Cash Outflow</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Category Selector Pills */}
+                            <View style={styles.formGroup}>
+                                <Text style={styles.modalLabel}>Category</Text>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                                    {(entryType === 'EXPENSE' ? expenseCategories : incomeCategories).map(cat => (
+                                        <TouchableOpacity
+                                            key={cat}
+                                            style={[styles.catPill, category === cat && styles.catPillActive]}
+                                            onPress={() => setCategory(cat)}
+                                        >
+                                            <Text style={[styles.catPillText, category === cat && styles.catPillTextActive]}>
+                                                {cat.replace(/_/g, ' ')}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
+
+                            {/* Staff / Employee Selection (shown if Wage / Advance / Salary or chosen) */}
+                            {(category === 'WAGE_PAYOUT' || category === 'ADVANCE' || category === 'SALARY' || entryType === 'EXPENSE') && (
+                                <View style={styles.formGroup}>
+                                    <Text style={styles.modalLabel}>Select Employee / Staff (Optional)</Text>
+                                    <TouchableOpacity 
+                                        style={styles.staffSelectTrigger} 
+                                        onPress={() => setIsStaffPickerVisible(true)}
+                                        activeOpacity={0.75}
+                                    >
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                                            <MaterialCommunityIcons name="account-outline" size={20} color="#64748B" />
+                                            <Text style={selectedStaffId ? styles.staffSelectVal : styles.staffSelectPlaceholder}>
+                                                {selectedStaffId 
+                                                    ? staffList.find(s => s.id.toString() === selectedStaffId)?.full_name || staffList.find(s => s.id.toString() === selectedStaffId)?.username 
+                                                    : "Select Staff for Wage / Advance"}
+                                            </Text>
+                                        </View>
+                                        {selectedStaffId ? (
+                                            <TouchableOpacity onPress={() => setSelectedStaffId('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                                <MaterialCommunityIcons name="close-circle" size={18} color="#94A3B8" />
+                                            </TouchableOpacity>
+                                        ) : (
+                                            <MaterialCommunityIcons name="chevron-down" size={18} color="#64748B" />
+                                        )}
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
+                            {/* Amount */}
+                            <View style={styles.formGroup}>
+                                <Text style={styles.modalLabel}>Amount (₹) *</Text>
+                                <View style={styles.amountInputRow}>
+                                    <Text style={styles.currencyPrefix}>₹</Text>
+                                    <TextInput 
+                                        style={styles.amountInput} 
+                                        placeholder="0" 
+                                        placeholderTextColor="#94A3B8"
+                                        keyboardType="numeric" 
+                                        value={amount} 
+                                        onChangeText={setAmount} 
+                                    />
+                                </View>
+                            </View>
+
+                            {/* Description */}
+                            <View style={styles.formGroup}>
+                                <Text style={styles.modalLabel}>Note / Description</Text>
+                                <TextInput 
+                                    style={[styles.modalInput, { height: 70, textAlignVertical: 'top' }]} 
+                                    placeholder="Enter additional details or remarks..." 
+                                    placeholderTextColor="#94A3B8"
+                                    multiline 
+                                    value={description} 
+                                    onChangeText={setDescription} 
+                                />
+                            </View>
+
+                            <TouchableOpacity style={styles.saveBtn} onPress={handleAddEntry} activeOpacity={0.85}>
+                                <MaterialCommunityIcons name="check-circle" size={18} color="#FFFFFF" />
+                                <Text style={styles.saveBtnText}>Save Entry</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={[styles.typeBtn, entryType === 'EXPENSE' && styles.typeBtnExpense]} 
-                                onPress={() => setEntryType('EXPENSE')}
-                            >
-                                <Text style={[styles.typeBtnText, entryType === 'EXPENSE' && styles.typeBtnTextActive]}>Expense</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <View style={styles.formGroup}>
-                            <Text style={styles.modalLabel}>Category / Source</Text>
-                            <TextInput 
-                                style={styles.modalInput} 
-                                placeholder="e.g. Tea, Maintenance, Cash In" 
-                                value={category} 
-                                onChangeText={setCategory} 
-                            />
-                        </View>
-
-                        <View style={styles.formGroup}>
-                            <Text style={styles.modalLabel}>Amount (₹)</Text>
-                            <TextInput 
-                                style={[styles.modalInput, { fontSize: 24, fontWeight: 'bold' }]} 
-                                placeholder="0" 
-                                keyboardType="numeric" 
-                                value={amount} 
-                                onChangeText={setAmount} 
-                            />
-                        </View>
-
-                        <View style={styles.formGroup}>
-                            <Text style={styles.modalLabel}>Description (Optional)</Text>
-                            <TextInput 
-                                style={[styles.modalInput, { height: 80 }]} 
-                                placeholder="Add more details..." 
-                                multiline 
-                                value={description} 
-                                onChangeText={setDescription} 
-                            />
-                        </View>
-
-                        <TouchableOpacity style={styles.saveBtn} onPress={handleAddEntry}>
-                            <Text style={styles.saveBtnText}>Save Transaction</Text>
-                        </TouchableOpacity>
+                        </ScrollView>
                     </View>
                 </View>
+            </Modal>
+
+            {/* Staff Picker Modal */}
+            <Modal visible={isStaffPickerVisible} transparent animationType="fade">
+                <TouchableOpacity style={styles.pickerModalOverlay} activeOpacity={1} onPress={() => setIsStaffPickerVisible(false)}>
+                    <View style={styles.pickerModalContent}>
+                        <View style={styles.pickerModalHeader}>
+                            <Text style={styles.pickerModalTitle}>Select Staff Member</Text>
+                            <TouchableOpacity onPress={() => setIsStaffPickerVisible(false)}>
+                                <MaterialCommunityIcons name="close" size={22} color="#64748B" />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={{ maxHeight: 300 }}>
+                            {staffList.filter(u => u.role !== 'ADMIN').map(u => (
+                                <TouchableOpacity 
+                                    key={u.id} 
+                                    style={styles.staffOptionRow}
+                                    onPress={() => {
+                                        setSelectedStaffId(u.id.toString());
+                                        setIsStaffPickerVisible(false);
+                                    }}
+                                >
+                                    <View>
+                                        <Text style={styles.staffOptionName}>{u.full_name || u.username}</Text>
+                                        <Text style={styles.staffOptionSub}>@{u.username} • {u.designation || u.role}</Text>
+                                    </View>
+                                    <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                </TouchableOpacity>
             </Modal>
         </SafeAreaView>
     );
@@ -717,12 +869,132 @@ const styles = StyleSheet.create({
         backgroundColor: '#0F172A', 
         borderRadius: 12, 
         paddingVertical: 14, 
+        flexDirection: 'row',
+        justifyContent: 'center',
         alignItems: 'center', 
-        marginTop: 10 
+        marginTop: 10,
+        gap: 6,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 3
     },
     saveBtnText: { 
         color: '#FFFFFF', 
         fontSize: 15, 
         fontWeight: '800' 
-    }
+    },
+
+    catPill: {
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 20,
+        backgroundColor: '#F8FAFC',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    catPillActive: {
+        backgroundColor: '#0F172A',
+        borderColor: '#0F172A',
+    },
+    catPillText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#64748B',
+    },
+    catPillTextActive: {
+        color: '#FFFFFF',
+    },
+
+    staffSelectTrigger: {
+        backgroundColor: '#F8FAFC',
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    staffSelectVal: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#0F172A',
+    },
+    staffSelectPlaceholder: {
+        fontSize: 14,
+        color: '#94A3B8',
+    },
+
+    amountInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8FAFC',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        paddingHorizontal: 14,
+    },
+    currencyPrefix: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#0F172A',
+        marginRight: 6,
+    },
+    amountInput: {
+        flex: 1,
+        fontSize: 22,
+        fontWeight: '800',
+        color: '#0F172A',
+        paddingVertical: 10,
+    },
+
+    pickerModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(15,23,42,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    pickerModalContent: {
+        width: '100%',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 20,
+        padding: 20,
+        elevation: 10,
+    },
+    pickerModalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+        paddingBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+    },
+    pickerModalTitle: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#0F172A',
+    },
+    staffOptionRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F8FAFC',
+    },
+    staffOptionName: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#0F172A',
+    },
+    staffOptionSub: {
+        fontSize: 12,
+        color: '#64748B',
+        marginTop: 2,
+    },
 });

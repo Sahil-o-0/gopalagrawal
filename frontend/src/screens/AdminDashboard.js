@@ -1783,11 +1783,19 @@ export default function AdminDashboard({ navigation, route }) {
       </Modal>
 
       <Modal visible={isTripModalVisible} transparent animationType="slide">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsTripModalVisible(false)}>
-          <View style={[styles.modalContent, {maxHeight: '90%', padding: 0, overflow: 'hidden'}]}>
-             <ScrollView><TripLogForm isAdmin={true} staffList={users} onSuccess={() => { setIsTripModalVisible(false); fetchData(); }} /></ScrollView>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { height: '88%', width: '92%', padding: 0, overflow: 'hidden', borderRadius: 20 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', backgroundColor: '#FFFFFF' }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A' }}>Log New Trip</Text>
+              <TouchableOpacity onPress={() => setIsTripModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <MaterialCommunityIcons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <View style={{ flex: 1 }}>
+              <TripLogForm isAdmin={true} staffList={users} onSuccess={() => { setIsTripModalVisible(false); fetchData(); }} />
+            </View>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       <Modal visible={isDesignationModalVisible} transparent animationType="fade">

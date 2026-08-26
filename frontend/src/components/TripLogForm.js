@@ -127,7 +127,13 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     };
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+            style={styles.container} 
+            contentContainerStyle={styles.contentContainer} 
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled={true}
+            keyboardShouldPersistTaps="handled"
+        >
             {/* Network Banner */}
             {!isOnline && (
                 <View style={styles.offlineBanner}>
@@ -436,7 +442,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
-    contentContainer: { padding: 16, paddingBottom: 40 },
+    contentContainer: { padding: 16, paddingBottom: 80, flexGrow: 1 },
     
     offlineBanner: { 
         backgroundColor: '#D97706', 

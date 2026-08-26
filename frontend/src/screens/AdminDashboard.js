@@ -1030,6 +1030,8 @@ export default function AdminDashboard({ navigation, route }) {
                     if (date) { setTripEndDateDt(date); setTripEndDate(date.toISOString().split('T')[0]); }
                 }}
             />
+        )}
+
         {trips.length === 0 ? (
           <View style={styles.emptyTripState}>
             <View style={styles.emptyTripIconBox}>

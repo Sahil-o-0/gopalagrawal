@@ -1395,14 +1395,26 @@ export default function AdminDashboard({ navigation, route }) {
 
 
 
-      <Modal visible={isUserModalVisible} transparent={false} animationType="slide" statusBarTranslucent={true}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: 'white', paddingTop: Platform.OS === 'android' ? 30 : 0 }}>
+      <Modal visible={isUserModalVisible} transparent={false} animationType="slide" statusBarTranslucent={true} onRequestClose={() => {
+        if (createUserStep === 2) {
+          setCreateUserStep(1);
+        } else {
+          setIsUserModalVisible(false);
+          setCreateUserStep(1);
+        }
+      }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: 'white', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 8 : 0 }}>
           
           {createUserStep === 1 ? (
             <View style={{ flex: 1, padding: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                <TouchableOpacity onPress={() => { setIsUserModalVisible(false); setCreateUserStep(1); }} style={{ paddingRight: 16 }}>
-                  <MaterialCommunityIcons name="arrow-left" size={26} color="#1E293B" />
+                <TouchableOpacity 
+                  onPress={() => { setIsUserModalVisible(false); setCreateUserStep(1); }} 
+                  style={{ padding: 8, marginRight: 8, borderRadius: 8, backgroundColor: '#F1F5F9' }}
+                  hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons name="arrow-left" size={24} color="#1E293B" />
                 </TouchableOpacity>
                 <Text style={{ fontSize: 18, fontWeight: '800', color: '#1E293B' }}>Select Designation</Text>
               </View>
@@ -1598,8 +1610,13 @@ export default function AdminDashboard({ navigation, route }) {
             <View style={{ flex: 1, padding: 16 }}>
               {/* Header */}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                <TouchableOpacity onPress={() => setCreateUserStep(1)} style={{ paddingRight: 16 }}>
-                  <MaterialCommunityIcons name="arrow-left" size={26} color="#1E293B" />
+                <TouchableOpacity 
+                  onPress={() => setCreateUserStep(1)} 
+                  style={{ padding: 8, marginRight: 8, borderRadius: 8, backgroundColor: '#F1F5F9' }}
+                  hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons name="arrow-left" size={24} color="#1E293B" />
                 </TouchableOpacity>
                 <View>
                   <Text style={{ fontSize: 18, fontWeight: '800', color: '#1E293B' }}>New Profile Details</Text>

@@ -52,19 +52,26 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
         }
     };
 
+    const calculatedKm = (parseFloat(endMeter) || 0) - (parseFloat(startMeter) || 0);
+
     const handleSubmit = async () => {
-        if (!vehicleNumber || !origin || !destination || !materialType || !weightTons || !startMeter || !endMeter) {
-            Alert.alert("Missing Fields", "Please fill in all mandatory fields.");
+        if (!vehicleNumber.trim() || !origin.trim() || !destination.trim() || !materialType.trim() || !weightTons || !startMeter || !endMeter) {
+            Alert.alert("Missing Fields", "Please fill in all mandatory fields (Vehicle, Route, Cargo & Odometer readings).");
+            return;
+        }
+
+        if (calculatedKm < 0) {
+            Alert.alert("Invalid Odometer", "End meter reading cannot be less than Start meter reading.");
             return;
         }
 
         setIsLoading(true);
         try {
             const body = {
-                vehicle_number: vehicleNumber,
-                origin: origin,
-                destination: destination,
-                material_type: materialType,
+                vehicle_number: vehicleNumber.trim().toUpperCase(),
+                origin: origin.trim(),
+                destination: destination.trim(),
+                material_type: materialType.trim(),
                 weight_tons: parseFloat(weightTons),
                 start_meter_reading: parseFloat(startMeter),
                 end_meter_reading: parseFloat(endMeter),
@@ -81,7 +88,6 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
             }
 
             if (isOnline) {
-                // Try direct upload
                 const response = await fetch(`${API_BASE_URL}/trips/`, {
                     method: 'POST',
                     headers: {
@@ -100,14 +106,12 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     Alert.alert("Error", data.detail || "Failed to submit trip log");
                 }
             } else {
-                // Offline Mode: Save to queue
                 await saveTripOffline(body, {});
                 Alert.alert("Saved Offline", "Trip saved locally. It will automatically upload when internet is restored.");
                 clearForm();
             }
         } catch (error) {
             console.log(error);
-            // Fallback: If fetch failed despite NetInfo thinking we are online
             await saveTripOffline(body, {});
             Alert.alert("Network Issue", "Could not reach server. Trip saved offline.");
             clearForm();
@@ -133,70 +137,84 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
             )}
             
             {pendingCount > 0 && isOnline && (
-                <TouchableOpacity style={styles.syncBanner} onPress={syncPendingData}>
+                <TouchableOpacity style={styles.syncBanner} onPress={syncPendingData} activeOpacity={0.8}>
                     <MaterialCommunityIcons name="sync" size={16} color="white" style={{marginRight: 8}} />
-                    <Text style={styles.syncText}>{pendingCount} Pending Uploads. Tap to Sync.</Text>
+                    <Text style={styles.syncText}>{pendingCount} Pending Uploads • Tap to Sync</Text>
                 </TouchableOpacity>
             )}
 
-            {/* Editorial Header */}
-            <View style={styles.editorialHeader}>
-                <Text style={styles.editorialTitle}>Log New Trip</Text>
-                <Text style={styles.editorialSubtitle}>Digital Fleet Command • TR-{(Math.random()*100000).toFixed(0)}</Text>
+            {/* Header */}
+            <View style={styles.header}>
+                <View style={styles.headerBadge}>
+                    <MaterialCommunityIcons name="truck-cargo-container" size={14} color="#2563EB" />
+                    <Text style={styles.headerBadgeText}>FLEET OPERATIONS</Text>
+                </View>
+                <Text style={styles.headerTitle}>New Trip Dispatch</Text>
+                <Text style={styles.headerSubtitle}>Record complete cargo, route, odometer & fuel metrics</Text>
             </View>
 
-            {/* Segment 1: Vehicle Identification */}
-            <View style={styles.cardVehicle}>
-                <View style={styles.cardHeader}>
-                    <MaterialCommunityIcons name="truck-delivery" size={24} color="#60A5FA" />
-                    <Text style={styles.cardTitleLight}>Vehicle Identification</Text>
+            {/* Section 1: Vehicle & Staff Assignment */}
+            <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                    <View style={[styles.iconCircle, { backgroundColor: '#EFF6FF' }]}>
+                        <MaterialCommunityIcons name="truck-fast-outline" size={18} color="#2563EB" />
+                    </View>
+                    <Text style={styles.sectionTitle}>Vehicle & Assignment</Text>
                 </View>
 
                 {isAdmin && (
-                    <View style={styles.adminPickerGroup}>
-                        <Text style={styles.labelLight}>Assign Staff</Text>
-                        <TouchableOpacity style={styles.pickerTrigger} onPress={() => setIsStaffPickerVisible(true)}>
-                            <Text style={styles.pickerTriggerText}>
-                                {staffList.find(u => u.id.toString() === staffId)?.username || "Select Staff member"}
+                    <View style={styles.formGroup}>
+                        <Text style={styles.inputLabel}>Assign Driver / Staff</Text>
+                        <TouchableOpacity style={styles.pickerTrigger} onPress={() => setIsStaffPickerVisible(true)} activeOpacity={0.7}>
+                            <Text style={staffId ? styles.pickerTriggerVal : styles.pickerTriggerPlaceholder}>
+                                {staffList.find(u => u.id.toString() === staffId)?.full_name || staffList.find(u => u.id.toString() === staffId)?.username || "Select Assigned Driver"}
                             </Text>
-                            <MaterialCommunityIcons name="chevron-down" size={20} color="white" />
+                            <MaterialCommunityIcons name="chevron-down" size={18} color="#64748B" />
                         </TouchableOpacity>
                     </View>
                 )}
 
-                <View style={styles.inputWrapper}>
-                    <Text style={styles.labelLight}>Vehicle Plate</Text>
+                <View style={styles.formGroup}>
+                    <Text style={styles.inputLabel}>Vehicle Number *</Text>
                     <TextInput 
                         placeholderTextColor="#94A3B8" 
-                        style={styles.inputLight} 
-                        placeholder="MH-12-FE-4920" 
+                        style={styles.textInput} 
+                        placeholder="e.g. MH-12-FE-4920" 
                         value={vehicleNumber} 
-                        onChangeText={setVehicleNumber} 
+                        onChangeText={setVehicleNumber}
+                        autoCapitalize="characters"
                     />
                 </View>
             </View>
 
-            {/* Segment 2: Odometer (High Contrast) */}
-            <View style={styles.bentoRow}>
-                <View style={[styles.cardBento, {borderLeftColor: '#091426', borderLeftWidth: 4, flex: 1.5}]}>
-                    <View style={styles.cardHeader}>
-                        <Text style={styles.cardTitle}>Odometer Readings</Text>
-                        <MaterialCommunityIcons name="speedometer" size={20} color="#091426" />
+            {/* Section 2: Odometer & Distance */}
+            <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                    <View style={[styles.iconCircle, { backgroundColor: '#F1F5F9' }]}>
+                        <MaterialCommunityIcons name="speedometer" size={18} color="#0F172A" />
                     </View>
-                    <View style={styles.odoInputGroup}>
+                    <Text style={styles.sectionTitle}>Odometer Readings</Text>
+                </View>
+
+                <View style={styles.odoRow}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.inputLabel}>Start Meter (KM) *</Text>
                         <TextInput 
-                            placeholderTextColor="#CBD5E1" 
+                            placeholderTextColor="#94A3B8" 
                             style={styles.odoInput} 
-                            placeholder="START" 
+                            placeholder="00000" 
                             keyboardType="numeric" 
                             value={startMeter} 
                             onChangeText={setStartMeter} 
                         />
-                        <View style={styles.odoDivider} />
+                    </View>
+                    <View style={styles.odoDivider} />
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.inputLabel}>End Meter (KM) *</Text>
                         <TextInput 
-                            placeholderTextColor="#CBD5E1" 
+                            placeholderTextColor="#94A3B8" 
                             style={styles.odoInput} 
-                            placeholder="END" 
+                            placeholder="00000" 
                             keyboardType="numeric" 
                             value={endMeter} 
                             onChangeText={setEndMeter} 
@@ -204,118 +222,211 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     </View>
                 </View>
 
-                <View style={[styles.cardBento, {backgroundColor: '#1E293B', flex: 1}]}>
-                    <Text style={styles.labelLightSmall}>Total KM</Text>
-                    <Text style={styles.odoResultText}>
-                        { (parseFloat(endMeter) - parseFloat(startMeter)) || 0 }
+                {/* Live Distance Pill */}
+                <View style={styles.distanceBanner}>
+                    <Text style={styles.distanceBannerLabel}>TOTAL TRIP DISTANCE</Text>
+                    <Text style={[styles.distanceBannerVal, calculatedKm < 0 && { color: '#EF4444' }]}>
+                        {calculatedKm >= 0 ? `${calculatedKm} KM` : 'Invalid KM'}
                     </Text>
-                    <Text style={styles.labelLightSmall}>Estimated Distance</Text>
                 </View>
             </View>
 
-            {/* Segment 3: Route & Material */}
-            <View style={styles.cardSurface}>
-                 <View style={styles.cardHeader}>
-                    <Text style={styles.cardTitle}>Route & Cargo</Text>
-                    <MaterialCommunityIcons name="map-marker-path" size={20} color="#006c49" />
+            {/* Section 3: Route & Cargo Details */}
+            <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                    <View style={[styles.iconCircle, { backgroundColor: '#ECFDF5' }]}>
+                        <MaterialCommunityIcons name="map-marker-distance" size={18} color="#059669" />
+                    </View>
+                    <Text style={styles.sectionTitle}>Route & Cargo</Text>
                 </View>
 
-                 <View style={styles.routeFlow}>
-                    <View style={styles.routePin}><View style={styles.pinDot} /><View style={styles.pinLine} /></View>
-                    <TextInput placeholderTextColor="#94A3B8" style={styles.inputPlain} placeholder="Origin Point" value={origin} onChangeText={setOrigin} />
-                 </View>
-                 <View style={styles.routeFlow}>
-                    <View style={styles.routePin}><View style={[styles.pinDot, {backgroundColor: '#EF4444'}]} /></View>
-                    <TextInput placeholderTextColor="#94A3B8" style={styles.inputPlain} placeholder="Destination Point" value={destination} onChangeText={setDestination} />
-                 </View>
+                <View style={styles.routeContainer}>
+                    <View style={styles.routeInputRow}>
+                        <View style={[styles.routeDot, { backgroundColor: '#059669' }]} />
+                        <TextInput 
+                            placeholderTextColor="#94A3B8" 
+                            style={styles.routeInput} 
+                            placeholder="Origin / Loading Location *" 
+                            value={origin} 
+                            onChangeText={setOrigin} 
+                        />
+                    </View>
+                    <View style={styles.routeConnectLine} />
+                    <View style={styles.routeInputRow}>
+                        <View style={[styles.routeDot, { backgroundColor: '#2563EB' }]} />
+                        <TextInput 
+                            placeholderTextColor="#94A3B8" 
+                            style={styles.routeInput} 
+                            placeholder="Destination / Unloading Location *" 
+                            value={destination} 
+                            onChangeText={setDestination} 
+                        />
+                    </View>
+                </View>
 
-                 <View style={styles.cargoGrid}>
-                    <TextInput placeholderTextColor="#94A3B8" style={[styles.inputPlain, {flex: 2}]} placeholder="Material (e.g. Coal)" value={materialType} onChangeText={setMaterialType} />
-                    <TextInput placeholderTextColor="#94A3B8" style={[styles.inputPlain, {flex: 1}]} placeholder="Weight (t)" keyboardType="numeric" value={weightTons} onChangeText={setWeightTons} />
-                 </View>
+                <View style={styles.rowGrid}>
+                    <View style={{ flex: 2 }}>
+                        <Text style={styles.inputLabel}>Material Type *</Text>
+                        <TextInput 
+                            placeholderTextColor="#94A3B8" 
+                            style={styles.textInput} 
+                            placeholder="e.g. Coal, Iron Ore" 
+                            value={materialType} 
+                            onChangeText={setMaterialType} 
+                        />
+                    </View>
+                    <View style={{ flex: 1.2 }}>
+                        <Text style={styles.inputLabel}>Weight (Tons) *</Text>
+                        <TextInput 
+                            placeholderTextColor="#94A3B8" 
+                            style={styles.textInput} 
+                            placeholder="e.g. 25.4" 
+                            keyboardType="numeric" 
+                            value={weightTons} 
+                            onChangeText={setWeightTons} 
+                        />
+                    </View>
+                </View>
             </View>
 
-            {/* Segment 4: Fuel (Optional) */}
-            <View style={[styles.cardSurface, {borderLeftColor: '#006c49', borderLeftWidth: 4}]}>
-                <View style={styles.cardHeader}>
-                    <Text style={styles.cardTitle}>Fuel Tracking</Text>
-                    <MaterialCommunityIcons name="gas-station" size={20} color="#006c49" />
+            {/* Section 4: Fuel Tracking */}
+            <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                    <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
+                        <MaterialCommunityIcons name="gas-station-outline" size={18} color="#D97706" />
+                    </View>
+                    <Text style={styles.sectionTitle}>Fuel & Expenses (Optional)</Text>
                 </View>
-                <View style={styles.cargoGrid}>
-                    <TextInput placeholderTextColor="#94A3B8" style={[styles.inputPlain, {flex: 1}]} placeholder="Liters Taken" keyboardType="numeric" value={dieselLiters} onChangeText={setDieselLiters} />
-                    <TextInput placeholderTextColor="#94A3B8" style={[styles.inputPlain, {flex: 1}]} placeholder="Total Cost (₹)" keyboardType="numeric" value={dieselCost} onChangeText={setDieselCost} />
+                <View style={styles.rowGrid}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.inputLabel}>Diesel Liters</Text>
+                        <TextInput 
+                            placeholderTextColor="#94A3B8" 
+                            style={styles.textInput} 
+                            placeholder="0 L" 
+                            keyboardType="numeric" 
+                            value={dieselLiters} 
+                            onChangeText={setDieselLiters} 
+                        />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.inputLabel}>Diesel Cost (₹)</Text>
+                        <TextInput 
+                            placeholderTextColor="#94A3B8" 
+                            style={styles.textInput} 
+                            placeholder="₹ 0" 
+                            keyboardType="numeric" 
+                            value={dieselCost} 
+                            onChangeText={setDieselCost} 
+                        />
+                    </View>
                 </View>
             </View>
 
-            {/* Segment 5: Photo Evidence */}
-            <View style={styles.cardSurface}>
-                <View style={styles.cardHeader}>
-                    <Text style={styles.cardTitle}>Photo Evidence</Text>
-                    <MaterialCommunityIcons name="camera-enhance" size={20} color="#64748B" />
+            {/* Section 5: Photo Verification Evidence */}
+            <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                    <View style={[styles.iconCircle, { backgroundColor: '#F3E8FF' }]}>
+                        <MaterialCommunityIcons name="camera-outline" size={18} color="#9333EA" />
+                    </View>
+                    <Text style={styles.sectionTitle}>Proof & Document Photos</Text>
                 </View>
                 
-                <View style={styles.photoGallery}>
-                    <TouchableOpacity style={styles.photoTile} onPress={() => takePhoto(setLoadingPhoto)}>
-                        {loadingPhoto ? <Image source={{uri: loadingPhoto}} style={styles.photoPreview} resizeMode="cover" /> : <MaterialCommunityIcons name="truck-plus" size={32} color="#CBD5E1" />}
-                        <Text style={styles.photoLabelSmall}>Loading</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.photoTile} onPress={() => takePhoto(setUnloadingPhoto)}>
-                        {unloadingPhoto ? <Image source={{uri: unloadingPhoto}} style={styles.photoPreview} resizeMode="cover" /> : <MaterialCommunityIcons name="truck-check" size={32} color="#CBD5E1" />}
-                        <Text style={styles.photoLabelSmall}>Unloading</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.photoTile} onPress={() => takePhoto(setOdometerPhoto)}>
-                        {odometerPhoto ? <Image source={{uri: odometerPhoto}} style={styles.photoPreview} resizeMode="cover" /> : <MaterialCommunityIcons name="counter" size={32} color="#CBD5E1" />}
-                        <Text style={styles.photoLabelSmall}>Odometer</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={[styles.photoTile, {borderStyle: receiptPhoto ? 'solid' : 'dashed', backgroundColor: '#F8FAFC'}]} onPress={() => takePhoto(setReceiptPhoto)}>
-                        {receiptPhoto ? <Image source={{uri: receiptPhoto}} style={styles.photoPreview} resizeMode="cover" /> : (
-                            <>
-                                <MaterialCommunityIcons name="plus" size={24} color="#CBD5E1" />
-                                <Text style={styles.photoLabelSmall}>More</Text>
-                            </>
+                <View style={styles.photoGrid}>
+                    {/* Loading */}
+                    <TouchableOpacity style={styles.photoBox} onPress={() => takePhoto(setLoadingPhoto)} activeOpacity={0.8}>
+                        {loadingPhoto ? (
+                            <Image source={{uri: loadingPhoto}} style={styles.photoImg} />
+                        ) : (
+                            <View style={styles.photoPlaceholder}>
+                                <MaterialCommunityIcons name="camera-plus-outline" size={24} color="#64748B" />
+                                <Text style={styles.photoPlaceholderText}>Loading</Text>
+                            </View>
                         )}
+                        <Text style={styles.photoLabel}>Loading Photo</Text>
+                    </TouchableOpacity>
+
+                    {/* Unloading */}
+                    <TouchableOpacity style={styles.photoBox} onPress={() => takePhoto(setUnloadingPhoto)} activeOpacity={0.8}>
+                        {unloadingPhoto ? (
+                            <Image source={{uri: unloadingPhoto}} style={styles.photoImg} />
+                        ) : (
+                            <View style={styles.photoPlaceholder}>
+                                <MaterialCommunityIcons name="camera-plus-outline" size={24} color="#64748B" />
+                                <Text style={styles.photoPlaceholderText}>Unloading</Text>
+                            </View>
+                        )}
+                        <Text style={styles.photoLabel}>Unloading</Text>
+                    </TouchableOpacity>
+
+                    {/* Odometer */}
+                    <TouchableOpacity style={styles.photoBox} onPress={() => takePhoto(setOdometerPhoto)} activeOpacity={0.8}>
+                        {odometerPhoto ? (
+                            <Image source={{uri: odometerPhoto}} style={styles.photoImg} />
+                        ) : (
+                            <View style={styles.photoPlaceholder}>
+                                <MaterialCommunityIcons name="camera-plus-outline" size={24} color="#64748B" />
+                                <Text style={styles.photoPlaceholderText}>Odometer</Text>
+                            </View>
+                        )}
+                        <Text style={styles.photoLabel}>Odometer Meter</Text>
+                    </TouchableOpacity>
+
+                    {/* Bill / Bilty */}
+                    <TouchableOpacity style={styles.photoBox} onPress={() => takePhoto(setReceiptPhoto)} activeOpacity={0.8}>
+                        {receiptPhoto ? (
+                            <Image source={{uri: receiptPhoto}} style={styles.photoImg} />
+                        ) : (
+                            <View style={styles.photoPlaceholder}>
+                                <MaterialCommunityIcons name="camera-plus-outline" size={24} color="#64748B" />
+                                <Text style={styles.photoPlaceholderText}>Bilty / Bill</Text>
+                            </View>
+                        )}
+                        <Text style={styles.photoLabel}>Receipt / Bill</Text>
                     </TouchableOpacity>
                 </View>
             </View>
 
-            {/* Actions */}
-            <View style={styles.actionArea}>
-                <TouchableOpacity style={styles.discardBtn} onPress={clearForm}>
-                    <Text style={styles.discardText}>Clear Data</Text>
+            {/* Submit Action Row */}
+            <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.clearBtn} onPress={clearForm} activeOpacity={0.7}>
+                    <Text style={styles.clearBtnText}>Clear</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={isLoading}>
+                <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={isLoading} activeOpacity={0.85}>
                     {isLoading ? <ActivityIndicator color="white" /> : (
                         <>
-                            <MaterialCommunityIcons name="send-check" size={24} color="white" />
-                            <Text style={styles.submitText}>Dispatch Trip</Text>
+                            <MaterialCommunityIcons name="check-circle" size={20} color="white" />
+                            <Text style={styles.submitBtnText}>Submit Trip Log</Text>
                         </>
                     )}
                 </TouchableOpacity>
             </View>
 
-            {/* Staff Picker Modal (Keep logic but style consistent) */}
+            {/* Staff Picker Modal */}
             <Modal visible={isStaffPickerVisible} transparent animationType="fade">
-                <TouchableOpacity style={styles.modalOverlay} onPress={() => setIsStaffPickerVisible(false)}>
+                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsStaffPickerVisible(false)}>
                     <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Assign to Staff</Text>
-                        <ScrollView>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                            <Text style={styles.modalTitle}>Select Assigned Driver</Text>
+                            <TouchableOpacity onPress={() => setIsStaffPickerVisible(false)}>
+                                <MaterialCommunityIcons name="close" size={22} color="#64748B" />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={{ maxHeight: 300 }}>
                             {staffList.filter(u => u.role !== 'ADMIN').map(u => (
                                 <TouchableOpacity 
                                     key={u.id} 
                                     style={styles.staffOption} 
                                     onPress={() => { setStaffId(u.id.toString()); setIsStaffPickerVisible(false); }}
                                 >
-                                    <Text style={styles.staffOptionName}>{u.full_name || u.username}</Text>
-                                    <Text style={styles.staffOptionUsername}>@{u.username}</Text>
+                                    <View>
+                                        <Text style={styles.staffOptionName}>{u.full_name || u.username}</Text>
+                                        <Text style={styles.staffOptionUsername}>@{u.username} • {u.designation || 'Staff'}</Text>
+                                    </View>
+                                    <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
                                 </TouchableOpacity>
                             ))}
                         </ScrollView>
-                        <TouchableOpacity style={styles.closeBtn} onPress={() => setIsStaffPickerVisible(false)}>
-                            <Text style={styles.closeBtnText}>Cancel</Text>
-                        </TouchableOpacity>
                     </View>
                 </TouchableOpacity>
             </Modal>
@@ -324,65 +435,202 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F7F9FB' },
-    contentContainer: { padding: 20, paddingBottom: 50 },
-    offlineBanner: { backgroundColor: '#F59E0B', padding: 12, borderRadius: 12, marginBottom: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-    offlineText: { color: 'white', fontWeight: 'bold', fontSize: 13 },
-    syncBanner: { backgroundColor: '#3B82F6', padding: 12, borderRadius: 12, marginBottom: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-    syncText: { color: 'white', fontWeight: 'bold', fontSize: 13 },
+    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    contentContainer: { padding: 16, paddingBottom: 40 },
     
-    editorialHeader: { marginBottom: 25 },
-    editorialTitle: { fontSize: 32, fontWeight: '800', color: '#091426', letterSpacing: -0.5 },
-    editorialSubtitle: { fontSize: 14, color: '#64748B', fontWeight: '600', marginTop: 4 },
-
-    cardVehicle: { backgroundColor: '#091426', borderRadius: 16, padding: 20, marginBottom: 20, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-    cardTitleLight: { fontSize: 17, fontWeight: 'bold', color: 'white' },
-    cardTitle: { fontSize: 17, fontWeight: 'bold', color: '#091426' },
+    offlineBanner: { 
+        backgroundColor: '#D97706', 
+        padding: 10, 
+        borderRadius: 10, 
+        marginBottom: 12, 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        justifyContent: 'center' 
+    },
+    offlineText: { color: 'white', fontWeight: '700', fontSize: 12 },
     
-    labelLight: { fontSize: 11, fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
-    inputLight: { backgroundColor: '#1E293B', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 18, fontWeight: 'bold', color: 'white' },
-    inputWrapper: { marginTop: 15 },
-
-    bentoRow: { flexDirection: 'row', gap: 15, marginBottom: 20 },
-    cardBento: { backgroundColor: 'white', borderRadius: 16, padding: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, justifyContent: 'center' },
-    odoInputGroup: { marginTop: 10 },
-    odoInput: { fontSize: 28, fontWeight: '900', color: '#091426', paddingVertical: 4 },
-    odoDivider: { height: 1, backgroundColor: '#E2E8F0', marginVertical: 8 },
-    labelLightSmall: { fontSize: 10, fontWeight: 'bold', color: '#94A3B8', textTransform: 'uppercase', textAlign: 'center' },
-    odoResultText: { fontSize: 32, fontWeight: '900', color: '#60A5FA', textAlign: 'center', marginVertical: 5 },
-
-    cardSurface: { backgroundColor: 'white', borderRadius: 16, padding: 20, marginBottom: 20, elevation: 2 },
-    routeFlow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-    routePin: { width: 20, alignItems: 'center', marginRight: 15 },
-    pinDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#006c49' },
-    pinLine: { width: 2, flex: 1, height: 20, backgroundColor: '#E2E8F0', marginVertical: 4 },
-    inputPlain: { fontSize: 16, fontWeight: '600', color: '#0F172A', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingVertical: 8, flex: 1 },
+    syncBanner: { 
+        backgroundColor: '#2563EB', 
+        padding: 10, 
+        borderRadius: 10, 
+        marginBottom: 12, 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        justifyContent: 'center' 
+    },
+    syncText: { color: 'white', fontWeight: '700', fontSize: 12 },
     
-    cargoGrid: { flexDirection: 'row', gap: 15, marginTop: 10 },
-    
-    photoGallery: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 },
-    photoTile: { width: '22.5%', aspectRatio: 1, backgroundColor: '#F1F5F9', borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0' },
-    photoPreview: { width: '100%', height: '100%' },
-    photoLabelSmall: { fontSize: 9, fontWeight: 'bold', color: '#94A3B8', marginTop: 4, textAlign: 'center' },
+    header: { marginBottom: 16 },
+    headerBadge: { 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        alignSelf: 'flex-start',
+        backgroundColor: '#EFF6FF', 
+        paddingHorizontal: 8, 
+        paddingVertical: 3, 
+        borderRadius: 6,
+        gap: 4,
+        marginBottom: 6
+    },
+    headerBadgeText: { fontSize: 10, fontWeight: '800', color: '#2563EB', letterSpacing: 0.5 },
+    headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
+    headerSubtitle: { fontSize: 13, color: '#64748B', marginTop: 2 },
 
-    actionArea: { flexDirection: 'row', gap: 15, marginTop: 10, alignItems: 'center' },
-    discardBtn: { padding: 15, flex: 1 },
-    discardText: { color: '#64748B', fontWeight: 'bold', textAlign: 'center' },
-    submitBtn: { backgroundColor: '#006c49', flex: 3, height: 60, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, elevation: 8, shadowColor: '#006c49', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
-    submitText: { color: 'white', fontSize: 18, fontWeight: '700' },
+    sectionCard: { 
+        backgroundColor: '#FFFFFF', 
+        borderRadius: 16, 
+        padding: 16, 
+        marginBottom: 14, 
+        borderWidth: 1, 
+        borderColor: '#E2E8F0',
+        shadowColor: '#000', 
+        shadowOffset: { width: 0, height: 1 }, 
+        shadowOpacity: 0.04, 
+        shadowRadius: 3, 
+        elevation: 2 
+    },
+    sectionHeader: { 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        gap: 10, 
+        marginBottom: 14,
+        paddingBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9'
+    },
+    iconCircle: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    sectionTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
 
-    adminPickerGroup: { marginBottom: 15 },
-    pickerTrigger: { backgroundColor: '#1E293B', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    pickerTriggerText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
-    
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
-    modalContent: { width: '85%', backgroundColor: 'white', borderRadius: 20, padding: 25, elevation: 10 },
-    modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#091426', marginBottom: 20 },
-    staffOption: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-    staffOptionName: { fontSize: 17, fontWeight: 'bold', color: '#0F172A' },
-    staffOptionUsername: { fontSize: 13, color: '#64748B' },
-    closeBtn: { marginTop: 20, backgroundColor: '#091426', borderRadius: 12, paddingVertical: 14 },
-    closeBtnText: { color: 'white', fontWeight: 'bold', textAlign: 'center' }
+    formGroup: { marginBottom: 12 },
+    inputLabel: { fontSize: 11, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
+    textInput: { 
+        backgroundColor: '#F8FAFC', 
+        borderRadius: 10, 
+        paddingHorizontal: 14, 
+        paddingVertical: 11, 
+        fontSize: 14, 
+        color: '#0F172A', 
+        borderWidth: 1, 
+        borderColor: '#E2E8F0',
+        fontWeight: '600'
+    },
+
+    pickerTrigger: { 
+        backgroundColor: '#F8FAFC', 
+        borderRadius: 10, 
+        paddingHorizontal: 14, 
+        paddingVertical: 12, 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#E2E8F0'
+    },
+    pickerTriggerVal: { color: '#0F172A', fontWeight: '700', fontSize: 14 },
+    pickerTriggerPlaceholder: { color: '#94A3B8', fontSize: 14 },
+
+    odoRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+    odoInput: { 
+        backgroundColor: '#F8FAFC', 
+        borderRadius: 10, 
+        paddingHorizontal: 14, 
+        paddingVertical: 12, 
+        fontSize: 18, 
+        fontWeight: '800', 
+        color: '#0F172A', 
+        borderWidth: 1, 
+        borderColor: '#E2E8F0',
+        textAlign: 'center'
+    },
+    odoDivider: { width: 1, height: 36, backgroundColor: '#E2E8F0', marginTop: 16 },
+
+    distanceBanner: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#0F172A',
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        marginTop: 12
+    },
+    distanceBannerLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+    distanceBannerVal: { color: '#60A5FA', fontSize: 16, fontWeight: '900' },
+
+    routeContainer: { marginBottom: 12 },
+    routeInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8FAFC',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        paddingHorizontal: 12,
+        height: 44,
+        gap: 10
+    },
+    routeDot: { width: 8, height: 8, borderRadius: 4 },
+    routeInput: { flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '600' },
+    routeConnectLine: { width: 2, height: 10, backgroundColor: '#CBD5E1', marginLeft: 15, marginVertical: 2 },
+
+    rowGrid: { flexDirection: 'row', gap: 12 },
+
+    photoGrid: { flexDirection: 'row', gap: 10, justifyContent: 'space-between' },
+    photoBox: { flex: 1, alignItems: 'center' },
+    photoPlaceholder: {
+        width: '100%',
+        aspectRatio: 1,
+        backgroundColor: '#F8FAFC',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        borderStyle: 'dashed',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 4
+    },
+    photoPlaceholderText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
+    photoImg: { width: '100%', aspectRatio: 1, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+    photoLabel: { fontSize: 10, fontWeight: '700', color: '#64748B', marginTop: 4, textAlign: 'center' },
+
+    actionRow: { flexDirection: 'row', gap: 12, marginTop: 6, alignItems: 'center' },
+    clearBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', backgroundColor: '#FFFFFF' },
+    clearBtnText: { color: '#64748B', fontWeight: '700', fontSize: 14 },
+    submitBtn: { 
+        flex: 2.5, 
+        backgroundColor: '#0F172A', 
+        paddingVertical: 14, 
+        borderRadius: 12, 
+        flexDirection: 'row', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        gap: 8,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+        elevation: 4
+    },
+    submitBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    modalContent: { width: '100%', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, elevation: 10 },
+    modalTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
+    staffOption: { 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        paddingVertical: 14, 
+        borderBottomWidth: 1, 
+        borderBottomColor: '#F1F5F9' 
+    },
+    staffOptionName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+    staffOptionUsername: { fontSize: 12, color: '#64748B', marginTop: 2 }
 });
 

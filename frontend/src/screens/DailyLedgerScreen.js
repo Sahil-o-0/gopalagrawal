@@ -475,26 +475,39 @@ export default function DailyLedgerScreen({ navigation }) {
                 <TouchableOpacity style={styles.pickerModalOverlay} activeOpacity={1} onPress={() => setIsStaffPickerVisible(false)}>
                     <View style={styles.pickerModalContent}>
                         <View style={styles.pickerModalHeader}>
-                            <Text style={styles.pickerModalTitle}>Select Staff Member</Text>
+                            <View>
+                                <Text style={styles.pickerModalTitle}>Select Staff Member</Text>
+                                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>Tap to view work hours & process payout</Text>
+                            </View>
                             <TouchableOpacity onPress={() => setIsStaffPickerVisible(false)}>
                                 <MaterialCommunityIcons name="close" size={22} color="#64748B" />
                             </TouchableOpacity>
                         </View>
-                        <ScrollView style={{ maxHeight: 300 }}>
+                        <ScrollView style={{ maxHeight: 320 }}>
                             {staffList.filter(u => u.role !== 'ADMIN').map(u => (
                                 <TouchableOpacity 
                                     key={u.id} 
                                     style={styles.staffOptionRow}
                                     onPress={() => {
-                                        setSelectedStaffId(u.id.toString());
                                         setIsStaffPickerVisible(false);
+                                        setIsModalVisible(false);
+                                        // Navigate to full staff profile with working hours, pending advances & direct payout
+                                        navigation.navigate('UserLedger', { 
+                                            user: u, 
+                                            userToken, 
+                                            dailyLedgerEntries: ledgerData,
+                                            sites: selectedSite ? [selectedSite] : []
+                                        });
                                     }}
                                 >
-                                    <View>
+                                    <View style={{ flex: 1 }}>
                                         <Text style={styles.staffOptionName}>{u.full_name || u.username}</Text>
                                         <Text style={styles.staffOptionSub}>@{u.username} • {u.designation || u.role}</Text>
                                     </View>
-                                    <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EFF6FF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#2563EB' }}>View Hours & Pay</Text>
+                                        <MaterialCommunityIcons name="arrow-right" size={14} color="#2563EB" />
+                                    </View>
                                 </TouchableOpacity>
                             ))}
                         </ScrollView>

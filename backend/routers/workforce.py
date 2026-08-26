@@ -126,17 +126,21 @@ def punch_attendance(
 
 @router.get("/attendance", response_model=List[schemas.workforce.AttendanceResponse])
 def get_attendance(
-    skip: int = 0, limit: int = 100, 
+    skip: int = 0, limit: int = 500, 
     site_id: Optional[int] = Query(None),
+    staff_id: Optional[int] = Query(None),
     db: Session = Depends(dependencies.get_db),
     current_user: User = Depends(dependencies.get_current_active_user)
 ):
     query = db.query(Attendance)
     if current_user.role in ["STAFF", "MANAGER"]:
         query = query.filter(Attendance.staff_id == current_user.id)
+    elif staff_id is not None:
+        query = query.filter(Attendance.staff_id == staff_id)
+        
     if site_id is not None:
         query = query.filter(Attendance.site_id == site_id)
-    return query.offset(skip).limit(limit).all()
+    return query.order_by(Attendance.date.desc()).offset(skip).limit(limit).all()
 
 # --- LEAVES ---
 @router.post("/leaves", response_model=schemas.workforce.LeaveResponse)

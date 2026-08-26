@@ -182,8 +182,15 @@ export default function AdminDashboard({ navigation, route }) {
       
       if (activeTab === 'trips') {
         try {
-          const resp = await fetch(`${API_BASE_URL}/trips/?${params.toString()}`, { headers });
-          if (resp.ok) setTrips(await resp.json());
+          const [tripRes, userRes] = await Promise.allSettled([
+            fetch(`${API_BASE_URL}/trips/?${params.toString()}`, { headers }),
+            fetch(`${API_BASE_URL}/auth/users`, { headers })
+          ]);
+          if (tripRes.status === 'fulfilled' && tripRes.value.ok) setTrips(await tripRes.value.json());
+          if (userRes.status === 'fulfilled' && userRes.value.ok) {
+            const allUsers = await userRes.value.json();
+            setUsers(allUsers);
+          }
         } catch (tripErr) { console.error("Trips fetch error", tripErr); }
       } else if (activeTab === 'users') {
         try {

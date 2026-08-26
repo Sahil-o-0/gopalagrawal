@@ -40,7 +40,7 @@ export default function DailyLedgerScreen({ navigation }) {
 
     const fetchStaff = async () => {
         try {
-            const resp = await fetch(`${API_BASE_URL}/users/`, {
+            const resp = await fetch(`${API_BASE_URL}/auth/users`, {
                 headers: { 'Authorization': `Bearer ${userToken}` }
             });
             if (resp.ok) {

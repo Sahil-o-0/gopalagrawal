@@ -107,16 +107,17 @@ export default function DailyLedgerScreen({ navigation }) {
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" />
             
-            {/* Custom Header */}
+            {/* Top Bar Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <MaterialCommunityIcons name="arrow-left" size={24} color="#091426" />
+                    <MaterialCommunityIcons name="arrow-left" size={24} color="#0F172A" />
                 </TouchableOpacity>
                 <View style={{ flex: 1, alignItems: 'center' }}>
                     <SiteSelector compact={true} />
                 </View>
-                <TouchableOpacity style={styles.addBtn} onPress={() => setIsModalVisible(true)}>
-                    <MaterialCommunityIcons name="plus-circle" size={32} color="#006c49" />
+                <TouchableOpacity style={styles.addBtn} onPress={() => setIsModalVisible(true)} activeOpacity={0.8}>
+                    <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
+                    <Text style={styles.addBtnLabel}>Entry</Text>
                 </TouchableOpacity>
             </View>
 
@@ -137,12 +138,12 @@ export default function DailyLedgerScreen({ navigation }) {
                     </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity style={styles.dateSelector} onPress={() => setShowDatePicker(true)}>
-                    <MaterialCommunityIcons name="calendar-month" size={20} color="#64748B" />
+                <TouchableOpacity style={styles.dateSelector} onPress={() => setShowDatePicker(true)} activeOpacity={0.7}>
+                    <MaterialCommunityIcons name="calendar-month-outline" size={18} color="#0284C7" />
                     <Text style={styles.dateSelectorText}>
                         {filterMode === 'MONTH' 
-                            ? selectedDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-                            : selectedDate.toLocaleDateString()
+                            ? selectedDate.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+                            : `${String(selectedDate.getDate()).padStart(2, '0')}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${selectedDate.getFullYear()}`
                         }
                     </Text>
                     <MaterialCommunityIcons name="chevron-down" size={16} color="#64748B" />
@@ -162,72 +163,125 @@ export default function DailyLedgerScreen({ navigation }) {
                 style={styles.content} 
                 contentContainerStyle={styles.scrollContent}
                 refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => { setIsRefreshing(true); fetchLedger(); }} />}
+                showsVerticalScrollIndicator={false}
             >
+                {/* Net Balance Hero Card */}
+                <View style={[styles.balanceBar, netBalance >= 0 ? styles.balancePositive : styles.balanceNegative]}>
+                    <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            <MaterialCommunityIcons name="wallet-outline" size={16} color="rgba(255,255,255,0.75)" />
+                            <Text style={styles.balanceLabel}>NET CASH FLOW</Text>
+                        </View>
+                        <Text style={styles.balanceValue}>
+                            {netBalance < 0 ? '-' : ''}₹{Math.abs(netBalance).toLocaleString()}
+                        </Text>
+                        <Text style={styles.balanceSub}>
+                            {filterMode === 'MONTH' 
+                                ? `Cash balance for ${selectedDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}`
+                                : `Cash balance for selected day`
+                            }
+                        </Text>
+                    </View>
+                    <View style={styles.heroBadge}>
+                        <MaterialCommunityIcons 
+                            name={netBalance >= 0 ? "trending-up" : "trending-down"} 
+                            size={28} color="white" 
+                        />
+                    </View>
+                </View>
+
                 {/* Summary Cards */}
                 <View style={styles.summaryRow}>
-                    <View style={[styles.summaryCard, { backgroundColor: '#ECFDF5', borderColor: '#10B981' }]}>
-                        <Text style={[styles.summaryLabel, { color: '#059669' }]}>Total Income</Text>
+                    <View style={[styles.summaryCard, { borderLeftColor: '#10B981' }]}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={[styles.summaryLabel, { color: '#059669' }]}>Total Inflow</Text>
+                            <View style={[styles.statIconBadge, { backgroundColor: '#ECFDF5' }]}>
+                                <MaterialCommunityIcons name="arrow-bottom-left" size={16} color="#059669" />
+                            </View>
+                        </View>
                         <Text style={[styles.summaryValue, { color: '#065F46' }]}>₹{totals.income.toLocaleString()}</Text>
-                        <MaterialCommunityIcons name="trending-up" size={24} color="#10B981" style={styles.summaryIcon} />
+                        <Text style={styles.summaryMeta}>Verified revenue & earnings</Text>
                     </View>
-                    <View style={[styles.summaryCard, { backgroundColor: '#FEF2F2', borderColor: '#EF4444' }]}>
-                        <Text style={[styles.summaryLabel, { color: '#DC2626' }]}>Total Expense</Text>
+
+                    <View style={[styles.summaryCard, { borderLeftColor: '#EF4444' }]}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={[styles.summaryLabel, { color: '#DC2626' }]}>Total Outflow</Text>
+                            <View style={[styles.statIconBadge, { backgroundColor: '#FEF2F2' }]}>
+                                <MaterialCommunityIcons name="arrow-top-right" size={16} color="#DC2626" />
+                            </View>
+                        </View>
                         <Text style={[styles.summaryValue, { color: '#991B1B' }]}>₹{totals.expense.toLocaleString()}</Text>
-                        <MaterialCommunityIcons name="trending-down" size={24} color="#EF4444" style={styles.summaryIcon} />
+                        <Text style={styles.summaryMeta}>Operations & labor costs</Text>
                     </View>
                 </View>
 
-                <View style={[styles.balanceBar, netBalance >= 0 ? styles.balancePositive : styles.balanceNegative]}>
-                    <View>
-                        <Text style={styles.balanceLabel}>Net Cash Flow</Text>
-                        <Text style={styles.balanceValue}>₹{netBalance.toLocaleString()}</Text>
-                    </View>
-                    <MaterialCommunityIcons 
-                        name={netBalance >= 0 ? "shield-check" : "alert-circle"} 
-                        size={32} color="white" 
-                    />
-                </View>
-
-                {/* Transactions List */}
+                {/* Transactions List Header */}
                 <View style={styles.listHeader}>
-                    <Text style={styles.listTitle}>Recent Activity</Text>
-                    <Text style={styles.listCount}>{ledgerData.length} entries</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <MaterialCommunityIcons name="receipt-text-outline" size={20} color="#0F172A" />
+                        <Text style={styles.listTitle}>Activity Ledger</Text>
+                    </View>
+                    <View style={styles.countBadge}>
+                        <Text style={styles.listCount}>{ledgerData.length} records</Text>
+                    </View>
                 </View>
 
                 {isLoading ? (
-                    <ActivityIndicator size="large" color="#091426" style={{ marginTop: 50 }} />
+                    <ActivityIndicator size="large" color="#0F172A" style={{ marginTop: 40 }} />
                 ) : ledgerData.length === 0 ? (
                     <View style={styles.emptyState}>
-                        <MaterialCommunityIcons name="folder-open-outline" size={64} color="#CBD5E1" />
-                        <Text style={styles.emptyText}>No data for this period</Text>
+                        <View style={styles.emptyIconBox}>
+                            <MaterialCommunityIcons name="book-open-blank-variant" size={42} color="#94A3B8" />
+                        </View>
+                        <Text style={styles.emptyTitle}>No Entries Found</Text>
+                        <Text style={styles.emptyText}>No cash transactions logged for this selected period.</Text>
                     </View>
                 ) : (
-                    ledgerData.map((item) => (
-                        <View key={item.id} style={styles.transactionCard}>
-                            <View style={[styles.typeIndicator, { backgroundColor: item.transaction_type === 'INCOME' ? '#10B981' : '#EF4444' }]} />
-                            <View style={styles.transMain}>
-                                <View style={styles.transHeader}>
-                                    <Text style={styles.transCategory}>{item.category.replace('_', ' ')}</Text>
-                                    <Text style={[styles.transAmount, { color: item.transaction_type === 'INCOME' ? '#059669' : '#DC2626' }]}>
-                                        {item.transaction_type === 'INCOME' ? '+' : '-'} ₹{item.amount.toLocaleString()}
-                                    </Text>
+                    ledgerData.map((item) => {
+                        const isIncome = item.transaction_type === 'INCOME';
+                        return (
+                            <View key={item.id} style={styles.transactionCard}>
+                                <View style={[styles.typePillIcon, { backgroundColor: isIncome ? '#ECFDF5' : '#FEF2F2' }]}>
+                                    <MaterialCommunityIcons 
+                                        name={isIncome ? "arrow-down-bold" : "arrow-up-bold"} 
+                                        size={18} 
+                                        color={isIncome ? "#059669" : "#DC2626"} 
+                                    />
                                 </View>
-                                <Text style={styles.transDesc}>{item.description || 'No description'}</Text>
-                                <View style={styles.transFooter}>
-                                    <View style={styles.tag}>
-                                        <MaterialCommunityIcons name="clock-outline" size={12} color="#64748B" />
-                                        <Text style={styles.tagText}>{new Date(item.date).toLocaleDateString()}</Text>
+                                <View style={styles.transMain}>
+                                    <View style={styles.transHeader}>
+                                        <Text style={styles.transCategory}>{item.category?.replace(/_/g, ' ')}</Text>
+                                        <Text style={[styles.transAmount, { color: isIncome ? '#059669' : '#DC2626' }]}>
+                                            {isIncome ? '+' : '-'}₹{item.amount?.toLocaleString()}
+                                        </Text>
                                     </View>
-                                    {item.reference_type && (
-                                        <View style={[styles.tag, { backgroundColor: '#F1F5F9' }]}>
-                                            <MaterialCommunityIcons name="link-variant" size={12} color="#091426" />
-                                            <Text style={[styles.tagText, { color: '#091426' }]}>{item.reference_type}</Text>
+                                    {item.description ? (
+                                        <Text style={styles.transDesc}>{item.description}</Text>
+                                    ) : null}
+                                    <View style={styles.transFooter}>
+                                        <View style={styles.tag}>
+                                            <MaterialCommunityIcons name="calendar-clock" size={12} color="#64748B" />
+                                            <Text style={styles.tagText}>
+                                                {(() => {
+                                                    const d = new Date(item.date);
+                                                    const dd = String(d.getDate()).padStart(2, '0');
+                                                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                                    const yyyy = d.getFullYear();
+                                                    return `${dd}-${mm}-${yyyy}`;
+                                                })()}
+                                            </Text>
                                         </View>
-                                    )}
+                                        {item.reference_type ? (
+                                            <View style={[styles.tag, { backgroundColor: '#F1F5F9' }]}>
+                                                <MaterialCommunityIcons name="link-variant" size={12} color="#0F172A" />
+                                                <Text style={[styles.tagText, { color: '#0F172A' }]}>{item.reference_type}</Text>
+                                            </View>
+                                        ) : null}
+                                    </View>
                                 </View>
                             </View>
-                        </View>
-                    ))
+                        );
+                    })
                 )}
             </ScrollView>
 
@@ -300,72 +354,375 @@ export default function DailyLedgerScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 10 : 10 },
-    header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-    backBtn: { marginRight: 15 },
-    headerTitle: { fontSize: 24, fontWeight: '800', color: '#091426' },
-    headerSubtitle: { fontSize: 13, color: '#64748B', fontWeight: '600' },
-    addBtn: { marginLeft: 'auto' },
+    container: { 
+        flex: 1, 
+        backgroundColor: '#F8FAFC', 
+        paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0 
+    },
+    header: { 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        paddingHorizontal: 16, 
+        paddingVertical: 12, 
+        backgroundColor: '#FFFFFF', 
+        borderBottomWidth: 1, 
+        borderBottomColor: '#E2E8F0' 
+    },
+    backBtn: { padding: 4 },
+    addBtn: { 
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#0F172A',
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 8,
+        gap: 4
+    },
+    addBtnLabel: {
+        color: '#FFFFFF',
+        fontWeight: '700',
+        fontSize: 13
+    },
 
-    filterBar: { padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    modeToggle: { flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 8, padding: 3 },
-    modeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
-    modeBtnActive: { backgroundColor: 'white' },
-    modeText: { fontSize: 12, fontWeight: 'bold', color: '#64748B' },
-    modeTextActive: { color: '#091426' },
+    filterBar: { 
+        paddingHorizontal: 16, 
+        paddingVertical: 12, 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9'
+    },
+    modeToggle: { 
+        flexDirection: 'row', 
+        backgroundColor: '#F1F5F9', 
+        borderRadius: 8, 
+        padding: 3 
+    },
+    modeBtn: { 
+        paddingHorizontal: 12, 
+        paddingVertical: 6, 
+        borderRadius: 6 
+    },
+    modeBtnActive: { 
+        backgroundColor: '#FFFFFF',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 2,
+        elevation: 1
+    },
+    modeText: { 
+        fontSize: 12, 
+        fontWeight: '700', 
+        color: '#64748B' 
+    },
+    modeTextActive: { 
+        color: '#0F172A' 
+    },
     
-    dateSelector: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', gap: 8 },
-    dateSelectorText: { fontSize: 14, fontWeight: '700', color: '#091426' },
+    dateSelector: { 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        backgroundColor: '#F8FAFC', 
+        paddingHorizontal: 12, 
+        paddingVertical: 7, 
+        borderRadius: 8, 
+        borderWidth: 1, 
+        borderColor: '#E2E8F0', 
+        gap: 6 
+    },
+    dateSelectorText: { 
+        fontSize: 13, 
+        fontWeight: '700', 
+        color: '#0F172A' 
+    },
 
     content: { flex: 1 },
-    scrollContent: { padding: 20, paddingBottom: 40 },
+    scrollContent: { padding: 16, paddingBottom: 40 },
 
-    summaryRow: { flexDirection: 'row', gap: 15, marginBottom: 15 },
-    summaryCard: { flex: 1, padding: 15, borderRadius: 16, borderLeftWidth: 4, position: 'relative', overflow: 'hidden' },
-    summaryLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-    summaryValue: { fontSize: 20, fontWeight: '900', marginTop: 5 },
-    summaryIcon: { position: 'absolute', right: -5, bottom: -5, opacity: 0.2 },
+    balanceBar: { 
+        padding: 20, 
+        borderRadius: 16, 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: 16,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 10,
+        elevation: 4
+    },
+    balancePositive: { backgroundColor: '#0F172A' },
+    balanceNegative: { backgroundColor: '#991B1B' },
+    balanceLabel: { 
+        color: 'rgba(255,255,255,0.75)', 
+        fontSize: 11, 
+        fontWeight: '800', 
+        letterSpacing: 1 
+    },
+    balanceValue: { 
+        color: '#FFFFFF', 
+        fontSize: 32, 
+        fontWeight: '900',
+        letterSpacing: -0.5
+    },
+    balanceSub: {
+        color: 'rgba(255,255,255,0.65)',
+        fontSize: 12,
+        fontWeight: '500',
+        marginTop: 4
+    },
+    heroBadge: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
 
-    balanceBar: { padding: 20, borderRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
-    balancePositive: { backgroundColor: '#091426', elevation: 4 },
-    balanceNegative: { backgroundColor: '#991B1B', elevation: 4 },
-    balanceLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase' },
-    balanceValue: { color: 'white', fontSize: 32, fontWeight: '900' },
+    summaryRow: { 
+        flexDirection: 'row', 
+        gap: 12, 
+        marginBottom: 20 
+    },
+    summaryCard: { 
+        flex: 1, 
+        backgroundColor: '#FFFFFF',
+        padding: 14, 
+        borderRadius: 14, 
+        borderLeftWidth: 4, 
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04,
+        shadowRadius: 3,
+        elevation: 2 
+    },
+    summaryLabel: { 
+        fontSize: 11, 
+        fontWeight: '800', 
+        textTransform: 'uppercase', 
+        letterSpacing: 0.5 
+    },
+    summaryValue: { 
+        fontSize: 20, 
+        fontWeight: '900', 
+        marginTop: 6,
+        letterSpacing: -0.5
+    },
+    summaryMeta: {
+        fontSize: 11,
+        color: '#94A3B8',
+        fontWeight: '500',
+        marginTop: 4
+    },
+    statIconBadge: {
+        width: 24,
+        height: 24,
+        borderRadius: 6,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
 
-    listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-    listTitle: { fontSize: 18, fontWeight: '800', color: '#091426' },
-    listCount: { fontSize: 13, color: '#64748B', fontWeight: 'bold' },
+    listHeader: { 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: 12 
+    },
+    listTitle: { 
+        fontSize: 16, 
+        fontWeight: '800', 
+        color: '#0F172A' 
+    },
+    countBadge: {
+        backgroundColor: '#E2E8F0',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 12
+    },
+    listCount: { 
+        fontSize: 11, 
+        color: '#334155', 
+        fontWeight: '800',
+        textTransform: 'uppercase'
+    },
 
-    transactionCard: { backgroundColor: 'white', borderRadius: 16, marginBottom: 12, flexDirection: 'row', overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4 },
-    typeIndicator: { width: 5 },
-    transMain: { flex: 1, padding: 15 },
-    transHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    transCategory: { fontSize: 16, fontWeight: '800', color: '#091426', textTransform: 'capitalize' },
-    transAmount: { fontSize: 17, fontWeight: '900' },
-    transDesc: { fontSize: 13, color: '#64748B', marginTop: 4 },
-    transFooter: { flexDirection: 'row', gap: 10, marginTop: 12 },
-    tag: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-    tagText: { fontSize: 11, fontWeight: 'bold', color: '#64748B' },
+    transactionCard: { 
+        backgroundColor: '#FFFFFF', 
+        borderRadius: 14, 
+        marginBottom: 10, 
+        flexDirection: 'row', 
+        alignItems: 'flex-start',
+        padding: 14,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        shadowColor: '#000', 
+        shadowOffset: { width: 0, height: 1 }, 
+        shadowOpacity: 0.03, 
+        shadowRadius: 3, 
+        elevation: 1 
+    },
+    typePillIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12
+    },
+    transMain: { flex: 1 },
+    transHeader: { 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start' 
+    },
+    transCategory: { 
+        fontSize: 15, 
+        fontWeight: '700', 
+        color: '#0F172A', 
+        textTransform: 'capitalize' 
+    },
+    transAmount: { 
+        fontSize: 16, 
+        fontWeight: '900' 
+    },
+    transDesc: { 
+        fontSize: 13, 
+        color: '#64748B', 
+        marginTop: 4,
+        lineHeight: 18
+    },
+    transFooter: { 
+        flexDirection: 'row', 
+        gap: 8, 
+        marginTop: 10 
+    },
+    tag: { 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        gap: 4, 
+        backgroundColor: '#F8FAFC', 
+        paddingHorizontal: 8, 
+        paddingVertical: 3, 
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#E2E8F0'
+    },
+    tagText: { 
+        fontSize: 11, 
+        fontWeight: '600', 
+        color: '#64748B' 
+    },
 
-    emptyState: { alignItems: 'center', marginTop: 60 },
-    emptyText: { color: '#94A3B8', fontWeight: 'bold', marginTop: 10 },
+    emptyState: { 
+        alignItems: 'center', 
+        paddingTop: 50,
+        paddingHorizontal: 20
+    },
+    emptyIconBox: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        backgroundColor: '#F1F5F9',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 12
+    },
+    emptyTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#334155',
+        marginBottom: 4
+    },
+    emptyText: { 
+        color: '#94A3B8', 
+        fontWeight: '500', 
+        fontSize: 13,
+        textAlign: 'center' 
+    },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    modalContent: { backgroundColor: 'white', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, shadowColor: '#000', shadowOffset: { width: 0, height: -5 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 20 },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
-    modalTitle: { fontSize: 22, fontWeight: '800', color: '#091426' },
+    modalOverlay: { 
+        flex: 1, 
+        backgroundColor: 'rgba(15,23,42,0.5)', 
+        justifyContent: 'flex-end' 
+    },
+    modalContent: { 
+        backgroundColor: '#FFFFFF', 
+        borderTopLeftRadius: 24, 
+        borderTopRightRadius: 24, 
+        padding: 24, 
+        shadowColor: '#000', 
+        shadowOffset: { width: 0, height: -4 }, 
+        shadowOpacity: 0.1, 
+        shadowRadius: 8, 
+        elevation: 20 
+    },
+    modalHeader: { 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: 20 
+    },
+    modalTitle: { 
+        fontSize: 18, 
+        fontWeight: '800', 
+        color: '#0F172A' 
+    },
     
-    typeSwitcher: { flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 12, padding: 5, marginBottom: 25 },
-    typeBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+    typeSwitcher: { 
+        flexDirection: 'row', 
+        backgroundColor: '#F1F5F9', 
+        borderRadius: 10, 
+        padding: 4, 
+        marginBottom: 20 
+    },
+    typeBtn: { 
+        flex: 1, 
+        paddingVertical: 10, 
+        borderRadius: 8, 
+        alignItems: 'center' 
+    },
     typeBtnIncome: { backgroundColor: '#10B981' },
     typeBtnExpense: { backgroundColor: '#EF4444' },
-    typeBtnText: { fontWeight: 'bold', color: '#64748B' },
-    typeBtnTextActive: { color: 'white' },
+    typeBtnText: { fontWeight: '700', color: '#64748B', fontSize: 13 },
+    typeBtnTextActive: { color: '#FFFFFF' },
     
-    formGroup: { marginBottom: 20 },
-    modalLabel: { fontSize: 12, fontWeight: '800', color: '#64748B', textTransform: 'uppercase', marginBottom: 8 },
-    modalInput: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 15, fontSize: 16, color: '#091426', borderWidth: 1, borderColor: '#E2E8F0' },
+    formGroup: { marginBottom: 16 },
+    modalLabel: { 
+        fontSize: 11, 
+        fontWeight: '700', 
+        color: '#64748B', 
+        textTransform: 'uppercase', 
+        letterSpacing: 0.5,
+        marginBottom: 6 
+    },
+    modalInput: { 
+        backgroundColor: '#F8FAFC', 
+        borderRadius: 10, 
+        paddingHorizontal: 14, 
+        paddingVertical: 12, 
+        fontSize: 15, 
+        color: '#0F172A', 
+        borderWidth: 1, 
+        borderColor: '#E2E8F0' 
+    },
     
-    saveBtn: { backgroundColor: '#091426', borderRadius: 16, padding: 18, alignItems: 'center', marginTop: 10 },
-    saveBtnText: { color: 'white', fontSize: 18, fontWeight: '800' }
+    saveBtn: { 
+        backgroundColor: '#0F172A', 
+        borderRadius: 12, 
+        paddingVertical: 14, 
+        alignItems: 'center', 
+        marginTop: 10 
+    },
+    saveBtnText: { 
+        color: '#FFFFFF', 
+        fontSize: 15, 
+        fontWeight: '800' 
+    }
 });

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Alert, TextInput } from 'react-native';
+import {
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  SafeAreaView, Alert, TextInput, StatusBar, Platform
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../config';
 
@@ -70,6 +73,7 @@ export default function UserLedgerScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <View style={{ flex: 1, padding: 16 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -167,7 +171,11 @@ export default function UserLedgerScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'white' },
+  container: {
+    flex: 1,
+    backgroundColor: 'white',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
+  },
   emiMetricCard: { backgroundColor: 'white', padding: 16, borderRadius: 12, borderLeftWidth: 4, elevation: 2 },
   emiMetricLabel: { fontSize: 9, fontWeight: '800', color: '#6B7280', marginBottom: 4 },
   emiMetricValue: { fontSize: 22, fontWeight: '900', color: '#111827' },

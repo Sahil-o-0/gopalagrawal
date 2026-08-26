@@ -209,47 +209,81 @@ export default function ManagerDashboard({ navigation, route }) {
   };
 
   // --- Renderers ---
-  const renderTripItem = ({ item }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>{item.vehicle_number}</Text>
-        <Text style={[styles.statusBadge, item.status === 'VALIDATED' || item.status === 'APPROVED' ? styles.statusValidated : styles.statusPending]}>
-          {item.status}
-        </Text>
-      </View>
-      
-      <Text style={styles.detailText}>Material: {item.material_type} ({item.weight_tons}t)</Text>
-      <Text style={styles.detailText}>Route: {item.origin || 'N/A'} ➡️ {item.destination || 'N/A'}</Text>
-      <Text style={styles.detailText}>Distance: {item.total_km} KM</Text>
-      {item.diesel_liters > 0 && <Text style={styles.detailText}>Diesel log: {item.diesel_liters}L (₹{item.diesel_cost})</Text>}
-      <Text style={styles.dateText}>Logged: {new Date(item.created_at).toLocaleDateString()}</Text>
+  const renderTripItem = ({ item }) => {
+    const isValidated = item.status === 'VALIDATED' || item.status === 'APPROVED';
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <MaterialCommunityIcons name="truck-fast-outline" size={20} color="#0F172A" />
+            <Text style={[styles.cardTitle, { marginLeft: 8 }]}>{item.vehicle_number}</Text>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: isValidated ? '#ECFDF5' : '#FEF3C7', borderWidth: 1, borderColor: isValidated ? '#A7F3D0' : '#FDE68A' }]}>
+            <Text style={{ color: isValidated ? '#065F46' : '#92400E', fontSize: 11, fontWeight: '800' }}>
+              {item.status}
+            </Text>
+          </View>
+        </View>
 
-      {/* Photos row */}
-      <View style={{flexDirection: 'row', marginTop: 10, marginBottom: 10}}>
-          {item.loading_photo_url && (
-            <TouchableOpacity onPress={() => openImage(item.loading_photo_url)}>
-               <Image source={{uri: item.loading_photo_url}} style={styles.thumbnail} />
-            </TouchableOpacity>
-          )}
-          {item.unloading_photo_url && (
-             <TouchableOpacity onPress={() => openImage(item.unloading_photo_url)}>
-                 <Image source={{uri: item.unloading_photo_url}} style={styles.thumbnail} />
-             </TouchableOpacity>
-          )}
-          {item.receipt_photo_url && (
-             <TouchableOpacity onPress={() => openImage(item.receipt_photo_url)}>
-                 <Image source={{uri: item.receipt_photo_url}} style={styles.thumbnail} />
-             </TouchableOpacity>
-          )}
-      </View>
+        {/* Route Box */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: '#F1F5F9', gap: 4 }}>
+          <Text style={{ fontSize: 12, color: '#475569', fontWeight: '600' }}>
+            <Text style={{ fontWeight: '800', color: '#059669' }}>ORIGIN: </Text>{item.origin || 'N/A'}
+          </Text>
+          <Text style={{ fontSize: 12, color: '#475569', fontWeight: '600' }}>
+            <Text style={{ fontWeight: '800', color: '#2563EB' }}>DEST: </Text>{item.destination || 'N/A'}
+          </Text>
+        </View>
+        
+        {/* Metrics Row */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#FFFFFF', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 10 }}>
+          <View style={{ alignItems: 'center', flex: 1 }}>
+            <Text style={{ fontSize: 9, fontWeight: '800', color: '#64748B' }}>MATERIAL</Text>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>{item.material_type || 'N/A'}</Text>
+          </View>
+          <View style={{ width: 1, height: '100%', backgroundColor: '#E2E8F0' }} />
+          <View style={{ alignItems: 'center', flex: 1 }}>
+            <Text style={{ fontSize: 9, fontWeight: '800', color: '#64748B' }}>DISTANCE</Text>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>{item.total_km || 0} KM</Text>
+          </View>
+          <View style={{ width: 1, height: '100%', backgroundColor: '#E2E8F0' }} />
+          <View style={{ alignItems: 'center', flex: 1 }}>
+            <Text style={{ fontSize: 9, fontWeight: '800', color: '#64748B' }}>DIESEL</Text>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>{item.diesel_liters ? `${item.diesel_liters}L` : '0L'}</Text>
+          </View>
+        </View>
 
-      {item.status === 'PENDING' && (
-        <TouchableOpacity style={styles.validateBtn} onPress={() => openValidationModal(item)}>
-          <Text style={styles.validateBtnText}>Validate Trip</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
+        <Text style={styles.dateText}>Logged: {new Date(item.created_at).toLocaleDateString()}</Text>
+
+        {/* Photos row */}
+        {(item.loading_photo_url || item.unloading_photo_url || item.receipt_photo_url) && (
+          <View style={{flexDirection: 'row', marginTop: 10, marginBottom: 10, gap: 8}}>
+              {item.loading_photo_url && (
+                <TouchableOpacity onPress={() => openImage(item.loading_photo_url)}>
+                   <Image source={{uri: item.loading_photo_url}} style={styles.thumbnail} />
+                </TouchableOpacity>
+              )}
+              {item.unloading_photo_url && (
+                 <TouchableOpacity onPress={() => openImage(item.unloading_photo_url)}>
+                     <Image source={{uri: item.unloading_photo_url}} style={styles.thumbnail} />
+                 </TouchableOpacity>
+              )}
+              {item.receipt_photo_url && (
+                 <TouchableOpacity onPress={() => openImage(item.receipt_photo_url)}>
+                     <Image source={{uri: item.receipt_photo_url}} style={styles.thumbnail} />
+                 </TouchableOpacity>
+              )}
+          </View>
+        )}
+
+        {item.status === 'PENDING' && (
+          <TouchableOpacity style={styles.validateBtn} onPress={() => openValidationModal(item)} activeOpacity={0.85}>
+            <Text style={styles.validateBtnText}>Validate Trip</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   const renderAttendanceItem = ({ item }) => (
     <View style={styles.card}>

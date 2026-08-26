@@ -1,7 +1,8 @@
 import React, { useState, useContext } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Modal, TextInput, ActivityIndicator, SafeAreaView, Alert, ScrollView
+  Modal, TextInput, ActivityIndicator, SafeAreaView, Alert, ScrollView,
+  StatusBar, Platform
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { useSite } from '../context/SiteContext';
@@ -79,6 +80,7 @@ export default function SiteManagementScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -184,7 +186,11 @@ export default function SiteManagementScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  safe: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

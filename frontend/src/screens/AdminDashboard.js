@@ -971,27 +971,46 @@ export default function AdminDashboard({ navigation, route }) {
         style={{flex: 1}} 
         contentContainerStyle={{padding: 16, paddingBottom: 40}}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={async () => { setIsRefreshing(true); await fetchData(); setIsRefreshing(false); }} />}
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.emiHeader}>
-          <View><Text style={styles.emiHeaderLabel}>OPERATIONAL LOGS</Text><Text style={styles.emiHeaderTitle}>Trip Records</Text></View>
-          <TouchableOpacity style={styles.emiAddBtn} onPress={() => setIsTripModalVisible(true)}><Text style={styles.emiAddBtnText}>+ Log Trip</Text></TouchableOpacity>
+          <View>
+            <Text style={styles.emiHeaderLabel}>OPERATIONAL LOGS</Text>
+            <Text style={styles.emiHeaderTitle}>Log Book</Text>
+          </View>
+          <TouchableOpacity style={styles.emiAddBtn} onPress={() => setIsTripModalVisible(true)} activeOpacity={0.8}>
+            <MaterialCommunityIcons name="plus" size={18} color="white" />
+            <Text style={styles.emiAddBtnText}>Log Trip</Text>
+          </TouchableOpacity>
         </View>
-        <View style={styles.filterBar}>
-           <TouchableOpacity style={[styles.dateSelector, {flex: 1}]} onPress={() => setShowStartPicker(true)}>
-              <MaterialCommunityIcons name="calendar-import" size={16} color="#64748B" />
-              <Text style={styles.dateSelectorText}>{tripStartDate || "From"}</Text>
-           </TouchableOpacity>
-           <TouchableOpacity style={[styles.dateSelector, {flex: 1, marginHorizontal: 8}]} onPress={() => setShowEndPicker(true)}>
-              <MaterialCommunityIcons name="calendar-export" size={16} color="#64748B" />
-              <Text style={styles.dateSelectorText}>{tripEndDate || "To"}</Text>
-           </TouchableOpacity>
-           <TextInput 
-              style={[styles.input, {flex: 1.5, marginBottom: 0, height: 40}]} 
-              placeholder="Vehicle #" 
-              value={vehicleSearch} 
-              onChangeText={setVehicleSearch} 
-           />
-           <TouchableOpacity style={[styles.emiAddBtn, {marginLeft: 8}]} onPress={fetchData}><MaterialCommunityIcons name="magnify" size={20} color="white" /></TouchableOpacity>
+
+        {/* Filter Bar */}
+        <View style={styles.tripFilterContainer}>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+            <TouchableOpacity style={styles.dateSelectorPill} onPress={() => setShowStartPicker(true)}>
+              <MaterialCommunityIcons name="calendar-import" size={15} color="#0284C7" />
+              <Text style={styles.dateSelectorPillText}>{tripStartDate || "Start Date"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dateSelectorPill} onPress={() => setShowEndPicker(true)}>
+              <MaterialCommunityIcons name="calendar-export" size={15} color="#0284C7" />
+              <Text style={styles.dateSelectorPillText}>{tripEndDate || "End Date"}</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <View style={styles.tripSearchBox}>
+              <MaterialCommunityIcons name="magnify" size={18} color="#64748B" />
+              <TextInput 
+                style={styles.tripSearchInput} 
+                placeholder="Search Vehicle (e.g. MH04)" 
+                placeholderTextColor="#94A3B8"
+                value={vehicleSearch} 
+                onChangeText={setVehicleSearch} 
+              />
+            </View>
+            <TouchableOpacity style={styles.filterApplyBtn} onPress={fetchData} activeOpacity={0.8}>
+              <MaterialCommunityIcons name="filter-variant" size={18} color="white" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {showStartPicker && (
@@ -1011,65 +1030,127 @@ export default function AdminDashboard({ navigation, route }) {
                     if (date) { setTripEndDateDt(date); setTripEndDate(date.toISOString().split('T')[0]); }
                 }}
             />
-        )}
-
-        {trips.map(t => (
-           <View key={`t-${t.id}`} style={styles.emiCard}>
-            <View style={styles.emiCardTop}>
-              <View style={[styles.emiCardIcon, {backgroundColor: '#F3F4F6'}]}><Text style={styles.emiCardIconText}>🚚</Text></View>
-              <View style={{flex: 1, marginLeft: 12}}><Text style={styles.emiCardVehicle}>{t.vehicle_number}</Text><Text style={styles.emiCardSub}>{t.staff_name || 'Assigned Staff'}</Text></View>
-              <View style={[styles.emiUrgencyBadge, {backgroundColor: t.status === 'VALIDATED' ? '#D1FAE5' : '#FEF3C7'}]}><Text style={[styles.emiUrgencyBadgeText, {color: t.status === 'VALIDATED' ? '#065F46' : '#92400E'}]}>{t.status}</Text></View>
+        {trips.length === 0 ? (
+          <View style={styles.emptyTripState}>
+            <View style={styles.emptyTripIconBox}>
+              <MaterialCommunityIcons name="truck-cargo-container" size={38} color="#94A3B8" />
             </View>
-            
-            <View style={{marginTop: 10}}>
-              <Text style={styles.ledgerDesc}>Material: {t.material_type} ({t.weight_tons}t)</Text>
-              <Text style={styles.ledgerDesc}>Route: {t.origin} ➡️ {t.destination}</Text>
-              <Text style={styles.ledgerDesc}>Distance: {t.total_km} KM</Text>
-              {t.diesel_liters > 0 && <Text style={styles.ledgerDesc}>Diesel: {t.diesel_liters}L (₹{t.diesel_cost})</Text>}
-            </View>
+            <Text style={styles.emptyTripTitle}>No Trip Records</Text>
+            <Text style={styles.emptyTripSub}>No trip logs matched the selected date or vehicle criteria.</Text>
+          </View>
+        ) : (
+          trips.map(t => {
+            const isValidated = t.status === 'VALIDATED' || t.status === 'APPROVED';
+            return (
+              <View key={`t-${t.id}`} style={styles.tripCard}>
+                {/* Header */}
+                <View style={styles.tripCardHeader}>
+                  <View style={styles.tripVehicleBadge}>
+                    <MaterialCommunityIcons name="truck-fast-outline" size={20} color="#0F172A" />
+                    <View style={{ marginLeft: 10 }}>
+                      <Text style={styles.tripVehicleNum}>{t.vehicle_number}</Text>
+                      <Text style={styles.tripDriverName}>Driver: {t.staff_name || 'Assigned Staff'}</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.tripStatusTag, { backgroundColor: isValidated ? '#ECFDF5' : '#FEF3C7', borderColor: isValidated ? '#A7F3D0' : '#FDE68A' }]}>
+                    <View style={[styles.tripStatusDot, { backgroundColor: isValidated ? '#10B981' : '#D97706' }]} />
+                    <Text style={[styles.tripStatusText, { color: isValidated ? '#065F46' : '#92400E' }]}>{t.status}</Text>
+                  </View>
+                </View>
 
-            {/* Photos row */}
-            <View style={{flexDirection: 'row', marginTop: 12, marginBottom: 12}}>
-                {t.loading_photo_url && (
-                  <TouchableOpacity onPress={() => openImage(t.loading_photo_url)}>
-                    <Image source={{uri: t.loading_photo_url}} style={[styles.emiCardIcon, {width: 50, height: 50, borderRadius: 8, marginRight: 8}]} />
+                {/* Route Pill Box */}
+                <View style={styles.tripRouteBox}>
+                  <View style={styles.tripRouteRow}>
+                    <MaterialCommunityIcons name="map-marker-radius" size={16} color="#059669" />
+                    <Text style={styles.tripRouteLabel}>Origin:</Text>
+                    <Text style={styles.tripRouteValue} numberOfLines={1}>{t.origin || 'Not specified'}</Text>
+                  </View>
+                  <View style={styles.tripRouteRow}>
+                    <MaterialCommunityIcons name="flag-checkered" size={16} color="#2563EB" />
+                    <Text style={styles.tripRouteLabel}>Dest:</Text>
+                    <Text style={styles.tripRouteValue} numberOfLines={1}>{t.destination || 'Not specified'}</Text>
+                  </View>
+                </View>
+
+                {/* Metrics Grid */}
+                <View style={styles.tripMetricsGrid}>
+                  <View style={styles.tripMetricItem}>
+                    <Text style={styles.tripMetricLabel}>MATERIAL</Text>
+                    <Text style={styles.tripMetricVal}>{t.material_type || 'N/A'}</Text>
+                    <Text style={styles.tripMetricSub}>{t.weight_tons ? `${t.weight_tons} Tons` : ''}</Text>
+                  </View>
+                  <View style={styles.tripMetricDivider} />
+                  <View style={styles.tripMetricItem}>
+                    <Text style={styles.tripMetricLabel}>DISTANCE</Text>
+                    <Text style={styles.tripMetricVal}>{t.total_km || 0} KM</Text>
+                    <Text style={styles.tripMetricSub}>Logged odometer</Text>
+                  </View>
+                  <View style={styles.tripMetricDivider} />
+                  <View style={styles.tripMetricItem}>
+                    <Text style={styles.tripMetricLabel}>DIESEL</Text>
+                    <Text style={styles.tripMetricVal}>{t.diesel_liters ? `${t.diesel_liters}L` : '0L'}</Text>
+                    <Text style={styles.tripMetricSub}>{t.diesel_cost ? `₹${t.diesel_cost}` : '₹0'}</Text>
+                  </View>
+                </View>
+
+                {/* Photos Row */}
+                {(t.loading_photo_url || t.unloading_photo_url || t.receipt_photo_url) && (
+                  <View style={styles.tripPhotosRow}>
+                    {t.loading_photo_url && (
+                      <TouchableOpacity onPress={() => openImage(t.loading_photo_url)} style={styles.photoBox}>
+                        <Image source={{uri: t.loading_photo_url}} style={styles.tripThumbnail} />
+                        <Text style={styles.photoLabel}>Loading</Text>
+                      </TouchableOpacity>
+                    )}
+                    {t.unloading_photo_url && (
+                      <TouchableOpacity onPress={() => openImage(t.unloading_photo_url)} style={styles.photoBox}>
+                        <Image source={{uri: t.unloading_photo_url}} style={styles.tripThumbnail} />
+                        <Text style={styles.photoLabel}>Unloading</Text>
+                      </TouchableOpacity>
+                    )}
+                    {t.receipt_photo_url && (
+                      <TouchableOpacity onPress={() => openImage(t.receipt_photo_url)} style={styles.photoBox}>
+                        <Image source={{uri: t.receipt_photo_url}} style={styles.tripThumbnail} />
+                        <Text style={styles.photoLabel}>Bilty/Bill</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                {/* Footer Bar */}
+                <View style={styles.tripCardFooter}>
+                  <View>
+                    <Text style={styles.tripDateLabel}>LOGGED DATE</Text>
+                    <Text style={styles.tripDateValue}>
+                      {(() => {
+                        const d = new Date(t.created_at);
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const yyyy = d.getFullYear();
+                        return `${dd}-${mm}-${yyyy}`;
+                      })()}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.tripDateLabel}>BHADA / INCOME</Text>
+                    <Text style={styles.tripIncomeValue}>₹{t.bhada || 0}</Text>
+                  </View>
+                </View>
+
+                {t.status === 'PENDING' && (
+                  <TouchableOpacity 
+                    style={styles.tripValidateBtn} 
+                    onPress={() => openValidationModal(t)}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons name="check-decagram" size={18} color="white" />
+                    <Text style={styles.tripValidateBtnText}>VALIDATE & APPROVE TRIP</Text>
                   </TouchableOpacity>
                 )}
-                {t.unloading_photo_url && (
-                  <TouchableOpacity onPress={() => openImage(t.unloading_photo_url)}>
-                    <Image source={{uri: t.unloading_photo_url}} style={[styles.emiCardIcon, {width: 50, height: 50, borderRadius: 8, marginRight: 8}]} />
-                  </TouchableOpacity>
-                )}
-                {t.receipt_photo_url && (
-                  <TouchableOpacity onPress={() => openImage(t.receipt_photo_url)}>
-                    <Image source={{uri: t.receipt_photo_url}} style={[styles.emiCardIcon, {width: 50, height: 50, borderRadius: 8, marginRight: 8}]} />
-                  </TouchableOpacity>
-                )}
-            </View>
-
-            <View style={styles.emiCardMid}>
-              <View>
-                <Text style={styles.emiCardAmountLabel}>DATE LOGGED</Text>
-                <Text style={styles.emiCardDueDate}>
-                  {(() => {
-                    const d = new Date(t.created_at);
-                    const dd = String(d.getDate()).padStart(2, '0');
-                    const mm = String(d.getMonth() + 1).padStart(2, '0');
-                    const yyyy = d.getFullYear();
-                    return `${dd}-${mm}-${yyyy}`;
-                  })()}
-                </Text>
               </View>
-              <View style={{alignItems: 'flex-end'}}><Text style={styles.emiCardAmountLabel}>INCOME</Text><Text style={styles.emiCardAmount}>₹{t.bhada || 0}</Text></View>
-            </View>
-            
-            {t.status === 'PENDING' && ( 
-              <TouchableOpacity style={[styles.emiMarkPaidBtn, {backgroundColor: '#10B981', marginTop: 10}]} onPress={() => openValidationModal(t)}>
-                <Text style={styles.emiMarkPaidText}>✅ VALIDATE TRIP</Text>
-              </TouchableOpacity> 
-            )}
-           </View>
-        ))}
+            );
+          })
+        )}
       </ScrollView>
     </View>
   );
@@ -1834,4 +1915,284 @@ const styles = StyleSheet.create({
   imageViewerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' },
   fullScreenImage: { width: '90%', height: '80%', resizeMode: 'contain' },
   imageViewerCloseText: { color: 'white', marginTop: 20, fontSize: 16 },
+
+  // Trip / LogBook Modern Theme Styles
+  tripFilterContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  dateSelectorPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  dateSelectorPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  tripSearchBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 40,
+    gap: 6,
+  },
+  tripSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+    paddingVertical: 0,
+  },
+  filterApplyBtn: {
+    backgroundColor: '#0F172A',
+    height: 40,
+    width: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  tripCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tripCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  tripVehicleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  tripVehicleNum: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: 0.5,
+  },
+  tripDriverName: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  tripStatusTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 5,
+  },
+  tripStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  tripStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+
+  tripRouteBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 12,
+    gap: 6,
+  },
+  tripRouteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tripRouteLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    width: 48,
+  },
+  tripRouteValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B',
+    flex: 1,
+  },
+
+  tripMetricsGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    marginBottom: 12,
+  },
+  tripMetricItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  tripMetricDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: '#E2E8F0',
+  },
+  tripMetricLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.8,
+  },
+  tripMetricVal: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 2,
+  },
+  tripMetricSub: {
+    fontSize: 10,
+    color: '#94A3B8',
+    fontWeight: '600',
+    marginTop: 1,
+  },
+
+  tripPhotosRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  photoBox: {
+    alignItems: 'center',
+  },
+  tripThumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  photoLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+    marginTop: 3,
+  },
+
+  tripCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  tripDateLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 1,
+  },
+  tripDateValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+    marginTop: 2,
+  },
+  tripIncomeValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#059669',
+    marginTop: 1,
+  },
+
+  tripValidateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#059669',
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 12,
+    gap: 6,
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  tripValidateBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
+
+  emptyTripState: {
+    alignItems: 'center',
+    paddingTop: 48,
+    paddingHorizontal: 20,
+  },
+  emptyTripIconBox: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  emptyTripTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 4,
+  },
+  emptyTripSub: {
+    fontSize: 13,
+    color: '#94A3B8',
+    textAlign: 'center',
+  },
 });

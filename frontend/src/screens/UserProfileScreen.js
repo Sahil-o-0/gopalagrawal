@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput, Alert, SafeAreaView, Linking } from 'react-native';
+import {
+  View, Text, StyleSheet, TouchableOpacity, Image, ScrollView,
+  TextInput, Alert, SafeAreaView, Linking, StatusBar, Platform
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../config';
 
@@ -85,6 +88,7 @@ export default function UserProfileScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -298,7 +302,11 @@ export default function UserProfileScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'white' },
+  container: {
+    flex: 1,
+    backgroundColor: 'white',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
+  },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   headerTitle: { fontSize: 18, fontWeight: '800', color: '#1E293B', marginLeft: 8 },
   collapsibleCard: { backgroundColor: 'white', borderRadius: 12, padding: 14, borderLeftWidth: 4, borderLeftColor: '#2563EB', marginBottom: 16, elevation: 2 },

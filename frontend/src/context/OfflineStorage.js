@@ -4,30 +4,57 @@ import * as FileSystem from 'expo-file-system';
 
 const SYNC_QUEUE_KEY = '@fleet_sync_queue';
 
-export const saveTripOffline = async (tripData, photos) => {
+export const saveRequestOffline = async (endpoint, method = 'POST', payload = {}) => {
     try {
-        // 1. Move photos to persistent document directory so they aren't cleared from cache
-        const savedPhotos = {};
-        for (const [key, uri] of Object.entries(photos)) {
-            if (uri) {
-                const filename = uri.split('/').pop();
-                const newPath = FileSystem.documentDirectory + filename;
-                await FileSystem.copyAsync({ from: uri, to: newPath });
-                savedPhotos[key] = newPath;
-            }
-        }
-
-        // 2. Wrap the data
         const queuedItem = {
-            id: Date.now().toString(),
-            endpoint: '/trips/',
-            method: 'POST',
-            payload: tripData,
-            photos: savedPhotos, // To be uploaded as multipart form later
+            id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            endpoint,
+            method,
+            payload,
             timestamp: new Date().toISOString()
         };
 
-        // 3. Save to Queue
+        const existingQueueStr = await AsyncStorage.getItem(SYNC_QUEUE_KEY);
+        const queue = existingQueueStr ? JSON.parse(existingQueueStr) : [];
+        queue.push(queuedItem);
+        await AsyncStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
+        return queuedItem;
+    } catch (e) {
+        console.error("Failed to save request offline:", e);
+        throw e;
+    }
+};
+
+export const saveTripOffline = async (tripData, photos = {}) => {
+    try {
+        const savedPhotos = {};
+        if (photos && typeof photos === 'object') {
+            for (const [key, uri] of Object.entries(photos)) {
+                if (uri && typeof uri === 'string' && !uri.startsWith('data:')) {
+                    try {
+                        const filename = uri.split('/').pop() || `photo_${Date.now()}.jpg`;
+                        const newPath = (FileSystem.documentDirectory || '') + filename;
+                        await FileSystem.copyAsync({ from: uri, to: newPath });
+                        savedPhotos[key] = newPath;
+                    } catch (photoErr) {
+                        console.warn("Could not copy photo locally, preserving original uri:", photoErr);
+                        savedPhotos[key] = uri;
+                    }
+                } else if (uri) {
+                    savedPhotos[key] = uri;
+                }
+            }
+        }
+
+        const queuedItem = {
+            id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            endpoint: '/trips/',
+            method: 'POST',
+            payload: tripData,
+            photos: savedPhotos,
+            timestamp: new Date().toISOString()
+        };
+
         const existingQueueStr = await AsyncStorage.getItem(SYNC_QUEUE_KEY);
         const queue = existingQueueStr ? JSON.parse(existingQueueStr) : [];
         queue.push(queuedItem);

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  SafeAreaView, Alert, TextInput, StatusBar, Platform, ScrollView, ActivityIndicator, Modal
+  Alert, TextInput, StatusBar, Platform, ScrollView, ActivityIndicator, Modal
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../config';
 
@@ -108,8 +109,11 @@ export default function UserLedgerScreen({ route, navigation }) {
     }
   };
 
+  const insets = useSafeAreaInsets();
+  const topPadding = Math.max(insets.top, Platform.OS === 'android' ? 36 : 20);
+
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: topPadding }]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
       {/* Top Header */}
@@ -360,7 +364,7 @@ export default function UserLedgerScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -368,7 +372,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
   },
   header: { 
     flexDirection: 'row', 

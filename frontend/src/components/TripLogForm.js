@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, Image, Modal, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,12 +8,26 @@ import { useBackgroundSync } from '../context/useBackgroundSync';
 import { API_BASE_URL } from '../config';
 
 export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess = null }) {
-    const { userToken } = useContext(AuthContext);
+    const { userToken, user } = useContext(AuthContext);
     const { isOnline, pendingCount, syncPendingData } = useBackgroundSync();
     const [isLoading, setIsLoading] = useState(false);
     
+    const isManagerOrAdmin = isAdmin || user?.role === 'ADMIN' || user?.role === 'MANAGER';
+
+    // Admin/Manager staff selection
+    const [staffId, setStaffId] = useState('');
+    const [isStaffPickerVisible, setIsStaffPickerVisible] = useState(false);
+
+    // Selected driver details
+    const selectedDriver = isManagerOrAdmin && staffId ? staffList.find(u => u.id.toString() === staffId) : user;
+    const assignedVehiclesList = (selectedDriver?.assigned_vehicle || '')
+        .split(',')
+        .map(v => v.trim().toUpperCase())
+        .filter(Boolean);
+
     // Form state
-    const [vehicleNumber, setVehicleNumber] = useState('');
+    const [vehicleNumber, setVehicleNumber] = useState(assignedVehiclesList[0] || user?.assigned_vehicle || '');
+    const [availableVehicles, setAvailableVehicles] = useState([]);
     const [origin, setOrigin] = useState('');
     const [destination, setDestination] = useState('');
     const [materialType, setMaterialType] = useState('');
@@ -22,6 +36,8 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const [endMeter, setEndMeter] = useState('');
     const [dieselLiters, setDieselLiters] = useState('');
     const [dieselCost, setDieselCost] = useState('');
+    const [bhada, setBhada] = useState('');
+    const [advanceFreight, setAdvanceFreight] = useState('');
     
     // Photo state
     const [loadingPhoto, setLoadingPhoto] = useState(null);
@@ -29,9 +45,49 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const [odometerPhoto, setOdometerPhoto] = useState(null);
     const [receiptPhoto, setReceiptPhoto] = useState(null);
 
-    // Admin-specific state
-    const [staffId, setStaffId] = useState('');
-    const [isStaffPickerVisible, setIsStaffPickerVisible] = useState(false);
+    // Fetch fleet vehicles for quick select
+    useEffect(() => {
+        const fetchFleetVehicles = async () => {
+            try {
+                const resp = await fetch(`${API_BASE_URL}/workforce/emi`, {
+                    headers: { 'Authorization': `Bearer ${userToken}` }
+                });
+                if (resp.ok) {
+                    const emiList = await resp.json();
+                    const vehSet = new Set();
+                    emiList.forEach(e => {
+                        if (e.vehicle_number && e.vehicle_number.trim()) {
+                            vehSet.add(e.vehicle_number.trim().toUpperCase());
+                        }
+                    });
+                    // Also include staff assigned vehicles
+                    staffList.forEach(s => {
+                        if (s.assigned_vehicle && s.assigned_vehicle.trim()) {
+                            s.assigned_vehicle.split(',').forEach(v => {
+                                if (v.trim()) vehSet.add(v.trim().toUpperCase());
+                            });
+                        }
+                    });
+                    if (user?.assigned_vehicle) {
+                        user.assigned_vehicle.split(',').forEach(v => {
+                            if (v.trim()) vehSet.add(v.trim().toUpperCase());
+                        });
+                    }
+                    setAvailableVehicles(Array.from(vehSet));
+                }
+            } catch (err) {
+                console.log("Could not load fleet vehicles", err);
+            }
+        };
+        fetchFleetVehicles();
+    }, [userToken, staffList, user]);
+
+    // Auto-prefill vehicle when assigned driver changes or is loaded
+    useEffect(() => {
+        if (!vehicleNumber && assignedVehiclesList.length > 0) {
+            setVehicleNumber(assignedVehiclesList[0]);
+        }
+    }, [user, staffId]);
 
     const takePhoto = async (setter) => {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -52,41 +108,48 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
         }
     };
 
-    const calculatedKm = (parseFloat(endMeter) || 0) - (parseFloat(startMeter) || 0);
+    const calculatedKm = ((parseFloat(endMeter) || 0) > 0 && (parseFloat(startMeter) || 0) > 0)
+        ? (parseFloat(endMeter) || 0) - (parseFloat(startMeter) || 0)
+        : 0;
 
     const handleSubmit = async () => {
-        if (!vehicleNumber.trim() || !origin.trim() || !destination.trim() || !materialType.trim() || !weightTons || !startMeter || !endMeter) {
-            Alert.alert("Missing Fields", "Please fill in all mandatory fields (Vehicle, Route, Cargo & Odometer readings).");
+        if (!vehicleNumber.trim() || !origin.trim() || !destination.trim() || !materialType.trim() || !weightTons) {
+            Alert.alert("Missing Fields", "Please fill in all mandatory fields: Vehicle, Route (Origin & Destination), Material & Weight.");
             return;
         }
 
-        if (calculatedKm < 0) {
+        const sMeter = startMeter ? parseFloat(startMeter) : 0;
+        const eMeter = endMeter ? parseFloat(endMeter) : 0;
+
+        if (sMeter > 0 && eMeter > 0 && eMeter < sMeter) {
             Alert.alert("Invalid Odometer", "End meter reading cannot be less than Start meter reading.");
             return;
         }
 
         setIsLoading(true);
+        const body = {
+            vehicle_number: vehicleNumber.trim().toUpperCase(),
+            origin: origin.trim(),
+            destination: destination.trim(),
+            material_type: materialType.trim(),
+            weight_tons: parseFloat(weightTons),
+            start_meter_reading: sMeter,
+            end_meter_reading: eMeter,
+            diesel_liters: dieselLiters ? parseFloat(dieselLiters) : 0,
+            diesel_cost: dieselCost ? parseFloat(dieselCost) : 0,
+            bhada: bhada ? parseFloat(bhada) : 0,
+            advance_freight_received: advanceFreight ? parseFloat(advanceFreight) : 0,
+            loading_photo_url: loadingPhoto,
+            unloading_photo_url: unloadingPhoto,
+            odometer_photo_url: odometerPhoto,
+            receipt_photo_url: receiptPhoto
+        };
+
+        if (isManagerOrAdmin && staffId) {
+            body.staff_id = parseInt(staffId);
+        }
+
         try {
-            const body = {
-                vehicle_number: vehicleNumber.trim().toUpperCase(),
-                origin: origin.trim(),
-                destination: destination.trim(),
-                material_type: materialType.trim(),
-                weight_tons: parseFloat(weightTons),
-                start_meter_reading: parseFloat(startMeter),
-                end_meter_reading: parseFloat(endMeter),
-                diesel_liters: dieselLiters ? parseFloat(dieselLiters) : 0,
-                diesel_cost: dieselCost ? parseFloat(dieselCost) : 0,
-                loading_photo_url: loadingPhoto,
-                unloading_photo_url: unloadingPhoto,
-                odometer_photo_url: odometerPhoto,
-                receipt_photo_url: receiptPhoto
-            };
-
-            if (isAdmin && staffId) {
-                body.staff_id = parseInt(staffId);
-            }
-
             if (isOnline) {
                 const response = await fetch(`${API_BASE_URL}/trips/`, {
                     method: 'POST',
@@ -98,7 +161,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 });
 
                 if (response.ok) {
-                    Alert.alert("Success", isAdmin ? "Trip logged and automatically approved!" : "Trip log submitted successfully!");
+                    Alert.alert("Success", isManagerOrAdmin ? "Trip logged and automatically approved!" : "Trip log submitted successfully!");
                     clearForm();
                     if (onSuccess) onSuccess();
                 } else {
@@ -109,19 +172,23 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 await saveTripOffline(body, {});
                 Alert.alert("Saved Offline", "Trip saved locally. It will automatically upload when internet is restored.");
                 clearForm();
+                if (onSuccess) onSuccess();
             }
         } catch (error) {
-            console.log(error);
+            console.log("Trip log network exception, saving offline:", error);
             await saveTripOffline(body, {});
-            Alert.alert("Network Issue", "Could not reach server. Trip saved offline.");
+            Alert.alert("Saved Offline", "Could not reach server. Trip saved locally and will auto-sync.");
             clearForm();
+            if (onSuccess) onSuccess();
         }
         setIsLoading(false);
     };
 
     const clearForm = () => {
-        setVehicleNumber(''); setOrigin(''); setDestination(''); setMaterialType(''); setWeightTons('');
+        setVehicleNumber(assignedVehiclesList[0] || user?.assigned_vehicle || ''); 
+        setOrigin(''); setDestination(''); setMaterialType(''); setWeightTons('');
         setStartMeter(''); setEndMeter(''); setDieselLiters(''); setDieselCost('');
+        setBhada(''); setAdvanceFreight('');
         setLoadingPhoto(null); setUnloadingPhoto(null); setOdometerPhoto(null); setReceiptPhoto(null);
         setStaffId('');
     };
@@ -168,12 +235,12 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     <Text style={styles.sectionTitle}>Vehicle & Assignment</Text>
                 </View>
 
-                {isAdmin && (
+                {isManagerOrAdmin && (
                     <View style={styles.formGroup}>
                         <Text style={styles.inputLabel}>Assign Driver / Staff</Text>
                         <TouchableOpacity style={styles.pickerTrigger} onPress={() => setIsStaffPickerVisible(true)} activeOpacity={0.7}>
                             <Text style={staffId ? styles.pickerTriggerVal : styles.pickerTriggerPlaceholder}>
-                                {staffList.find(u => u.id.toString() === staffId)?.full_name || staffList.find(u => u.id.toString() === staffId)?.username || "Select Assigned Driver"}
+                                {staffList.find(u => u.id.toString() === staffId)?.full_name || staffList.find(u => u.id.toString() === staffId)?.username || "Select Driver (Optional)"}
                             </Text>
                             <MaterialCommunityIcons name="chevron-down" size={18} color="#64748B" />
                         </TouchableOpacity>
@@ -181,7 +248,15 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 )}
 
                 <View style={styles.formGroup}>
-                    <Text style={styles.inputLabel}>Vehicle Number *</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <Text style={styles.inputLabel}>Vehicle Number *</Text>
+                        {assignedVehiclesList.includes(vehicleNumber.trim().toUpperCase()) ? (
+                            <View style={styles.autoAssignedBadge}>
+                                <MaterialCommunityIcons name="check-decagram" size={12} color="#059669" />
+                                <Text style={styles.autoAssignedBadgeText}>Assigned Vehicle</Text>
+                            </View>
+                        ) : null}
+                    </View>
                     <TextInput 
                         placeholderTextColor="#94A3B8" 
                         style={styles.textInput} 
@@ -190,6 +265,68 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                         onChangeText={setVehicleNumber}
                         autoCapitalize="characters"
                     />
+
+                    {/* Assigned Vehicles for Driver / Staff */}
+                    {assignedVehiclesList.length > 0 && (
+                        <View style={{ marginTop: 8 }}>
+                            <Text style={[styles.quickSelectHeader, { color: '#059669' }]}>
+                                {isManagerOrAdmin && staffId ? "Driver's Assigned Vehicles:" : "Your Assigned Vehicles:"}
+                            </Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 4 }}>
+                                {assignedVehiclesList.map(veh => {
+                                    const isSelected = vehicleNumber.trim().toUpperCase() === veh.toUpperCase();
+                                    return (
+                                        <TouchableOpacity
+                                            key={veh}
+                                            onPress={() => setVehicleNumber(veh)}
+                                            style={[styles.assignedVehChip, isSelected && styles.assignedVehChipActive]}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialCommunityIcons 
+                                                name="steering" 
+                                                size={13} 
+                                                color={isSelected ? '#FFFFFF' : '#059669'} 
+                                                style={{ marginRight: 4 }} 
+                                            />
+                                            <Text style={[styles.assignedVehChipText, isSelected && styles.assignedVehChipTextActive]}>
+                                                {veh}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        </View>
+                    )}
+
+                    {/* Fleet Vehicle Quick-Select Chips */}
+                    {availableVehicles.length > 0 && (
+                        <View style={{ marginTop: 8 }}>
+                            <Text style={styles.quickSelectHeader}>All Fleet Vehicles:</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 4 }}>
+                                {availableVehicles.map(veh => {
+                                    const isSelected = vehicleNumber.trim().toUpperCase() === veh.toUpperCase();
+                                    return (
+                                        <TouchableOpacity
+                                            key={veh}
+                                            onPress={() => setVehicleNumber(veh)}
+                                            style={[styles.vehicleChip, isSelected && styles.vehicleChipActive]}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialCommunityIcons 
+                                                name="truck" 
+                                                size={12} 
+                                                color={isSelected ? '#FFFFFF' : '#475569'} 
+                                                style={{ marginRight: 4 }} 
+                                            />
+                                            <Text style={[styles.vehicleChipText, isSelected && styles.vehicleChipTextActive]}>
+                                                {veh}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        </View>
+                    )}
                 </View>
             </View>
 
@@ -199,12 +336,12 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     <View style={[styles.iconCircle, { backgroundColor: '#F1F5F9' }]}>
                         <MaterialCommunityIcons name="speedometer" size={18} color="#0F172A" />
                     </View>
-                    <Text style={styles.sectionTitle}>Odometer Readings</Text>
+                    <Text style={styles.sectionTitle}>Odometer Readings (Optional)</Text>
                 </View>
 
                 <View style={styles.odoRow}>
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>Start Meter (KM) *</Text>
+                        <Text style={styles.inputLabel}>Start Meter (KM) (Optional)</Text>
                         <TextInput 
                             placeholderTextColor="#94A3B8" 
                             style={styles.odoInput} 
@@ -216,7 +353,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     </View>
                     <View style={styles.odoDivider} />
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>End Meter (KM) *</Text>
+                        <Text style={styles.inputLabel}>End Meter (KM) (Optional)</Text>
                         <TextInput 
                             placeholderTextColor="#94A3B8" 
                             style={styles.odoInput} 
@@ -232,7 +369,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 <View style={styles.distanceBanner}>
                     <Text style={styles.distanceBannerLabel}>TOTAL TRIP DISTANCE</Text>
                     <Text style={[styles.distanceBannerVal, calculatedKm < 0 && { color: '#EF4444' }]}>
-                        {calculatedKm >= 0 ? `${calculatedKm} KM` : 'Invalid KM'}
+                        {calculatedKm > 0 ? `${calculatedKm} KM` : (startMeter || endMeter ? '0 KM' : 'Not Provided')}
                     </Text>
                 </View>
             </View>
@@ -293,6 +430,44 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                         />
                     </View>
                 </View>
+
+                {/* Freight / Bhada Accounting */}
+                <View style={[styles.rowGrid, { marginTop: 12 }]}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.inputLabel}>Total Bhada / Freight (₹)</Text>
+                        <TextInput 
+                            placeholderTextColor="#94A3B8" 
+                            style={styles.textInput} 
+                            placeholder="e.g. 45000" 
+                            keyboardType="numeric" 
+                            value={bhada} 
+                            onChangeText={setBhada} 
+                        />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.inputLabel}>Advance Received (₹)</Text>
+                        <TextInput 
+                            placeholderTextColor="#94A3B8" 
+                            style={styles.textInput} 
+                            placeholder="e.g. 15000" 
+                            keyboardType="numeric" 
+                            value={advanceFreight} 
+                            onChangeText={setAdvanceFreight} 
+                        />
+                    </View>
+                </View>
+
+                {!!bhada && (
+                    <View style={{ marginTop: 10, padding: 10, backgroundColor: '#F1F5F9', borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <MaterialCommunityIcons name="calculator-variant" size={16} color="#64748B" style={{ marginRight: 6 }} />
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569' }}>Pending Freight Balance</Text>
+                        </View>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: (parseFloat(bhada) || 0) - (parseFloat(advanceFreight) || 0) > 0 ? '#DC2626' : '#16A34A' }}>
+                            ₹{Math.max(0, (parseFloat(bhada) || 0) - (parseFloat(advanceFreight) || 0)).toLocaleString('en-IN')}
+                        </Text>
+                    </View>
+                )}
             </View>
 
             {/* Section 4: Fuel Tracking */}
@@ -423,11 +598,20 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                                 <TouchableOpacity 
                                     key={u.id} 
                                     style={styles.staffOption} 
-                                    onPress={() => { setStaffId(u.id.toString()); setIsStaffPickerVisible(false); }}
+                                    onPress={() => { 
+                                        setStaffId(u.id.toString()); 
+                                        if (u.assigned_vehicle) {
+                                            setVehicleNumber(u.assigned_vehicle);
+                                        }
+                                        setIsStaffPickerVisible(false); 
+                                    }}
                                 >
                                     <View>
                                         <Text style={styles.staffOptionName}>{u.full_name || u.username}</Text>
-                                        <Text style={styles.staffOptionUsername}>@{u.username} • {u.designation || 'Staff'}</Text>
+                                        <Text style={styles.staffOptionUsername}>
+                                            @{u.username} • {u.designation || 'Staff'}
+                                            {u.assigned_vehicle ? ` • 🚛 ${u.assigned_vehicle}` : ''}
+                                        </Text>
                                     </View>
                                     <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
                                 </TouchableOpacity>
@@ -443,6 +627,67 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     contentContainer: { padding: 16, paddingBottom: 80, flexGrow: 1 },
+    
+    autoAssignedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#ECFDF5',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 6,
+        gap: 3,
+        borderWidth: 1,
+        borderColor: '#A7F3D0'
+    },
+    autoAssignedBadgeText: { fontSize: 10, fontWeight: '800', color: '#059669' },
+    quickSelectHeader: { fontSize: 10, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5 },
+    vehicleChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F1F5F9',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        marginRight: 6,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    vehicleChipActive: {
+        backgroundColor: '#2563EB',
+        borderColor: '#2563EB',
+    },
+    vehicleChipText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#475569',
+    },
+    vehicleChipTextActive: {
+        color: '#FFFFFF',
+        fontWeight: '800',
+    },
+    assignedVehChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#ECFDF5',
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 8,
+        marginRight: 6,
+        borderWidth: 1.5,
+        borderColor: '#A7F3D0',
+    },
+    assignedVehChipActive: {
+        backgroundColor: '#059669',
+        borderColor: '#059669',
+    },
+    assignedVehChipText: {
+        fontSize: 12,
+        fontWeight: '800',
+        color: '#065F46',
+    },
+    assignedVehChipTextActive: {
+        color: '#FFFFFF',
+    },
     
     offlineBanner: { 
         backgroundColor: '#D97706', 

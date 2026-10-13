@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, TextInput, ScrollView, ActivityIndicator, StatusBar, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, ScrollView, ActivityIndicator, StatusBar, Platform, Image } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthContext } from '../context/AuthContext';
 import { useSite } from '../context/SiteContext';
 import SiteSelector from '../components/SiteSelector';
@@ -173,8 +174,11 @@ export default function StaffDashboard({ navigation, route }) {
     } catch (e) { Alert.alert("Error", "Network error"); } finally { setIsLoading(false); }
   };
 
+  const insets = useSafeAreaInsets();
+  const topPadding = Math.max(insets.top, Platform.OS === 'android' ? 36 : 20);
+
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: topPadding }]}>
       <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
@@ -392,12 +396,12 @@ export default function StaffDashboard({ navigation, route }) {
             </ScrollView>
         )}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0 },
+  container: { flex: 1, backgroundColor: '#F9FAFB' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     padding: '5%', backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#E5E7EB',

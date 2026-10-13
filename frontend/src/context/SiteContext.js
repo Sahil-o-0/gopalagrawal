@@ -59,6 +59,7 @@ export const SiteProvider = ({ children }) => {
       const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${userToken}`,
+        'bypass-tunnel-reminder': 'true'
       };
 
       const response = await fetch(`${API_BASE_URL}/sites/`, { headers });

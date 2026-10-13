@@ -1,12 +1,16 @@
-import React, { useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, ActivityIndicator, SafeAreaView, StatusBar, Platform
+  TouchableOpacity, ActivityIndicator, StatusBar, Platform, Alert, Image
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext';
 import { useSite } from '../context/SiteContext';
 import SiteSelector from '../components/SiteSelector';
 import ErrorCard from '../components/ErrorCard';
+import DraggableDashboardGrid from '../components/DraggableDashboardGrid';
+import { checkAndTriggerAutomatedAlerts } from '../context/NotificationService';
 
 const getNavCards = (userRole) => [
   {
@@ -21,8 +25,18 @@ const getNavCards = (userRole) => [
     roles: ['ADMIN', 'MANAGER', 'STAFF'],
   },
   {
+    id: 'approvals',
+    title: 'Approval Workflow',
+    subtitle: 'Approve or reject advances & leaves',
+    icon: '📋',
+    color: '#F0FDF4',
+    accent: '#16A34A',
+    screen: 'ApprovalCenter',
+    roles: ['ADMIN', 'MANAGER', 'STAFF'],
+  },
+  {
     id: 'ledger',
-    title: 'Accounting (Daily Ledger)',
+    title: 'Daily Ledger',
     subtitle: 'Income, expenses & financial summary',
     icon: '📒',
     color: '#F0FDF4',
@@ -33,7 +47,7 @@ const getNavCards = (userRole) => [
   {
     id: 'logbook',
     title: 'Log Book',
-    subtitle: 'Trip logs, vehicle EMIs & logistics',
+    subtitle: 'Trip logs & operational logistics',
     icon: '🚛',
     color: '#FFF7ED',
     accent: '#F97316',
@@ -42,14 +56,54 @@ const getNavCards = (userRole) => [
     roles: ['ADMIN', 'MANAGER', 'STAFF'],
   },
   {
+    id: 'machinery',
+    title: 'Machinery Logs',
+    subtitle: 'Track equipment hours & fuel usage',
+    icon: '🚜',
+    color: '#FEFCE8',
+    accent: '#CA8A04',
+    screen: 'Machinery',
+    roles: ['ADMIN', 'MANAGER'],
+  },
+  {
     id: 'users',
-    title: 'Users',
-    subtitle: 'Manage team and user roles',
+    title: 'User Management',
+    subtitle: 'Manage team, staff & user roles',
     icon: '👤',
     color: '#EEF2F6',
     accent: '#64748B',
     screen: 'Workforce',
     params: { initialTab: 'users' },
+    roles: ['ADMIN'],
+  },
+  {
+    id: 'compliance',
+    title: 'EMI & Compliance',
+    subtitle: 'Track EMIs, insurance & fitness expiry',
+    icon: '🛡️',
+    color: '#FEF2F2',
+    accent: '#EF4444',
+    screen: 'ComplianceVault',
+    roles: ['ADMIN', 'MANAGER'],
+  },
+  {
+    id: 'tyres',
+    title: 'Tyre Management',
+    subtitle: 'Track purchase dates, serials & multi-axle tyres',
+    icon: '🛞',
+    color: '#F0FDF4',
+    accent: '#0D9488',
+    screen: 'TyreManagement',
+    roles: ['ADMIN', 'MANAGER'],
+  },
+  {
+    id: 'financial_reports',
+    title: 'Financial Reports',
+    subtitle: 'Net Profit & 1-click PDF reports',
+    icon: '📊',
+    color: '#F0F9FF',
+    accent: '#0284C7',
+    screen: 'FinancialReport',
     roles: ['ADMIN'],
   },
   {
@@ -65,21 +119,52 @@ const getNavCards = (userRole) => [
 ];
 
 export default function HomeScreen({ navigation }) {
-  const { user, logout } = useContext(AuthContext);
+  const { user, userToken, logout } = useContext(AuthContext);
   const { selectedSite, loading: siteLoading, error: siteError, fetchSites } = useSite();
+  const [alertsSummary, setAlertsSummary] = useState(null);
+  const scrollViewRef = useRef(null);
+  const scrollYRef = useRef(0);
+
+  useEffect(() => {
+    if (userToken && (user?.role === 'ADMIN' || user?.role === 'MANAGER')) {
+      checkAndTriggerAutomatedAlerts(userToken, selectedSite?.id).then(data => {
+        setAlertsSummary(data);
+      }).catch(() => {});
+    }
+  }, [userToken, selectedSite?.id]);
 
   const allowedCards = getNavCards(user?.role).filter(card => card.roles.includes(user?.role));
+  const insets = useSafeAreaInsets();
+  const topPadding = Math.max(insets.top, Platform.OS === 'android' ? 36 : 20);
+
+  const handleCardPress = (card) => {
+    if (!selectedSite && card.id !== 'sites') {
+      Alert.alert('Active Site Required', 'Please select an active site from the dropdown before accessing this section.');
+      return;
+    }
+    navigation.navigate(card.screen, card.params);
+  };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={[styles.safe, { paddingTop: topPadding }]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Welcome back,</Text>
-          <Text style={styles.username}>{user?.full_name || user?.username}</Text>
-          <Text style={styles.roleTag}>{user?.role}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Image 
+            source={require('../../assets/images/app-logo.png')} 
+            style={styles.headerLogo} 
+            resizeMode="contain"
+          />
+          <View>
+            <Text style={styles.greeting}>Welcome back,</Text>
+            <Text style={styles.username}>{user?.full_name || user?.username}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+              <Text style={styles.roleTag}>{user?.role}</Text>
+              <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '800' }}>• v4.5</Text>
+            </View>
+          </View>
         </View>
         <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.8}>
           <Text style={styles.logoutText}>Logout</Text>
@@ -87,9 +172,14 @@ export default function HomeScreen({ navigation }) {
       </View>
 
       <ScrollView
+        ref={scrollViewRef}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        onScroll={(e) => {
+          scrollYRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
         {/* Site Selector Section */}
         <View style={styles.section}>
@@ -111,30 +201,62 @@ export default function HomeScreen({ navigation }) {
           )}
         </View>
 
-        {/* Navigation Cards */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>NAVIGATE TO</Text>
-          {allowedCards.map(card => (
-            <TouchableOpacity
-              key={card.id}
-              style={[styles.card, { backgroundColor: card.color, borderLeftColor: card.accent }]}
-              onPress={() => navigation.navigate(card.screen, card.params)}
-              activeOpacity={0.75}
-              disabled={!selectedSite && card.id !== 'sites'}
-            >
-              <Text style={styles.cardIcon}>{card.icon}</Text>
-              <View style={styles.cardText}>
-                <Text style={[styles.cardTitle, { color: card.accent }]}>{card.title}</Text>
-                <Text style={styles.cardSubtitle}>{card.subtitle}</Text>
+        {/* Automated Alerts Banner (Due in 2 days) */}
+        {alertsSummary && alertsSummary.alerts && alertsSummary.alerts.length > 0 && (
+          <TouchableOpacity 
+            style={{
+              backgroundColor: alertsSummary.due_in_2_days_count > 0 ? '#FEF2F2' : '#FFFBEB',
+              borderWidth: 1,
+              borderColor: alertsSummary.due_in_2_days_count > 0 ? '#FECACA' : '#FDE68A',
+              borderRadius: 12,
+              padding: 12,
+              marginHorizontal: 16,
+              marginTop: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
+            onPress={() => {
+              if (user?.role === 'ADMIN') {
+                navigation.navigate('FinancialReport');
+              } else {
+                navigation.navigate('ComplianceVault');
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <MaterialCommunityIcons 
+                name={alertsSummary.due_in_2_days_count > 0 ? "bell-alert" : "calendar-clock"} 
+                size={22} 
+                color={alertsSummary.due_in_2_days_count > 0 ? "#DC2626" : "#D97706"} 
+              />
+              <View style={{ marginLeft: 10, flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: alertsSummary.due_in_2_days_count > 0 ? '#991B1B' : '#92400E' }}>
+                  {alertsSummary.due_in_2_days_count > 0 
+                    ? `⚠️ ${alertsSummary.due_in_2_days_count} Payment / EMI Due in 2 Days!` 
+                    : `Upcoming Compliance Reminders (${alertsSummary.total_alerts})`}
+                </Text>
+                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }}>
+                  Tap to view Financial Dashboard & automated alerts
+                </Text>
               </View>
-              {!selectedSite && card.id !== 'sites' && (
-                <Text style={styles.cardLock}>🔒</Text>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
+          </TouchableOpacity>
+        )}
+
+        {/* Interactive 2x2 Draggable Grid of Pages */}
+        <DraggableDashboardGrid
+          items={allowedCards}
+          onItemPress={handleCardPress}
+          isLockedItem={(card) => !selectedSite && card.id !== 'sites'}
+          storageKey={user?.role || 'default'}
+          scrollViewRef={scrollViewRef}
+          scrollYRef={scrollYRef}
+        />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -142,7 +264,6 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: '#F8FAFC',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
   },
   header: {
     flexDirection: 'row',
@@ -153,6 +274,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+  },
+  headerLogo: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
   },
   greeting: {
     fontSize: 13,
@@ -208,39 +337,5 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontSize: 14,
   },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    padding: 18,
-    borderLeftWidth: 5,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  cardIcon: {
-    fontSize: 28,
-    marginRight: 14,
-  },
-  cardText: {
-    flex: 1,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 3,
-  },
-  cardSubtitle: {
-    fontSize: 13,
-    color: '#6B7280',
-    lineHeight: 18,
-  },
-  cardLock: {
-    fontSize: 16,
-    marginLeft: 8,
-    opacity: 0.4,
-  },
 });
+

@@ -2,9 +2,9 @@
   "expo": {
     "name": "Gopal Agrawal Enterprises",
     "slug": "frontend",
-    "version": "1.0.0",
+    "version": "4.5",
     "orientation": "portrait",
-    "icon": "./assets/images/gopal.jpeg",
+    "icon": "./assets/images/app-logo.png",
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -13,6 +13,8 @@
     },
     "android": {
       "package": "com.aadharshila.fleet",
+      "versionCode": 8,
+      "googleServicesFile": "./google-services.json",
       "usesCleartextTraffic": true,
       "permissions": [
         "INTERNET",
@@ -22,10 +24,8 @@
         "ACCESS_COARSE_LOCATION"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/gopal.jpeg",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#023c69",
+        "foregroundImage": "./assets/images/app-logo.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -37,7 +37,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/gopal.jpeg",
+          "image": "./assets/images/app-logo.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
@@ -46,13 +46,25 @@
           }
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/app-logo.png",
+          "color": "#006C49"
+        }
+      ]
     ],
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "updates": {
-      "url": "https://u.expo.dev/49f2af85-52f5-4a74-affe-431ee3daeda6"
+      "url": "https://u.expo.dev/49f2af85-52f5-4a74-affe-431ee3daeda6",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     },
     "extra": {
       "eas": {

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "632140280981",
+    "project_id": "gopal-agrawal-80aea",
+    "storage_bucket": "gopal-agrawal-80aea.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:632140280981:android:3b7152b2b0478c58e7179c",
+        "android_client_info": {
+          "package_name": "com.aadharshila.fleet"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBWikwx4W3Lzo9ZBkv6fzroWArNqWWvvi4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:632140280981:android:141e01e16319eedde7179c",
+        "android_client_info": {
+          "package_name": "com.adarshila.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBWikwx4W3Lzo9ZBkv6fzroWArNqWWvvi4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

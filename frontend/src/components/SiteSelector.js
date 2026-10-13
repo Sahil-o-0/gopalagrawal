@@ -133,7 +133,7 @@ export const SiteSelector = ({ compact = false, onSelectSite, style }) => {
     if (!sites || sites.length === 0) {
       return (
         <View style={styles.centerContainer}>
-          <MaterialCommunityIcons name="office-building-off" size={44} color="#94A3B8" />
+          <MaterialCommunityIcons name="domain-off" size={44} color="#94A3B8" />
           <Text style={styles.emptyText}>No operational sites found.</Text>
           <TouchableOpacity
             style={[styles.retryButton, { marginTop: 12, backgroundColor: '#091426' }]}

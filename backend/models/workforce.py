@@ -63,14 +63,44 @@ class AdvanceWageRequest(Base):
     staff = relationship("User", backref="advance_requests")
     site = relationship("Site", backref="advance_requests")
 
+class VehicleRepairRequest(Base):
+    __tablename__ = "vehicle_repair_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    site_id = Column(Integer, ForeignKey("sites.id"), nullable=True, default=1, index=True)
+    staff_id = Column(Integer, ForeignKey("users.id"))
+    vehicle_number = Column(String(50), index=True)
+    issue_description = Column(String(255))
+    estimated_cost = Column(Float, default=0.0)
+    actual_cost = Column(Float, default=0.0)
+    receipt_photo_url = Column(Text, nullable=True)
+    status = Column(String(20), default="PENDING") # PENDING, APPROVED, REJECTED, COMPLETED
+    admin_notes = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    staff = relationship("User", backref="repair_requests")
+    site = relationship("Site", backref="repair_requests")
+
 class VehicleEMI(Base):
     __tablename__ = "vehicle_emi"
     id = Column(Integer, primary_key=True, index=True)
     site_id = Column(Integer, ForeignKey("sites.id"), nullable=True, default=1, index=True)
     vehicle_number = Column(String(50), index=True)
-    emi_amount = Column(Float)
-    emi_due_date = Column(Date)
-    document_url = Column(Text, nullable=True) # PDF or Img base64/URL
+    registration_date = Column(Date, nullable=True)
+    permit_valid_upto = Column(Date, nullable=True)
+    permit_fee = Column(Float, default=0.0, nullable=True)
+    emi_amount = Column(Float, default=0.0)
+    emi_due_date = Column(Date, nullable=True)
+    insurance_expiry = Column(Date, nullable=True)
+    insurance_premium = Column(Float, default=0.0, nullable=True)
+    fitness_expiry = Column(Date, nullable=True)
+    fitness_fee = Column(Float, default=0.0, nullable=True)
+    road_tax_expiry = Column(Date, nullable=True)
+    road_tax_amount = Column(Float, default=0.0, nullable=True)
+    pucc_expiry = Column(Date, nullable=True)
+    pucc_fee = Column(Float, default=0.0, nullable=True)
+    financier = Column(String(100), nullable=True) # Bank / Finance company
+    notes = Column(String(255), nullable=True)
+    document_url = Column(Text, nullable=True) # Document scan / receipt URL or Base64
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     site = relationship("Site", backref="vehicle_emis")
 
@@ -132,4 +162,29 @@ class DailyLedger(Base):
     
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     site = relationship("Site", backref="daily_ledgers")
+
+class VehicleTyreRecord(Base):
+    """Tracks individual tyres, purchase dates, serial numbers, positions, and costs for vehicles"""
+    __tablename__ = "vehicle_tyres"
+
+    id = Column(Integer, primary_key=True, index=True)
+    site_id = Column(Integer, ForeignKey("sites.id"), nullable=True, default=1, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicle_emi.id"), nullable=True, index=True)
+    vehicle_number = Column(String(50), nullable=False, index=True)
+    
+    purchase_date = Column(Date, nullable=False, default=datetime.date.today)
+    serial_number = Column(String(100), nullable=False, index=True)
+    tyre_position = Column(String(100), nullable=True) # Front-Left, Front-Right, Axle-1-Left-Outer, Axle-1-Left-Inner, etc.
+    brand_model = Column(String(100), nullable=True) # MRF, Apollo, JK Tyre, CEAT, Michelin, etc.
+    purchase_cost = Column(Float, default=0.0, nullable=True)
+    odometer_at_fitting = Column(Float, default=0.0, nullable=True)
+    status = Column(String(30), default="FITTED") # FITTED, SPARE, REPLACED, RETREADED, SCRAPPED
+    notes = Column(String(255), nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    
+    site = relationship("Site", backref="vehicle_tyres")
+    vehicle = relationship("VehicleEMI", backref="tyres")
+
 

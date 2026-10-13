@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import datetime
 from .trip import TripLogResponse
 
@@ -76,11 +76,49 @@ class AdvanceResponse(AdvanceBase):
     created_at: datetime.datetime
     class Config: from_attributes = True
 
-# VEHICLES EMI
+# VEHICLE REPAIRS & MAINTENANCE REQUESTS
+class VehicleRepairBase(BaseModel):
+    staff_id: Optional[int] = None
+    vehicle_number: str
+    issue_description: str
+    estimated_cost: Optional[float] = 0.0
+    actual_cost: Optional[float] = 0.0
+    receipt_photo_url: Optional[str] = None
+    admin_notes: Optional[str] = None
+    site_id: Optional[int] = 1
+
+class VehicleRepairCreate(VehicleRepairBase):
+    pass
+
+class VehicleRepairUpdateStatus(BaseModel):
+    status: str # APPROVED, REJECTED, COMPLETED
+    actual_cost: Optional[float] = None
+    admin_notes: Optional[str] = None
+
+class VehicleRepairResponse(VehicleRepairBase):
+    id: int
+    status: str
+    created_at: datetime.datetime
+    class Config: from_attributes = True
+
+# VEHICLES EMI & COMPLIANCE VAULT
 class VehicleEMIBase(BaseModel):
     vehicle_number: str
-    emi_amount: float
-    emi_due_date: datetime.date
+    registration_date: Optional[datetime.date] = None
+    permit_valid_upto: Optional[datetime.date] = None
+    permit_fee: Optional[float] = 0.0
+    emi_amount: Optional[float] = 0.0
+    emi_due_date: Optional[datetime.date] = None
+    insurance_expiry: Optional[datetime.date] = None
+    insurance_premium: Optional[float] = 0.0
+    fitness_expiry: Optional[datetime.date] = None
+    fitness_fee: Optional[float] = 0.0
+    road_tax_expiry: Optional[datetime.date] = None
+    road_tax_amount: Optional[float] = 0.0
+    pucc_expiry: Optional[datetime.date] = None
+    pucc_fee: Optional[float] = 0.0
+    financier: Optional[str] = None
+    notes: Optional[str] = None
     document_url: Optional[str] = None
     site_id: Optional[int] = 1
 
@@ -89,8 +127,21 @@ class VehicleEMICreate(VehicleEMIBase):
 
 class VehicleEMIUpdate(BaseModel):
     vehicle_number: Optional[str] = None
+    registration_date: Optional[datetime.date] = None
+    permit_valid_upto: Optional[datetime.date] = None
+    permit_fee: Optional[float] = None
     emi_amount: Optional[float] = None
     emi_due_date: Optional[datetime.date] = None
+    insurance_expiry: Optional[datetime.date] = None
+    insurance_premium: Optional[float] = None
+    fitness_expiry: Optional[datetime.date] = None
+    fitness_fee: Optional[float] = None
+    road_tax_expiry: Optional[datetime.date] = None
+    road_tax_amount: Optional[float] = None
+    pucc_expiry: Optional[datetime.date] = None
+    pucc_fee: Optional[float] = None
+    financier: Optional[str] = None
+    notes: Optional[str] = None
     document_url: Optional[str] = None
     site_id: Optional[int] = None
 
@@ -153,5 +204,67 @@ class DailyLedgerResponse(DailyLedgerBase):
     id: int
     created_at: datetime.datetime
     class Config: from_attributes = True
+
+# VEHICLE TYRES MANAGEMENT
+class VehicleTyreItemCreate(BaseModel):
+    serial_number: str
+    purchase_date: Optional[datetime.date] = None
+    tyre_position: Optional[str] = None
+    brand_model: Optional[str] = None
+    purchase_cost: Optional[float] = 0.0
+    odometer_at_fitting: Optional[float] = 0.0
+    status: Optional[str] = "FITTED"
+    notes: Optional[str] = None
+
+class VehicleTyresBatchCreate(BaseModel):
+    vehicle_number: str
+    vehicle_id: Optional[int] = None
+    site_id: Optional[int] = 1
+    purchase_date: Optional[datetime.date] = None
+    tyres: List[VehicleTyreItemCreate]
+
+class VehicleTyreCreate(BaseModel):
+    vehicle_number: str
+    vehicle_id: Optional[int] = None
+    site_id: Optional[int] = 1
+    serial_number: str
+    purchase_date: Optional[datetime.date] = None
+    tyre_position: Optional[str] = None
+    brand_model: Optional[str] = None
+    purchase_cost: Optional[float] = 0.0
+    odometer_at_fitting: Optional[float] = 0.0
+    status: Optional[str] = "FITTED"
+    notes: Optional[str] = None
+
+class VehicleTyreUpdate(BaseModel):
+    vehicle_number: Optional[str] = None
+    vehicle_id: Optional[int] = None
+    serial_number: Optional[str] = None
+    purchase_date: Optional[datetime.date] = None
+    tyre_position: Optional[str] = None
+    brand_model: Optional[str] = None
+    purchase_cost: Optional[float] = None
+    odometer_at_fitting: Optional[float] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    site_id: Optional[int] = None
+
+class VehicleTyreResponse(BaseModel):
+    id: int
+    site_id: Optional[int] = None
+    vehicle_id: Optional[int] = None
+    vehicle_number: str
+    purchase_date: Optional[datetime.date] = None
+    serial_number: str
+    tyre_position: Optional[str] = None
+    brand_model: Optional[str] = None
+    purchase_cost: Optional[float] = 0.0
+    odometer_at_fitting: Optional[float] = 0.0
+    status: Optional[str] = "FITTED"
+    notes: Optional[str] = None
+    created_at: Optional[datetime.datetime] = None
+    updated_at: Optional[datetime.datetime] = None
+    class Config: from_attributes = True
+
 
 

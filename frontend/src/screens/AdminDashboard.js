@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, SafeAreaView, TextInput, Image, ScrollView, Modal, Platform, StatusBar, RefreshControl, Switch, Linking } from 'react-native';
+import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, TextInput, Image, ScrollView, Modal, Platform, StatusBar, RefreshControl, Switch, Linking } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,14 +9,20 @@ import { AuthContext } from '../context/AuthContext';
 import { useSite } from '../context/SiteContext';
 import SiteSelector from '../components/SiteSelector';
 import AttendanceCalendar from '../components/AttendanceCalendar';
+import ManualAttendanceModal from '../components/ManualAttendanceModal';
 import TripLogForm from '../components/TripLogForm';
+import DraggableCardList from '../components/DraggableCardList';
 import { API_BASE_URL } from '../config';
 
 export default function AdminDashboard({ navigation, route }) {
   const { user, userToken, logout } = useContext(AuthContext);
   const { selectedSite, sites = [] } = useSite();
+  const insets = useSafeAreaInsets();
+  const topPadding = Math.max(insets.top, Platform.OS === 'android' ? 36 : 20);
   const [activeTab, setActiveTab] = useState(route?.params?.initialTab || 'trips');
   const [isDrawerVisible, setIsDrawerVisible] = useState(false);
+  const usersScrollViewRef = useRef(null);
+  const usersScrollYRef = useRef(0);
 
   // Sync activeTab when route parameters change
   useEffect(() => {
@@ -23,9 +31,11 @@ export default function AdminDashboard({ navigation, route }) {
     }
   }, [route?.params?.initialTab]);
 
-  useEffect(() => {
-    fetchData();
-  }, [selectedSite?.id]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [activeTab, selectedSite?.id, userToken])
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -72,6 +82,7 @@ export default function AdminDashboard({ navigation, route }) {
   const [newAadharFront, setNewAadharFront] = useState(null);
   const [newAadharBack, setNewAadharBack] = useState(null);
   const [newSiteId, setNewSiteId] = useState('');
+  const [newAssignedVehicle, setNewAssignedVehicle] = useState('');
 
   // Designations states
   const [designationsList, setDesignationsList] = useState([]);
@@ -137,6 +148,10 @@ export default function AdminDashboard({ navigation, route }) {
   const [isPunchStaffModalVisible, setIsPunchStaffModalVisible] = useState(false);
   const [selectedPunchRecordDetails, setSelectedPunchRecordDetails] = useState(null);
   const [isPunchDetailsModalVisible, setIsPunchDetailsModalVisible] = useState(false);
+  // Manual Attendance States
+  const [isManualAttendanceModalVisible, setIsManualAttendanceModalVisible] = useState(false);
+  const [manualAttendanceStaff, setManualAttendanceStaff] = useState(null);
+  const [manualAttendanceRecord, setManualAttendanceRecord] = useState(null);
 
 
 
@@ -375,6 +390,7 @@ export default function AdminDashboard({ navigation, route }) {
           starting_date: newStartingDate.toISOString().split('T')[0],
           employment_type: newEmploymentType,
           is_active: newIsActive,
+          assigned_vehicle: newAssignedVehicle.trim() || null,
           aadhar_front_url: newAadharFront,
           aadhar_back_url: newAadharBack
         })
@@ -396,6 +412,7 @@ export default function AdminDashboard({ navigation, route }) {
         setNewStartingDate(new Date());
         setNewIsActive(true);
         setNewEmploymentType('PERMANENT');
+        setNewAssignedVehicle('');
         setNewAadharFront(null);
         setNewAadharBack(null);
         setNewSiteId('');
@@ -759,68 +776,109 @@ export default function AdminDashboard({ navigation, route }) {
               r.date?.split('T')[0] === isoDateStr
             );
 
+            const isPresent = record?.status === 'PRESENT';
+            const isHalfDay = record?.status === 'HALF_DAY';
+            const isAbsent = record?.status === 'ABSENT';
+            const isLeave = record?.status === 'ON_LEAVE';
+
+            let badgeBg = '#F1F5F9';
+            let badgeText = '#64748B';
+            let badgeLabel = 'Not Marked';
+
+            if (isPresent) {
+              badgeBg = '#ECFDF5';
+              badgeText = '#059669';
+              badgeLabel = record.hours_worked ? `Present (${record.hours_worked}h)` : 'Present';
+            } else if (isHalfDay) {
+              badgeBg = '#FFFBEB';
+              badgeText = '#D97706';
+              badgeLabel = record.hours_worked ? `Half Day (${record.hours_worked}h)` : 'Half Day';
+            } else if (isAbsent) {
+              badgeBg = '#FEF2F2';
+              badgeText = '#DC2626';
+              badgeLabel = 'Absent';
+            } else if (isLeave) {
+              badgeBg = '#F5F3FF';
+              badgeText = '#7C3AED';
+              badgeLabel = 'On Leave';
+            }
+
             return (
               <TouchableOpacity 
                 key={`hr-emp-${emp.id}`} 
-                style={{ flexDirection: 'row', backgroundColor: 'white', borderRadius: 12, padding: 12, marginBottom: 12, borderBottomWidth: 1, borderColor: '#F1F5F9', alignItems: 'center' }}
+                style={{ flexDirection: 'row', backgroundColor: 'white', borderRadius: 14, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: record ? '#E2E8F0' : '#F1F5F9', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }}
                 onPress={() => {
-                  if (record) {
-                    setSelectedPunchRecordDetails({ emp, record });
-                    setIsPunchDetailsModalVisible(true);
-                  } else {
-                    Alert.alert("No Entry", `${emp.full_name || emp.username} has not punched in for this date.`);
-                  }
+                  setManualAttendanceStaff(emp);
+                  setManualAttendanceRecord(record || null);
+                  setIsManualAttendanceModalVisible(true);
                 }}
               >
                 {/* User Image / Photo placeholder */}
                 {record?.punch_in_photo_url ? (
-                  <View>
-                    <Image source={{ uri: record.punch_in_photo_url }} style={{ width: 50, height: 50, borderRadius: 6, marginRight: 12 }} />
-                  </View>
+                  <TouchableOpacity onPress={() => {
+                    setSelectedPunchRecordDetails({ emp, record });
+                    setIsPunchDetailsModalVisible(true);
+                  }}>
+                    <Image source={{ uri: record.punch_in_photo_url }} style={{ width: 50, height: 50, borderRadius: 10, marginRight: 12 }} />
+                  </TouchableOpacity>
                 ) : emp.profile_photo_url ? (
-                  <Image source={{ uri: emp.profile_photo_url }} style={{ width: 50, height: 50, borderRadius: 6, marginRight: 12 }} />
+                  <Image source={{ uri: emp.profile_photo_url }} style={{ width: 50, height: 50, borderRadius: 10, marginRight: 12 }} />
                 ) : (
-                  <View style={{ width: 50, height: 50, borderRadius: 6, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                    <Text style={{ fontSize: 20 }}>👤</Text>
+                  <View style={{ width: 50, height: 50, borderRadius: 10, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                    <Text style={{ fontSize: 22 }}>👤</Text>
                   </View>
                 )}
 
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E293B' }}>#{emp.id} {emp.full_name || emp.username}</Text>
-                    <Text style={{ fontSize: 11, color: '#64748B', marginLeft: 6 }}>({emp.employee_of === 'CONTRACTOR' ? 'C' : 'D'})</Text>
-                    {/* Active Status indicator */}
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: record ? '#10B981' : '#F59E0B', marginLeft: 8 }} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, flexWrap: 'wrap' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>#{emp.id} {emp.full_name || emp.username}</Text>
+                        <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#475569' }}>{emp.username}</Text>
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: 11, color: '#64748B', marginLeft: 4 }}>({emp.employee_of === 'CONTRACTOR' ? 'C' : 'D'})</Text>
+                    </View>
+                    
+                    {/* Status Badge */}
+                    <View style={{ backgroundColor: badgeBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: `${badgeText}30` }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: badgeText }}>{badgeLabel}</Text>
+                    </View>
                   </View>
 
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                    <MaterialCommunityIcons name="clock-outline" size={14} color="#2563EB" />
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#2563EB', marginLeft: 4 }}>
-                      {record?.punch_in_time ? new Date(record.punch_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-                    </Text>
-                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <MaterialCommunityIcons name="clock-outline" size={13} color="#2563EB" />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#2563EB', marginLeft: 3 }}>
+                        {record?.punch_in_time ? new Date(record.punch_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (record ? 'Manual' : '--:--')}
+                      </Text>
+                    </View>
 
-                  <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>Role: {emp.designation || emp.role}</Text>
-
-                  {/* If punched out, show the punch-out time & 2nd image callback preview */}
-                  {record?.punch_out_time && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+                    {record?.punch_out_time && (
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <MaterialCommunityIcons name="clock-check-outline" size={14} color="#DC2626" />
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: '#DC2626', marginLeft: 4 }}>
+                        <MaterialCommunityIcons name="clock-check-outline" size={13} color="#DC2626" />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626', marginLeft: 3 }}>
                           Out: {new Date(record.punch_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </Text>
                       </View>
-                    </View>
-                  )}
+                    )}
+
+                    <Text style={{ fontSize: 11, color: '#64748B' }}>
+                      {emp.designation || emp.role}
+                    </Text>
+                  </View>
+
+                  {record?.notes ? (
+                    <Text style={{ fontSize: 10, color: '#94A3B8', marginTop: 3 }} numberOfLines={1}>
+                      📝 {record.notes}
+                    </Text>
+                  ) : null}
                 </View>
 
-                {/* Working hours display */}
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ fontSize: 9, fontWeight: '800', color: '#9CA3AF' }}>WORKING HOUR</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '900', color: '#1E293B', marginTop: 2 }}>
-                    {record?.hours_worked ? `${record.hours_worked.toFixed(2)} Hrs` : '0.00 Hrs'}
-                  </Text>
+                {/* Edit / Action indicator */}
+                <View style={{ marginLeft: 8, padding: 4 }}>
+                  <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
                 </View>
               </TouchableOpacity>
             );
@@ -835,34 +893,52 @@ export default function AdminDashboard({ navigation, route }) {
           <MaterialCommunityIcons name={isPunchMenuVisible ? "close" : "plus"} size={30} color="white" />
         </TouchableOpacity>
 
-        {/* Floating punch clock menu selections */}
+        {/* Floating punch & manual attendance menu selections */}
         {isPunchMenuVisible && (
           <View style={{ position: 'absolute', right: 24, bottom: 90, gap: 10, zIndex: 10, alignItems: 'flex-end' }}>
+            {/* 1. Manual Attendance Option */}
             <TouchableOpacity 
-              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#10B981', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 }}
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#2563EB', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 }}
+              onPress={() => {
+                setManualAttendanceStaff(null);
+                setManualAttendanceRecord(null);
+                setIsManualAttendanceModalVisible(true);
+                setIsPunchMenuVisible(false);
+              }}
+            >
+              <Text style={{ color: 'white', fontWeight: '800', marginRight: 8, fontSize: 13 }}>Manual Attendance</Text>
+              <MaterialCommunityIcons name="clipboard-check-outline" size={18} color="white" />
+            </TouchableOpacity>
+
+            {/* 2. Face Punch In */}
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#10B981', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 }}
               onPress={() => {
                 setPunchingType('in');
                 setIsPunchStaffModalVisible(true);
+                setIsPunchMenuVisible(false);
               }}
             >
-              <Text style={{ color: 'white', fontWeight: '800', marginRight: 6, fontSize: 13 }}>Punch In</Text>
-              <MaterialCommunityIcons name="login" size={18} color="white" />
+              <Text style={{ color: 'white', fontWeight: '800', marginRight: 8, fontSize: 13 }}>Punch In (Face Scan)</Text>
+              <MaterialCommunityIcons name="camera-outline" size={18} color="white" />
             </TouchableOpacity>
 
+            {/* 3. Face Punch Out */}
             <TouchableOpacity 
-              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#DC2626', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 }}
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#DC2626', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 }}
               onPress={() => {
                 setPunchingType('out');
                 setIsPunchStaffModalVisible(true);
+                setIsPunchMenuVisible(false);
               }}
             >
-              <Text style={{ color: 'white', fontWeight: '800', marginRight: 6, fontSize: 13 }}>Punch Out</Text>
-              <MaterialCommunityIcons name="logout" size={18} color="white" />
+              <Text style={{ color: 'white', fontWeight: '800', marginRight: 8, fontSize: 13 }}>Punch Out (Face Scan)</Text>
+              <MaterialCommunityIcons name="camera-off-outline" size={18} color="white" />
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Modal: Select employee to punch in/out */}
+        {/* Modal: Select employee to punch in/out via face scan */}
         {isPunchStaffModalVisible && (
           <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 99 }}>
             <View style={{ width: '90%', maxHeight: '80%', backgroundColor: 'white', borderRadius: 16, padding: 20 }}>
@@ -897,70 +973,153 @@ export default function AdminDashboard({ navigation, route }) {
             </View>
           </View>
         )}
+
+        {/* Manual Attendance Modal */}
+        <ManualAttendanceModal
+          visible={isManualAttendanceModalVisible}
+          onClose={() => setIsManualAttendanceModalVisible(false)}
+          onSaveSuccess={() => fetchData()}
+          initialStaff={manualAttendanceStaff}
+          initialDate={hrSelectedDate}
+          initialRecord={manualAttendanceRecord}
+          staffList={users.filter(u => u.is_active)}
+          sites={sites}
+          userToken={userToken}
+          currentRole="ADMIN"
+          activeSiteId={hrSelectedSiteId || selectedSite?.id}
+        />
       </View>
     );
   };
 
   const renderUsersTab = () => (
     <View style={{flex: 1}}>
-      <ScrollView style={{flex: 1}} contentContainerStyle={{padding: 16, paddingBottom: 80}}>
+      <ScrollView 
+        ref={usersScrollViewRef}
+        style={{flex: 1}} 
+        contentContainerStyle={{padding: 16, paddingBottom: 80}}
+        onScroll={(e) => { usersScrollYRef.current = e.nativeEvent.contentOffset.y; }}
+        scrollEventThrottle={16}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={async () => { setIsRefreshing(true); await fetchData(); setIsRefreshing(false); }} />}
+      >
          <View style={styles.emiHeader}>
             <View><Text style={styles.emiHeaderLabel}>TEAM MANAGEMENT</Text><Text style={styles.emiHeaderTitle}>Staff & Managers</Text></View>
          </View>
-         {users.map(u => {
-           // Calculate current balance: dailyLedgerEntries filtered by u.id (staff_id) + u.opening_balance
-           const uLedgerEntries = dailyLedgerEntries.filter(e => e.staff_id === u.id);
-           const ledgerSum = uLedgerEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
-           const currentBalance = ledgerSum + (u.opening_balance || 0);
-           const site = sites.find(s => s.id === u.site_id);
-           const siteName = site ? site.name : 'No Site';
-           
-           // Format added/created date
-           const createdDate = u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A';
-           const createdBy = u.created_by || 'N/A';
+         {users.length === 0 ? (
+           <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+             <MaterialCommunityIcons name="account-group-outline" size={48} color="#94A3B8" />
+             <Text style={{ fontSize: 16, fontWeight: '700', color: '#64748B', marginTop: 10 }}>No Staff Found</Text>
+             <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>Add your first team member using the + button below.</Text>
+           </View>
+         ) : (
+           <DraggableCardList
+             items={users}
+             itemHeight={160}
+             gap={12}
+             paddingHorizontal={0}
+             storageKey="@admin_users_order_v1"
+             scrollViewRef={usersScrollViewRef}
+             scrollYRef={usersScrollYRef}
+             dragHint="Hold & drag staff card to arrange order"
+             onOrderChange={(reordered) => setUsers(reordered)}
+             renderItem={(u) => {
+               // Calculate current balance: dailyLedgerEntries filtered by u.id (staff_id) + u.opening_balance
+               const uLedgerEntries = dailyLedgerEntries.filter(e => e.staff_id === u.id);
+               const ledgerSum = uLedgerEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+               const currentBalance = ledgerSum + (u.opening_balance || 0);
+               const site = sites.find(s => s.id === u.site_id);
+               const siteName = site ? site.name : 'No Site';
+               
+               // Format added/created date
+               const createdDate = u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A';
+               const createdBy = u.created_by || 'N/A';
 
-           return (
-             <TouchableOpacity key={`u-${u.id}`} style={styles.emiCard} onPress={() => navigation.navigate('UserLedger', { user: u, userToken, dailyLedgerEntries, sites })}>
-               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                 {/* Photo or fallback placeholder */}
-                 {u.profile_photo_url ? (
-                   <Image source={{ uri: u.profile_photo_url }} style={{ width: 50, height: 50, borderRadius: 25, marginRight: 12 }} />
-                 ) : (
-                   <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: u.role === 'MANAGER' ? '#DBEAFE' : '#D1FAE5', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                     <Text style={{ fontSize: 18 }}>{u.role === 'MANAGER' ? '👔' : '👤'}</Text>
-                   </View>
-                 )}
-                 
-                 <View style={{ flex: 1 }}>
+               return (
+                 <TouchableOpacity 
+                   key={`u-${u.id}`} 
+                   style={styles.staffCard} 
+                   activeOpacity={0.85}
+                   onPress={() => navigation.navigate('UserProfile', { userProfile: u, userToken, dailyLedgerEntries, sites })}
+                 >
                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                     <Text style={{ fontSize: 12, fontWeight: '700', color: '#6B7280', marginRight: 6 }}>#{u.id}</Text>
-                     <Text style={{ fontSize: 16, fontWeight: '800', color: '#111827' }}>{u.full_name || u.username}</Text>
-                     {/* Green or Orange active dot */}
-                     <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: u.is_active ? '#10B981' : '#F59E0B', marginLeft: 8 }} />
+                     {/* Photo or fallback placeholder */}
+                     {u.profile_photo_url && typeof u.profile_photo_url === 'string' && u.profile_photo_url.trim().length > 0 ? (
+                       <Image 
+                         source={{ uri: u.profile_photo_url }} 
+                         style={{ width: 50, height: 50, borderRadius: 25, marginRight: 12, backgroundColor: '#E2E8F0', borderWidth: 1.5, borderColor: '#CBD5E1' }} 
+                         resizeMode="cover"
+                       />
+                     ) : (
+                       <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: u.role === 'MANAGER' ? '#DBEAFE' : '#D1FAE5', justifyContent: 'center', alignItems: 'center', marginRight: 12, borderWidth: 1.5, borderColor: u.role === 'MANAGER' ? '#BFDBFE' : '#A7F3D0' }}>
+                         <Text style={{ fontSize: 20 }}>{u.role === 'MANAGER' ? '👔' : '👤'}</Text>
+                       </View>
+                     )}
+                     
+                     <View style={{ flex: 1, marginRight: 6 }}>
+                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                         <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
+                           <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }} numberOfLines={1}>{u.full_name || u.username}</Text>
+                           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: u.is_active ? '#10B981' : '#F59E0B', marginLeft: 6 }} />
+                         </View>
+                         <MaterialCommunityIcons name="drag-horizontal-variant" size={18} color="#94A3B8" />
+                       </View>
+                       
+                       {/* User ID (Username) Badge & Role */}
+                       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                         <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                           <Text style={{ fontSize: 10, fontWeight: '800', color: '#334155' }}>User ID: {u.username}</Text>
+                         </View>
+                         <Text style={{ fontSize: 10, fontWeight: '600', color: '#64748B' }}>#{u.id}</Text>
+                         <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '600' }}>• {u.designation || u.role}</Text>
+                       </View>
+                       
+                       {/* Phone Dialer & Site */}
+                       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 3 }}>
+                         {u.phone_number ? (
+                           <TouchableOpacity
+                             onPress={() => {
+                               const clean = String(u.phone_number).replace(/[^0-9+]/g, '');
+                               if (clean) Linking.openURL(`tel:${clean}`);
+                             }}
+                             activeOpacity={0.7}
+                             style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+                           >
+                             <MaterialCommunityIcons name="phone" size={12} color="#2563EB" />
+                             <Text style={{ fontSize: 11, color: '#2563EB', fontWeight: '700' }}>{u.phone_number}</Text>
+                           </TouchableOpacity>
+                         ) : (
+                           <Text style={{ fontSize: 11, color: '#94A3B8' }}>📞 N/A</Text>
+                         )}
+                         <Text style={{ fontSize: 11, color: '#64748B' }}>📍 {siteName}</Text>
+                       </View>
+
+                       {u.assigned_vehicle ? (
+                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+                           {u.assigned_vehicle.split(',').map((v, idx) => (
+                             <View key={idx} style={{ backgroundColor: '#EFF6FF', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, borderWidth: 1, borderColor: '#BFDBFE' }}>
+                               <Text style={{ fontSize: 10, color: '#1D4ED8', fontWeight: '700' }}>🚛 {v.trim()}</Text>
+                             </View>
+                           ))}
+                         </View>
+                       ) : null}
+                       
+                       {/* Audit Trail */}
+                       <Text style={{ fontSize: 9.5, color: '#9CA3AF', marginTop: 3 }}>Add By: {createdBy} | {createdDate}</Text>
+                     </View>
+                     
+                     {/* Current Balance */}
+                     <View style={{ alignItems: 'flex-end', marginLeft: 4, alignSelf: 'center' }}>
+                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#6B7280', marginBottom: 2 }}>BALANCE</Text>
+                       <Text style={{ fontSize: 14, fontWeight: '900', color: currentBalance < 0 ? '#DC2626' : '#111827' }}>
+                         ₹{currentBalance.toLocaleString()}
+                       </Text>
+                     </View>
                    </View>
-                   
-                   {/* Role / Designation */}
-                   <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{u.designation || u.role}</Text>
-                   
-                   {/* Phone & Site */}
-                   <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 2 }}>📞 {u.phone_number || 'N/A'}</Text>
-                   <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 1 }}>📍 Site: {siteName}</Text>
-                   
-                   {/* Audit Trail */}
-                   <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 4 }}>Add By: {createdBy} | {createdDate}</Text>
-                 </View>
-                 
-                 {/* Current Balance */}
-                 <View style={{ alignItems: 'flex-end', marginLeft: 8 }}>
-                   <Text style={{ fontSize: 10, fontWeight: '800', color: '#6B7280', marginBottom: 2 }}>BALANCE</Text>
-                   <Text style={{ fontSize: 15, fontWeight: '900', color: currentBalance < 0 ? '#DC2626' : '#111827' }}>
-                     ₹{currentBalance.toLocaleString()}
-                   </Text>
-                 </View>
-               </View>
-             </TouchableOpacity>
-           );
-         })}
+                 </TouchableOpacity>
+               );
+             }}
+           />
+         )}
       </ScrollView>
       {/* Floating circular + New User button */}
       <TouchableOpacity 
@@ -1167,39 +1326,94 @@ export default function AdminDashboard({ navigation, route }) {
   const renderEmiTab = () => {
     const totalOutflow = emis.reduce((sum, e) => sum + (parseFloat(e.emi_amount) || 0), 0);
     const due7 = emis.filter(e => { const d = getDaysRemaining(e.emi_due_date); return d >= 0 && d <= 7; }).length;
+    const expiringCompliance = emis.filter(e => {
+      const ins = getDaysRemaining(e.insurance_expiry);
+      const fit = getDaysRemaining(e.fitness_expiry);
+      return (ins !== null && ins <= 15) || (fit !== null && fit <= 15);
+    }).length;
+
     return (
       <ScrollView style={{flex: 1}} contentContainerStyle={{padding: 16, paddingBottom: 40}}>
         <View style={styles.emiHeader}>
-          <View><Text style={styles.emiHeaderLabel}>FINANCIALS</Text><Text style={styles.emiHeaderTitle}>EMI Tracker</Text></View>
-          <TouchableOpacity style={styles.emiAddBtn} onPress={() => setIsEmiModalVisible(true)}><Text style={styles.emiAddBtnText}>+ New</Text></TouchableOpacity>
+          <View>
+            <Text style={styles.emiHeaderLabel}>FINANCIALS & COMPLIANCE</Text>
+            <Text style={styles.emiHeaderTitle}>EMI & Compliance Vault</Text>
+          </View>
+          <TouchableOpacity style={styles.emiAddBtn} onPress={() => navigation.navigate('ComplianceVault')}>
+            <MaterialCommunityIcons name="shield-car" size={18} color="white" />
+            <Text style={styles.emiAddBtnText}>Open Vault</Text>
+          </TouchableOpacity>
         </View>
+
         <View style={styles.emiMetricsRow}>
-          <View style={[styles.emiMetricCard, {borderLeftColor: '#111827'}]}><Text style={styles.emiMetricLabel}>TOTAL MONTHLY</Text><Text style={styles.emiMetricValue}>₹{totalOutflow.toLocaleString()}</Text></View>
-          <View style={[styles.emiMetricCard, {borderLeftColor: '#DC2626'}]}><Text style={styles.emiMetricLabel}>DUE SOON</Text><Text style={[styles.emiMetricValue, {color: '#DC2626'}]}>{due7}</Text></View>
+          <View style={[styles.emiMetricCard, {borderLeftColor: '#111827'}]}>
+            <Text style={styles.emiMetricLabel}>TOTAL MONTHLY</Text>
+            <Text style={styles.emiMetricValue}>₹{totalOutflow.toLocaleString()}</Text>
+          </View>
+          <View style={[styles.emiMetricCard, {borderLeftColor: '#DC2626'}]}>
+            <Text style={styles.emiMetricLabel}>DUE SOON</Text>
+            <Text style={[styles.emiMetricValue, {color: '#DC2626'}]}>{due7}</Text>
+          </View>
+          <View style={[styles.emiMetricCard, {borderLeftColor: '#D97706'}]}>
+            <Text style={styles.emiMetricLabel}>EXPIRING COMPLIANCE</Text>
+            <Text style={[styles.emiMetricValue, {color: '#D97706'}]}>{expiringCompliance}</Text>
+          </View>
         </View>
+
         {emis.map(e => {
           const days = getDaysRemaining(e.emi_due_date);
+          const insDays = getDaysRemaining(e.insurance_expiry);
+          const fitDays = getDaysRemaining(e.fitness_expiry);
           return (
-            <View key={`e-${e.id}`} style={styles.emiCard}>
+            <TouchableOpacity key={`e-${e.id}`} style={styles.emiCard} activeOpacity={0.9} onPress={() => navigation.navigate('ComplianceVault')}>
               <View style={styles.emiCardTop}>
                 <View style={styles.emiCardIcon}><Text style={styles.emiCardIconText}>🚛</Text></View>
-                <View style={{flex: 1, marginLeft: 12}}><Text style={styles.emiCardVehicle}>{e.vehicle_number}</Text><Text style={styles.emiCardSub}>Monthly</Text></View>
+                <View style={{flex: 1, marginLeft: 12}}>
+                  <Text style={styles.emiCardVehicle}>{e.vehicle_number}</Text>
+                  <Text style={styles.emiCardSub}>{e.financier || 'Monthly EMI'}</Text>
+                </View>
                 <View style={[styles.emiUrgencyBadge, {backgroundColor: days <= 7 ? '#FEE2E2' : '#EFF6FF'}]}>
                   <Text style={[styles.emiUrgencyBadgeText, {color: days <= 7 ? '#991B1B' : '#2563EB'}]}>{days > 0 ? `${days}d LEFT` : days === 0 ? "DUE" : "OVER"}</Text>
                 </View>
               </View>
+
               <View style={styles.emiCardMid}>
-                <View><Text style={styles.emiCardAmountLabel}>AMOUNT</Text><Text style={styles.emiCardAmount}>₹{parseFloat(e.emi_amount).toLocaleString()}</Text></View>
-                <View style={{alignItems: 'flex-end'}}><Text style={styles.emiCardAmountLabel}>DUE DATE</Text><Text style={styles.emiCardDueDate}>{e.emi_due_date}</Text></View>
+                <View><Text style={styles.emiCardAmountLabel}>AMOUNT</Text><Text style={styles.emiCardAmount}>₹{parseFloat(e.emi_amount || 0).toLocaleString()}</Text></View>
+                <View style={{alignItems: 'flex-end'}}><Text style={styles.emiCardAmountLabel}>DUE DATE</Text><Text style={styles.emiCardDueDate}>{e.emi_due_date || 'N/A'}</Text></View>
               </View>
+
+              {/* Compliance Badges Row */}
+              {(e.insurance_expiry || e.fitness_expiry) && (
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderColor: '#F1F5F9' }}>
+                  {e.insurance_expiry && (
+                    <View style={{ flex: 1, backgroundColor: '#EFF6FF', padding: 6, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#1E40AF' }}>INSURANCE</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{e.insurance_expiry}</Text>
+                      <Text style={{ fontSize: 9, color: insDays <= 7 ? '#DC2626' : '#2563EB', fontWeight: '700' }}>
+                        {insDays !== null ? (insDays < 0 ? `${Math.abs(insDays)}d Expired` : `${insDays}d left`) : ''}
+                      </Text>
+                    </View>
+                  )}
+                  {e.fitness_expiry && (
+                    <View style={{ flex: 1, backgroundColor: '#F0FDF4', padding: 6, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#166534' }}>FITNESS EXPIRY</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{e.fitness_expiry}</Text>
+                      <Text style={{ fontSize: 9, color: fitDays <= 7 ? '#DC2626' : '#16A34A', fontWeight: '700' }}>
+                        {fitDays !== null ? (fitDays < 0 ? `${Math.abs(fitDays)}d Expired` : `${fitDays}d left`) : ''}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
               <View style={styles.emiCardActions}>
-                <TouchableOpacity style={styles.emiMarkPaidBtn} onPress={() => markEmiPaid(e.id)}><Text style={styles.emiMarkPaidText}>✓ Paid</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.emiMarkPaidBtn} onPress={() => markEmiPaid(e.id)}><Text style={styles.emiMarkPaidText}>✓ Paid (+1 Month)</Text></TouchableOpacity>
                 <View style={{flexDirection: 'row', gap: 8}}>
                   <TouchableOpacity style={styles.emiIconBtn} onPress={() => openEditEmiModal(e)}><Text style={styles.emiIconBtnText}>✏️</Text></TouchableOpacity>
                   <TouchableOpacity style={[styles.emiIconBtn, {backgroundColor: '#FEE2E2'}]} onPress={() => deleteEmi(e.id)}><Text style={styles.emiIconBtnText}>🗑️</Text></TouchableOpacity>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </ScrollView>
@@ -1211,7 +1425,11 @@ export default function AdminDashboard({ navigation, route }) {
       <TouchableOpacity style={styles.drawerOverlay} activeOpacity={1} onPress={() => setIsDrawerVisible(false)}>
         <View style={styles.drawerContent} onStartShouldSetResponder={() => true}>
           <View style={styles.drawerHeader}>
-            <View style={styles.drawerProfileIcon}><Text style={styles.drawerProfileInitial}>{user?.username?.charAt(0) || 'A'}</Text></View>
+            <Image 
+              source={require('../../assets/images/app-logo.png')} 
+              style={{ width: 44, height: 44, borderRadius: 10, marginRight: 12, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF' }} 
+              resizeMode="contain"
+            />
             <View><Text style={styles.drawerName}>{user?.username || 'Admin'}</Text><Text style={styles.drawerRole}>Control Center</Text></View>
           </View>
           {['trips', 'users', 'hr', 'emi'].map(id => (
@@ -1235,12 +1453,17 @@ export default function AdminDashboard({ navigation, route }) {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: topPadding }]}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.mainHeader}>
         <TouchableOpacity onPress={() => navigation.navigate('Home')} style={{ paddingRight: 10 }}>
           <MaterialCommunityIcons name="arrow-left" size={24} color="#111827" />
         </TouchableOpacity>
+        <Image 
+          source={require('../../assets/images/app-logo.png')} 
+          style={{ width: 34, height: 34, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF' }} 
+          resizeMode="contain" 
+        />
         <View style={{ flex: 1, alignItems: 'center' }}>
           <SiteSelector compact={true} />
         </View>
@@ -1298,7 +1521,7 @@ export default function AdminDashboard({ navigation, route }) {
 
       {/* PUNCH DETAILS MODAL */}
       <Modal visible={isPunchDetailsModalVisible} transparent={false} animationType="slide" statusBarTranslucent={true}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: 'white', paddingTop: Platform.OS === 'android' ? 30 : 0 }}>
+        <View style={{ flex: 1, backgroundColor: 'white', paddingTop: topPadding }}>
           <View style={{ flex: 1, padding: 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
               <TouchableOpacity onPress={() => setIsPunchDetailsModalVisible(false)} style={{ paddingRight: 16 }}>
@@ -1390,7 +1613,7 @@ export default function AdminDashboard({ navigation, route }) {
               </ScrollView>
             )}
           </View>
-        </SafeAreaView>
+        </View>
       </Modal>
 
 
@@ -1403,7 +1626,7 @@ export default function AdminDashboard({ navigation, route }) {
           setCreateUserStep(1);
         }
       }}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: 'white', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 8 : 0 }}>
+        <View style={{ flex: 1, backgroundColor: 'white', paddingTop: topPadding }}>
           
           {createUserStep === 1 ? (
             <View style={{ flex: 1, padding: 16 }}>
@@ -1639,31 +1862,31 @@ export default function AdminDashboard({ navigation, route }) {
                 </View>
 
                 <Text style={styles.inputLabel}>Username *</Text>
-                <TextInput style={styles.input} placeholder="e.g. sahil123" value={newUsername} onChangeText={setNewUsername} autoCapitalize="none" />
+                <TextInput style={styles.input} placeholder="e.g. sahil123" placeholderTextColor="#64748B" value={newUsername} onChangeText={setNewUsername} autoCapitalize="none" />
 
                 <Text style={styles.inputLabel}>Password *</Text>
-                <TextInput style={styles.input} placeholder="Min 6 characters" secureTextEntry value={newPassword} onChangeText={setNewPassword} />
+                <TextInput style={styles.input} placeholder="Min 6 characters" placeholderTextColor="#64748B" secureTextEntry value={newPassword} onChangeText={setNewPassword} />
 
                 <Text style={styles.inputLabel}>Full Name *</Text>
-                <TextInput style={styles.input} placeholder="e.g. Sahil Sharma" value={newFullName} onChangeText={setNewFullName} />
+                <TextInput style={styles.input} placeholder="e.g. Sahil Sharma" placeholderTextColor="#64748B" value={newFullName} onChangeText={setNewFullName} />
 
                 <Text style={styles.inputLabel}>Phone Number</Text>
-                <TextInput style={styles.input} placeholder="e.g. 9876543210" keyboardType="phone-pad" value={newPhoneNumber} onChangeText={setNewPhoneNumber} />
+                <TextInput style={styles.input} placeholder="e.g. 9876543210" placeholderTextColor="#64748B" keyboardType="phone-pad" value={newPhoneNumber} onChangeText={setNewPhoneNumber} />
 
                 <Text style={styles.inputLabel}>Aadhar ID Number</Text>
-                <TextInput style={styles.input} placeholder="12-digit Aadhar number" keyboardType="numeric" maxLength={12} value={newAadharId} onChangeText={setNewAadharId} />
+                <TextInput style={styles.input} placeholder="12-digit Aadhar number" placeholderTextColor="#64748B" keyboardType="numeric" maxLength={12} value={newAadharId} onChangeText={setNewAadharId} />
 
                 <Text style={styles.inputLabel}>Address</Text>
-                <TextInput style={[styles.input, { height: 80 }]} placeholder="Full Address" multiline value={newAddress} onChangeText={setNewAddress} />
+                <TextInput style={[styles.input, { height: 80 }]} placeholder="Full Address" placeholderTextColor="#64748B" multiline value={newAddress} onChangeText={setNewAddress} />
 
                 <Text style={styles.inputLabel}>Emergency Relative Name</Text>
-                <TextInput style={styles.input} placeholder="Relative Full Name" value={newRelativeName} onChangeText={setNewRelativeName} />
+                <TextInput style={styles.input} placeholder="Relative Full Name" placeholderTextColor="#64748B" value={newRelativeName} onChangeText={setNewRelativeName} />
 
                 <Text style={styles.inputLabel}>Relationship</Text>
-                <TextInput style={styles.input} placeholder="e.g. Father, Mother, Brother" value={newRelativeRelation} onChangeText={setNewRelativeRelation} />
+                <TextInput style={styles.input} placeholder="e.g. Father, Mother, Brother" placeholderTextColor="#64748B" value={newRelativeRelation} onChangeText={setNewRelativeRelation} />
 
                 <Text style={styles.inputLabel}>Relative Phone Number</Text>
-                <TextInput style={styles.input} placeholder="Relative Contact Number" keyboardType="phone-pad" value={newRelativePhone} onChangeText={setNewRelativePhone} />
+                <TextInput style={styles.input} placeholder="Relative Contact Number" placeholderTextColor="#64748B" keyboardType="phone-pad" value={newRelativePhone} onChangeText={setNewRelativePhone} />
 
                 {/* Working Site */}
                 <Text style={styles.inputLabel}>Assigned Site</Text>
@@ -1679,16 +1902,53 @@ export default function AdminDashboard({ navigation, route }) {
                   ))}
                 </ScrollView>
 
+                {/* Assigned Vehicle */}
+                <Text style={styles.inputLabel}>Assigned Vehicle (Optional)</Text>
+                <TextInput 
+                  style={styles.input} 
+                  placeholder="e.g. MH-12-FE-4920 (or select below)" 
+                  placeholderTextColor="#64748B"
+                  value={newAssignedVehicle} 
+                  onChangeText={setNewAssignedVehicle} 
+                  autoCapitalize="characters"
+                />
+                {emis && emis.length > 0 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginBottom: 14 }}>
+                    {Array.from(new Set(emis.map(e => e.vehicle_number).filter(Boolean))).map(veh => (
+                      <TouchableOpacity
+                        key={veh}
+                        style={[
+                          styles.roleBtn, 
+                          { marginRight: 8, paddingHorizontal: 12, paddingVertical: 8 }, 
+                          newAssignedVehicle.toUpperCase().split(',').map(s => s.trim()).includes(veh.toUpperCase()) && styles.roleBtnActive
+                        ]}
+                        onPress={() => {
+                          const currentList = newAssignedVehicle.split(',').map(v => v.trim().toUpperCase()).filter(Boolean);
+                          if (currentList.includes(veh.toUpperCase())) {
+                            setNewAssignedVehicle(currentList.filter(v => v !== veh.toUpperCase()).join(', '));
+                          } else {
+                            setNewAssignedVehicle(currentList.concat(veh.toUpperCase()).join(', '));
+                          }
+                        }}
+                      >
+                        <Text style={newAssignedVehicle.toUpperCase().split(',').map(s => s.trim()).includes(veh.toUpperCase()) ? styles.roleTextActive : styles.roleText}>
+                          🚛 {veh}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+
                 <Text style={styles.inputLabel}>Opening Balance (₹)</Text>
-                <TextInput style={styles.input} placeholder="e.g. 0.0" keyboardType="numeric" value={newOpeningBalance} onChangeText={setNewOpeningBalance} />
+                <TextInput style={styles.input} placeholder="e.g. 0.0" placeholderTextColor="#64748B" keyboardType="numeric" value={newOpeningBalance} onChangeText={setNewOpeningBalance} />
 
                 <Text style={styles.inputLabel}>Salary Amount (₹)</Text>
-                <TextInput style={styles.input} placeholder="Monthly Salary" keyboardType="numeric" value={newSalary} onChangeText={setNewSalary} />
+                <TextInput style={styles.input} placeholder="Monthly Salary" placeholderTextColor="#64748B" keyboardType="numeric" value={newSalary} onChangeText={setNewSalary} />
 
                 {/* Starting Date */}
                 <Text style={styles.inputLabel}>Starting Date</Text>
                 <TouchableOpacity style={[styles.input, { justifyContent: 'center', height: 48 }]} onPress={() => setShowStartingDatePicker(true)}>
-                  <Text style={{ color: '#111827' }}>{newStartingDate.toISOString().split('T')[0]}</Text>
+                  <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 14 }}>{newStartingDate.toISOString().split('T')[0]}</Text>
                 </TouchableOpacity>
                 {showStartingDatePicker && (
                   <DateTimePicker
@@ -1754,7 +2014,7 @@ export default function AdminDashboard({ navigation, route }) {
             </View>
           )}
 
-        </SafeAreaView>
+        </View>
       </Modal>
 
 
@@ -1856,12 +2116,12 @@ export default function AdminDashboard({ navigation, route }) {
         </View>
       </Modal>
 
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0 },
+  container: { flex: 1, backgroundColor: '#F9FAFB' },
   mainHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   mainHeaderTitle: { fontSize: 16, fontWeight: '900', color: '#111827', letterSpacing: 1 },
   emiHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20 },
@@ -1874,6 +2134,20 @@ const styles = StyleSheet.create({
   emiMetricLabel: { fontSize: 9, fontWeight: '800', color: '#6B7280', marginBottom: 4 },
   emiMetricValue: { fontSize: 22, fontWeight: '900', color: '#111827' },
   emiSectionLabel: { fontSize: 9, fontWeight: '800', color: '#6B7280', letterSpacing: 1.5, marginBottom: 12 },
+  staffCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    height: '100%',
+    justifyContent: 'center',
+  },
   emiCard: { backgroundColor: 'white', borderRadius: 16, padding: 16, marginBottom: 14, elevation: 3 },
   emiCardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   emiCardIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' },
@@ -1894,8 +2168,8 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '90%', backgroundColor: 'white', borderRadius: 16, padding: 20 },
   modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
-  input: { backgroundColor: '#F3F4F6', borderRadius: 8, padding: 12, marginBottom: 10, color: '#111827' },
-  inputLabel: { fontSize: 11, fontWeight: '700', color: '#4B5563', marginBottom: 6, marginTop: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  input: { backgroundColor: '#F8FAFC', borderRadius: 8, padding: 12, marginBottom: 10, color: '#0F172A', fontSize: 14, fontWeight: '600', borderWidth: 1, borderColor: '#CBD5E1' },
+  inputLabel: { fontSize: 12, fontWeight: '800', color: '#1E293B', marginBottom: 6, marginTop: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   confirmBtn: { backgroundColor: '#2563EB', padding: 12, borderRadius: 8, alignItems: 'center' },
   drawerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   drawerContent: { width: '75%', height: '100%', backgroundColor: 'white', padding: 20 },

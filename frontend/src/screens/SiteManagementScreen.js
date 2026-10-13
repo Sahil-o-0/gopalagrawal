@@ -1,9 +1,10 @@
 import React, { useState, useContext } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Modal, TextInput, ActivityIndicator, SafeAreaView, Alert, ScrollView,
+  Modal, TextInput, ActivityIndicator, Alert, ScrollView,
   StatusBar, Platform
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthContext } from '../context/AuthContext';
 import { useSite } from '../context/SiteContext';
 import ErrorCard from '../components/ErrorCard';
@@ -78,8 +79,11 @@ export default function SiteManagementScreen({ navigation }) {
     </View>
   );
 
+  const insets = useSafeAreaInsets();
+  const topPadding = Math.max(insets.top, Platform.OS === 'android' ? 36 : 20);
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={[styles.safe, { paddingTop: topPadding }]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       {/* Header */}
       <View style={styles.header}>
@@ -181,7 +185,7 @@ export default function SiteManagementScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -189,7 +193,6 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: '#F8FAFC',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
   },
   header: {
     flexDirection: 'row',

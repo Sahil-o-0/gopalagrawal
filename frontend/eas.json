@@ -10,7 +10,7 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "production",
       "android": {
         "buildType": "apk"
       },
@@ -18,7 +18,12 @@
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
       }
     },
-    "production": {}
+    "production": {
+      "channel": "production",
+      "android": {
+        "buildType": "apk"
+      }
+    }
   },
   "submit": {
     "production": {}

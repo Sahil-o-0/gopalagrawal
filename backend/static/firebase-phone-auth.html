@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Security Verification - Aadharshila</title>
+  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #F8FAFC;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 24px;
+      width: 100%;
+      max-width: 360px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      text-align: center;
+      border: 1px solid #E2E8F0;
+    }
+    h2 { color: #091426; font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+    p { color: #64748B; font-size: 13px; line-height: 1.4; margin-bottom: 16px; }
+    #recaptcha-container {
+      display: flex;
+      justify-content: center;
+      margin: 12px 0;
+      min-height: 78px;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      font-size: 13px;
+      color: #006C49;
+      font-weight: 600;
+      background: #E8F5E9;
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+    .error-text {
+      color: #DC2626;
+      font-size: 12px;
+      margin-top: 10px;
+      font-weight: 500;
+    }
+    .spinner {
+      border: 3px solid #E2E8F0;
+      border-top: 3px solid #006C49;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 0.8s linear infinite;
+      margin: 8px auto;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Admin OTP Verification</h2>
+    <p id="subtext">Performing security check to send cellular SMS to Admin...</p>
+    <div id="recaptcha-container"></div>
+    <div id="spinner" class="spinner"></div>
+    <div id="status" class="status-badge">Connecting...</div>
+    <div id="error" class="error-text"></div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBWikwx4W3Lzo9ZBkv6fzroWArNqWWvvi4",
+      authDomain: "gopal-agrawal-80aea.firebaseapp.com",
+      projectId: "gopal-agrawal-80aea",
+      storageBucket: "gopal-agrawal-80aea.firebasestorage.app",
+      messagingSenderId: "632140280981",
+      appId: "1:632140280981:android:3b7152b2b0478c58e7179c"
+    };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+
+    function notifyRN(msgObj) {
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(JSON.stringify(msgObj));
+      }
+    }
+
+    let confirmationResult = null;
+
+    function initVerifier() {
+      try {
+        window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+          'size': 'invisible',
+          'callback': function(response) {
+            document.getElementById('status').innerText = 'Security verified! Sending SMS...';
+          },
+          'expired-callback': function() {
+            document.getElementById('error').innerText = 'Verification expired. Please retry.';
+            notifyRN({ type: 'ERROR', message: 'reCAPTCHA expired' });
+          }
+        });
+        
+        window.recaptchaVerifier.render().then(function(widgetId) {
+          window.recaptchaWidgetId = widgetId;
+          document.getElementById('status').innerText = 'Ready';
+          notifyRN({ type: 'READY' });
+          
+          // Check if phone number was passed via query params
+          const urlParams = new URLSearchParams(window.location.search);
+          const autoPhone = urlParams.get('phone');
+          if (autoPhone) {
+            triggerSendSms(autoPhone);
+          }
+        });
+      } catch (err) {
+        document.getElementById('error').innerText = err.message;
+        notifyRN({ type: 'ERROR', message: err.message });
+      }
+    }
+
+    function triggerSendSms(rawPhone) {
+      let cleanPhone = rawPhone.trim();
+      if (!cleanPhone.startsWith('+')) {
+        cleanPhone = '+91' + cleanPhone.replace(/^0+/, '');
+      }
+      
+      document.getElementById('error').innerText = '';
+      document.getElementById('subtext').innerText = 'Sending SMS OTP to ' + cleanPhone + '...';
+      document.getElementById('status').innerText = 'Dispatching SMS...';
+      document.getElementById('spinner').style.display = 'block';
+
+      if (!window.recaptchaVerifier) {
+        initVerifier();
+      }
+
+      firebase.auth().signInWithPhoneNumber(cleanPhone, window.recaptchaVerifier)
+        .then(function(confirmation) {
+          confirmationResult = confirmation;
+          window.confirmationResult = confirmation;
+          document.getElementById('spinner').style.display = 'none';
+          document.getElementById('status').innerText = 'SMS Sent to Admin!';
+          notifyRN({ 
+            type: 'SMS_SENT', 
+            phoneNumber: cleanPhone, 
+            verificationId: confirmation.verificationId 
+          });
+
+          // Also register verification ID with backend session immediately
+          const urlParams = new URLSearchParams(window.location.search);
+          const currentSession = urlParams.get('session');
+          if (currentSession) {
+            fetch('/auth/register-firebase-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                otp_session: currentSession,
+                verification_id: confirmation.verificationId
+              })
+            }).catch(function(e) { console.log('Session register error:', e); });
+          }
+        })
+        .catch(function(error) {
+          document.getElementById('spinner').style.display = 'none';
+          document.getElementById('status').innerText = 'Admin alerted via push notification!';
+          document.getElementById('error').innerText = 'Push notification sent to Admin. You can close this and enter the OTP.';
+          if (window.grecaptcha && window.recaptchaWidgetId !== undefined) {
+            try { grecaptcha.reset(window.recaptchaWidgetId); } catch(e){}
+          }
+          notifyRN({ type: 'ERROR', message: error.message || 'Push alert sent to Admin', code: error.code || 'AUTH_NOTICE' });
+        });
+    }
+
+    function triggerConfirmCode(code) {
+      if (!confirmationResult && !window.confirmationResult) {
+        notifyRN({ type: 'ERROR', message: 'No active verification session.' });
+        return;
+      }
+      const activeConfirm = confirmationResult || window.confirmationResult;
+      document.getElementById('spinner').style.display = 'block';
+      document.getElementById('status').innerText = 'Validating code...';
+      
+      activeConfirm.confirm(code)
+        .then(function(result) {
+          document.getElementById('spinner').style.display = 'none';
+          document.getElementById('status').innerText = 'Code Verified!';
+          notifyRN({ 
+            type: 'VERIFY_SUCCESS', 
+            uid: result.user.uid,
+            phoneNumber: result.user.phoneNumber 
+          });
+        })
+        .catch(function(error) {
+          document.getElementById('spinner').style.display = 'none';
+          document.getElementById('error').innerText = error.message;
+          notifyRN({ type: 'VERIFY_ERROR', message: error.message, code: error.code });
+        });
+    }
+
+    window.addEventListener('message', function(event) {
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (data.action === 'SEND_SMS') {
+          triggerSendSms(data.phoneNumber);
+        } else if (data.action === 'CONFIRM_CODE') {
+          triggerConfirmCode(data.code);
+        }
+      } catch (e) {
+        console.error("Message parse error:", e);
+      }
+    });
+
+    window.onload = function() {
+      initVerifier();
+    };
+  </script>
+</body>
+</html>

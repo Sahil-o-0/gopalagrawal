@@ -42,6 +42,8 @@ class User(Base):
     employee_of = Column(String(50), default="DEPARTMENTAL") # DEPARTMENTAL or CONTRACTOR
     department = Column(String(100), nullable=True)
     employee_id_custom = Column(String(50), nullable=True)
+    assigned_vehicle = Column(String(255), nullable=True)
+    expo_push_token = Column(String(255), nullable=True)
 
     site = relationship("Site", backref="users")
 
@@ -52,6 +54,23 @@ class Designation(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), unique=True, index=True, nullable=False)
     category = Column(String(50), nullable=False, default="WORKER") # ADMIN, MANAGER, WORKER
+
+
+class LoginOTP(Base):
+    __tablename__ = "login_otps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String(64), unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    otp_code = Column(String(10), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    is_used = Column(Boolean, default=False, nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    ip_address = Column(String(50), nullable=True)
+    firebase_verification_id = Column(String(255), nullable=True)
+
+    user = relationship("User", backref="login_otps")
 
 
 

@@ -2,6 +2,12 @@
 *.db
 *.sqlite3
 *.pdf
+*.apk
+*.aab
+*.docx
+*.doc
+*firebase-adminsdk*.json
+*firebase_credentials*.json
 caveman/
 .agents/
 .pytest_cache/

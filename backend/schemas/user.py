@@ -31,9 +31,14 @@ class UserBase(BaseModel):
     employee_of: Optional[str] = "DEPARTMENTAL"
     department: Optional[str] = None
     employee_id_custom: Optional[str] = None
+    assigned_vehicle: Optional[str] = None
+    expo_push_token: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
+
+class PushTokenUpdate(BaseModel):
+    push_token: str
 
 class UserUpdate(BaseModel):
     username: Optional[str] = None
@@ -43,6 +48,7 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
     site_id: Optional[int] = None
+    expo_push_token: Optional[str] = None
 
     designation: Optional[str] = None
     profile_photo_url: Optional[str] = None
@@ -63,6 +69,7 @@ class UserUpdate(BaseModel):
     employee_of: Optional[str] = None
     department: Optional[str] = None
     employee_id_custom: Optional[str] = None
+    assigned_vehicle: Optional[str] = None
 
 class UserResponse(UserBase):
     id: int
@@ -73,9 +80,37 @@ class UserResponse(UserBase):
 
 
 class Token(BaseModel):
-    access_token: str
-    token_type: str
-    user: UserResponse
+    access_token: Optional[str] = None
+    token_type: Optional[str] = "bearer"
+    user: Optional[UserResponse] = None
+    require_otp: Optional[bool] = False
+    otp_session: Optional[str] = None
+    user_hint: Optional[str] = None
+    message: Optional[str] = None
+    admin_phones: Optional[list[str]] = None
+
+class OTPVerifyRequest(BaseModel):
+    otp_session: str
+    otp: str
+    verification_id: Optional[str] = None
+
+class FirebaseSessionRegister(BaseModel):
+    otp_session: str
+    verification_id: str
+
+class OTPResendRequest(BaseModel):
+    otp_session: str
+
+class PendingOTPResponse(BaseModel):
+    id: int
+    session_id: str
+    username: str
+    full_name: Optional[str] = None
+    role: str
+    otp_code: str
+    created_at: datetime.datetime
+    expires_at: datetime.datetime
+    is_used: bool
 
 class TokenData(BaseModel):
     username: str | None = None

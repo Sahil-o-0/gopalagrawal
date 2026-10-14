@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import models
 from database import engine, Base
-from routers import auth, trip, workforce, site, reports
+from routers import auth, trip, workforce, site, reports, client
 from services.push_service import send_scheduled_compliance_push_notifications
 
 # Create the database tables
@@ -71,6 +71,7 @@ app.include_router(auth.router)
 app.include_router(trip.router)
 app.include_router(workforce.router)
 app.include_router(reports.router)
+app.include_router(client.router)
 
 
 import os

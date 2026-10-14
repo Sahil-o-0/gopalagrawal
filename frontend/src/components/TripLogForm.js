@@ -830,25 +830,33 @@ const styles = StyleSheet.create({
     routeInput: { flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '600' },
     routeConnectLine: { width: 2, height: 10, backgroundColor: '#CBD5E1', marginLeft: 15, marginVertical: 2 },
 
-    rowGrid: { flexDirection: 'row', gap: 12 },
+    rowGrid: { flexDirection: 'row', gap: 10 },
 
-    photoGrid: { flexDirection: 'row', gap: 10, justifyContent: 'space-between' },
-    photoBox: { flex: 1, alignItems: 'center' },
+    photoGrid: { 
+        flexDirection: 'row', 
+        flexWrap: 'wrap', 
+        justifyContent: 'space-between',
+        rowGap: 14 
+    },
+    photoBox: { 
+        width: '48%', 
+        alignItems: 'center' 
+    },
     photoPlaceholder: {
         width: '100%',
-        aspectRatio: 1,
+        height: 84,
         backgroundColor: '#F8FAFC',
         borderRadius: 10,
-        borderWidth: 1,
+        borderWidth: 1.5,
         borderColor: '#E2E8F0',
         borderStyle: 'dashed',
         justifyContent: 'center',
         alignItems: 'center',
         gap: 4
     },
-    photoPlaceholderText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
-    photoImg: { width: '100%', aspectRatio: 1, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-    photoLabel: { fontSize: 10, fontWeight: '700', color: '#64748B', marginTop: 4, textAlign: 'center' },
+    photoPlaceholderText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+    photoImg: { width: '100%', height: 84, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+    photoLabel: { fontSize: 11, fontWeight: '700', color: '#475569', marginTop: 4, textAlign: 'center' },
 
     actionRow: { flexDirection: 'row', gap: 12, marginTop: 6, alignItems: 'center' },
     clearBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', backgroundColor: '#FFFFFF' },

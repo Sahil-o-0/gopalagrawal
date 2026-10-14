@@ -70,30 +70,114 @@ export default function DailyLedgerScreen({ navigation }) {
     // Client Dropdown Picker and Search States
     const [clientSearchText, setClientSearchText] = useState('');
     const [isClientPickerVisible, setIsClientPickerVisible] = useState(false);
+    const [isClientArrangeMode, setIsClientArrangeMode] = useState(false);
+    const [clientLoading, setClientLoading] = useState(false);
 
     useEffect(() => {
         loadClientKhata();
-    }, []);
+    }, [userToken, selectedSite?.id]);
 
     const loadClientKhata = async () => {
         try {
+            setClientLoading(true);
+            // 1. Instant load from local cache for immediate display
             const storedClients = await AsyncStorage.getItem(CLIENTS_STORAGE_KEY);
             const storedTxns = await AsyncStorage.getItem(CLIENTS_TXN_STORAGE_KEY);
             if (storedClients) {
-                setClients(JSON.parse(storedClients));
-            } else {
-                const initial = [
-                    { id: 'c1', name: 'Ultratech Cement Plant', phone: '9876543210', address: 'Raipur Plant Depot', opening_balance: 45000, created_at: new Date().toISOString() },
-                    { id: 'c2', name: 'Shree Balaji Builders', phone: '9827012345', address: 'Main Ring Road Site', opening_balance: 0, created_at: new Date().toISOString() }
-                ];
-                setClients(initial);
-                await AsyncStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(initial));
+                try { setClients(JSON.parse(storedClients)); } catch(e){}
             }
             if (storedTxns) {
-                setClientTransactions(JSON.parse(storedTxns));
+                try { setClientTransactions(JSON.parse(storedTxns)); } catch(e){}
+            }
+
+            // 2. Fetch fresh cloud data from backend API
+            if (userToken) {
+                const clientsUrl = `${API_BASE_URL}/clients/${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`;
+                const txnsUrl = `${API_BASE_URL}/clients/transactions/all`;
+
+                const [clientsRes, txnsRes] = await Promise.all([
+                    fetch(clientsUrl, { headers: { 'Authorization': `Bearer ${userToken}` } }),
+                    fetch(txnsUrl, { headers: { 'Authorization': `Bearer ${userToken}` } })
+                ]);
+
+                if (clientsRes.ok && txnsRes.ok) {
+                    const serverClients = await clientsRes.json();
+                    const serverTxns = await txnsRes.json();
+
+                    // If cloud DB is empty but client mobile has local accounts (e.g. 19,01,092 data!),
+                    // auto-migrate local data to cloud so all mobiles stay synced!
+                    if (serverClients.length === 0 && storedClients) {
+                        try {
+                            const localClients = JSON.parse(storedClients);
+                            const localTxns = storedTxns ? JSON.parse(storedTxns) : [];
+                            if (localClients.length > 0) {
+                                for (const lc of localClients) {
+                                    const postRes = await fetch(`${API_BASE_URL}/clients/`, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'Authorization': `Bearer ${userToken}`
+                                        },
+                                        body: JSON.stringify({
+                                            name: lc.name,
+                                            phone: lc.phone || null,
+                                            address: lc.address || null,
+                                            opening_balance: parseFloat(lc.opening_balance) || 0,
+                                            site_id: selectedSite?.id || null
+                                        })
+                                    });
+                                    if (postRes.ok) {
+                                        const createdC = await postRes.json();
+                                        const matchingTxns = localTxns.filter(t => String(t.client_id) === String(lc.id));
+                                        for (const lt of matchingTxns) {
+                                            await fetch(`${API_BASE_URL}/clients/transactions`, {
+                                                method: 'POST',
+                                                headers: {
+                                                    'Content-Type': 'application/json',
+                                                    'Authorization': `Bearer ${userToken}`
+                                                },
+                                                body: JSON.stringify({
+                                                    client_id: createdC.id,
+                                                    txn_type: lt.type || lt.txn_type || 'BILLED',
+                                                    amount: parseFloat(lt.amount) || 0,
+                                                    date: lt.date || new Date().toISOString().split('T')[0],
+                                                    payment_mode: lt.payment_mode || 'CASH',
+                                                    notes: lt.notes || null
+                                                })
+                                            });
+                                        }
+                                    }
+                                }
+                                const [freshC, freshT] = await Promise.all([
+                                    fetch(clientsUrl, { headers: { 'Authorization': `Bearer ${userToken}` } }),
+                                    fetch(txnsUrl, { headers: { 'Authorization': `Bearer ${userToken}` } })
+                                ]);
+                                if (freshC.ok && freshT.ok) {
+                                    const fc = await freshC.json();
+                                    const ft = await freshT.json();
+                                    setClients(fc);
+                                    setClientTransactions(ft);
+                                    await AsyncStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(fc));
+                                    await AsyncStorage.setItem(CLIENTS_TXN_STORAGE_KEY, JSON.stringify(ft));
+                                    setClientLoading(false);
+                                    return;
+                                }
+                            }
+                        } catch (migErr) {
+                            console.log('Migration error:', migErr);
+                        }
+                    }
+
+                    setClients(serverClients);
+                    setClientTransactions(serverTxns);
+                    await AsyncStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(serverClients));
+                    await AsyncStorage.setItem(CLIENTS_TXN_STORAGE_KEY, JSON.stringify(serverTxns));
+                }
             }
         } catch (e) {
             console.log('Error loading client khata:', e);
+        } finally {
+            setClientLoading(false);
         }
     };
 
@@ -107,27 +191,82 @@ export default function DailyLedgerScreen({ navigation }) {
         await AsyncStorage.setItem(CLIENTS_TXN_STORAGE_KEY, JSON.stringify(updated));
     };
 
+    const handleReorderClients = async (reordered) => {
+        setClients(reordered);
+        await AsyncStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(reordered));
+        if (userToken && isOnline) {
+            try {
+                await fetch(`${API_BASE_URL}/clients/reorder`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${userToken}`
+                    },
+                    body: JSON.stringify({
+                        orders: reordered.map((c, idx) => ({ id: c.id, display_order: idx }))
+                    })
+                });
+            } catch (err) {
+                console.log('Error syncing client reorder:', err);
+            }
+        }
+    };
+
     const handleAddClient = async () => {
         if (!newClientName.trim()) {
             Alert.alert('Missing Name', 'Please enter client or company name.');
             return;
         }
-        const newClient = {
-            id: Date.now().toString(),
+
+        const payload = {
             name: newClientName.trim(),
-            phone: newClientPhone.trim(),
-            address: newClientAddress.trim(),
+            phone: newClientPhone.trim() || null,
+            address: newClientAddress.trim() || null,
             opening_balance: parseFloat(newClientOpeningBalance) || 0,
+            site_id: selectedSite?.id || null
+        };
+
+        try {
+            if (userToken && isOnline) {
+                const res = await fetch(`${API_BASE_URL}/clients/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${userToken}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    const createdClient = await res.json();
+                    const updated = [createdClient, ...clients];
+                    await saveClientsToStorage(updated);
+                    setNewClientName('');
+                    setNewClientPhone('');
+                    setNewClientAddress('');
+                    setNewClientOpeningBalance('');
+                    setIsAddClientModalVisible(false);
+                    Alert.alert('Client Added', `Client "${createdClient.name}" added to cloud Khatabook.`);
+                    return;
+                }
+            }
+        } catch (err) {
+            console.log('Cloud client create error:', err);
+        }
+
+        // Offline fallback
+        const localClient = {
+            id: Date.now(),
+            ...payload,
             created_at: new Date().toISOString()
         };
-        const updated = [newClient, ...clients];
+        const updated = [localClient, ...clients];
         await saveClientsToStorage(updated);
         setNewClientName('');
         setNewClientPhone('');
         setNewClientAddress('');
         setNewClientOpeningBalance('');
         setIsAddClientModalVisible(false);
-        Alert.alert('Client Added', 'Client "' + newClient.name + '" added to Khatabook.');
+        Alert.alert('Client Added', `Client "${localClient.name}" added.`);
     };
 
     const handleCall = (phoneNumber) => {
@@ -157,14 +296,34 @@ export default function DailyLedgerScreen({ navigation }) {
             Alert.alert('Missing Name', 'Client name cannot be empty.');
             return;
         }
+
+        const updatePayload = {
+            name: editClientName.trim(),
+            phone: editClientPhone.trim() || null,
+            address: editClientAddress.trim() || null,
+            opening_balance: parseFloat(editClientOpeningBalance) || 0,
+        };
+
+        try {
+            if (userToken && isOnline && clientToEdit.id) {
+                await fetch(`${API_BASE_URL}/clients/${clientToEdit.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${userToken}`
+                    },
+                    body: JSON.stringify(updatePayload)
+                });
+            }
+        } catch (err) {
+            console.log('Cloud client edit error:', err);
+        }
+
         const updated = clients.map(c => {
             if (c.id === clientToEdit.id) {
                 return {
                     ...c,
-                    name: editClientName.trim(),
-                    phone: editClientPhone.trim(),
-                    address: editClientAddress.trim(),
-                    opening_balance: parseFloat(editClientOpeningBalance) || 0,
+                    ...updatePayload
                 };
             }
             return c;
@@ -185,8 +344,19 @@ export default function DailyLedgerScreen({ navigation }) {
                     text: 'Delete Permanently',
                     style: 'destructive',
                     onPress: async () => {
+                        try {
+                            if (userToken && isOnline && client.id) {
+                                await fetch(`${API_BASE_URL}/clients/${client.id}`, {
+                                    method: 'DELETE',
+                                    headers: { 'Authorization': `Bearer ${userToken}` }
+                                });
+                            }
+                        } catch (err) {
+                            console.log('Cloud client delete error:', err);
+                        }
+
                         const updatedClients = clients.filter(c => c.id !== client.id);
-                        const updatedTxns = clientTransactions.filter(t => t.client_id !== client.id);
+                        const updatedTxns = clientTransactions.filter(t => String(t.client_id) !== String(client.id));
                         await saveClientsToStorage(updatedClients);
                         await saveTxnsToStorage(updatedTxns);
                         if (selectedClientForStatement?.id === client.id) {
@@ -200,9 +370,9 @@ export default function DailyLedgerScreen({ navigation }) {
     };
 
     const openEditTxnModal = (txn, client) => {
-        setSelectedClientForTxn(client || clients.find(c => c.id === txn.client_id));
+        setSelectedClientForTxn(client || clients.find(c => String(c.id) === String(txn.client_id)));
         setEditingClientTxn(txn);
-        setClientTxnType(txn.type || 'BILLED');
+        setClientTxnType(txn.type || txn.txn_type || 'BILLED');
         setClientTxnAmount(String(txn.amount || ''));
         setClientTxnDate(txn.date ? new Date(txn.date) : new Date());
         setClientTxnMode(txn.payment_mode || 'CASH');
@@ -222,14 +392,40 @@ export default function DailyLedgerScreen({ navigation }) {
             return;
         }
 
+        const dateStr = clientTxnDate.toISOString().split('T')[0];
+
         if (editingClientTxn) {
+            const editPayload = {
+                txn_type: clientTxnType,
+                amount: amt,
+                date: dateStr,
+                payment_mode: clientTxnMode,
+                notes: clientTxnNotes.trim() || null,
+            };
+
+            try {
+                if (userToken && isOnline && editingClientTxn.id) {
+                    await fetch(`${API_BASE_URL}/clients/transactions/${editingClientTxn.id}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${userToken}`
+                        },
+                        body: JSON.stringify(editPayload)
+                    });
+                }
+            } catch (err) {
+                console.log('Cloud txn edit error:', err);
+            }
+
             const updatedTxns = clientTransactions.map(t => {
                 if (t.id === editingClientTxn.id) {
                     return {
                         ...t,
                         type: clientTxnType,
+                        txn_type: clientTxnType,
                         amount: amt,
-                        date: clientTxnDate.toISOString().split('T')[0],
+                        date: dateStr,
                         payment_mode: clientTxnMode,
                         notes: clientTxnNotes.trim(),
                     };
@@ -245,16 +441,45 @@ export default function DailyLedgerScreen({ navigation }) {
             return;
         }
 
-        const newTxn = {
-            id: Date.now().toString(),
+        const createPayload = {
+            client_id: selectedClientForTxn.id,
+            txn_type: clientTxnType,
+            amount: amt,
+            date: dateStr,
+            payment_mode: clientTxnMode,
+            notes: clientTxnNotes.trim() || null,
+        };
+
+        let newTxn = {
+            id: Date.now(),
             client_id: selectedClientForTxn.id,
             type: clientTxnType,
+            txn_type: clientTxnType,
             amount: amt,
-            date: clientTxnDate.toISOString().split('T')[0],
+            date: dateStr,
             payment_mode: clientTxnMode,
             notes: clientTxnNotes.trim(),
             created_at: new Date().toISOString()
         };
+
+        try {
+            if (userToken && isOnline) {
+                const res = await fetch(`${API_BASE_URL}/clients/transactions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${userToken}`
+                    },
+                    body: JSON.stringify(createPayload)
+                });
+                if (res.ok) {
+                    const serverTxn = await res.json();
+                    newTxn = { ...serverTxn, type: serverTxn.txn_type };
+                }
+            }
+        } catch (err) {
+            console.log('Cloud txn create error:', err);
+        }
 
         const updatedTxns = [newTxn, ...clientTransactions];
         await saveTxnsToStorage(updatedTxns);
@@ -265,7 +490,7 @@ export default function DailyLedgerScreen({ navigation }) {
                 category: 'CLIENT_PAYMENT',
                 amount: amt,
                 description: 'Payment from ' + selectedClientForTxn.name + ' (' + clientTxnMode + ')' + (clientTxnNotes ? ': ' + clientTxnNotes : ''),
-                date: clientTxnDate.toISOString().split('T')[0],
+                date: dateStr,
                 site_id: selectedSite?.id || 1
             };
             try {
@@ -300,6 +525,16 @@ export default function DailyLedgerScreen({ navigation }) {
                 text: 'Delete',
                 style: 'destructive',
                 onPress: async () => {
+                    try {
+                        if (userToken && isOnline) {
+                            await fetch(`${API_BASE_URL}/clients/transactions/${txnId}`, {
+                                method: 'DELETE',
+                                headers: { 'Authorization': `Bearer ${userToken}` }
+                            });
+                        }
+                    } catch (err) {
+                        console.log('Cloud txn delete error:', err);
+                    }
                     const updated = clientTransactions.filter(t => t.id !== txnId);
                     await saveTxnsToStorage(updated);
                 }
@@ -308,9 +543,9 @@ export default function DailyLedgerScreen({ navigation }) {
     };
 
     const getClientMetrics = (clientId, openingBal = 0) => {
-        const txns = clientTransactions.filter(t => t.client_id === clientId);
-        const billed = txns.filter(t => t.type === 'BILLED').reduce((s, t) => s + (t.amount || 0), 0) + (openingBal || 0);
-        const received = txns.filter(t => t.type === 'RECEIVED' || t.type === 'ADVANCE').reduce((s, t) => s + (t.amount || 0), 0);
+        const txns = clientTransactions.filter(t => String(t.client_id) === String(clientId));
+        const billed = txns.filter(t => t.type === 'BILLED' || t.txn_type === 'BILLED').reduce((s, t) => s + (t.amount || 0), 0) + (parseFloat(openingBal) || 0);
+        const received = txns.filter(t => t.type === 'RECEIVED' || t.txn_type === 'RECEIVED' || t.type === 'ADVANCE' || t.txn_type === 'ADVANCE').reduce((s, t) => s + (t.amount || 0), 0);
         const pending = billed - received;
         return { billed, received, pending, txnsCount: txns.length };
     };
@@ -1102,6 +1337,22 @@ export default function DailyLedgerScreen({ navigation }) {
                             </View>
                         </View>
 
+                        {/* Arrange / Reorder Bar */}
+                        {filteredClients.length > 1 && (
+                            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 }}>
+                                <TouchableOpacity 
+                                    style={[styles.reorderToggleBtn, isClientArrangeMode && styles.reorderToggleBtnActive]} 
+                                    onPress={() => setIsClientArrangeMode(!isClientArrangeMode)}
+                                    activeOpacity={0.8}
+                                >
+                                    <MaterialCommunityIcons name={isClientArrangeMode ? "check-circle" : "swap-vertical"} size={16} color={isClientArrangeMode ? "#FFFFFF" : "#2563EB"} />
+                                    <Text style={[styles.reorderToggleBtnText, isClientArrangeMode && { color: "#FFFFFF" }]}>
+                                        {isClientArrangeMode ? "Done Arranging" : "Arrange Order"}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
                         {/* Client Cards List */}
                         {filteredClients.length === 0 ? (
                             <View style={styles.emptyContainer}>
@@ -1109,140 +1360,154 @@ export default function DailyLedgerScreen({ navigation }) {
                                 <Text style={styles.emptyTitle}>No Clients Found</Text>
                                 <Text style={styles.emptySub}>Add a new client to start tracking their Khatabook ledger.</Text>
                             </View>
-                        ) : (
+                        ) : isClientArrangeMode ? (
                             <DraggableCardList
                                 items={filteredClients}
-                                itemHeight={225}
-                                gap={12}
+                                itemHeight={64}
+                                gap={8}
                                 paddingHorizontal={0}
                                 storageKey="@fleet_client_khata_clients_order_v2"
                                 scrollViewRef={clientScrollViewRef}
                                 scrollYRef={clientScrollYRef}
-                                dragHint="Hold & drag card to arrange order"
-                                onOrderChange={(reordered) => saveClientsToStorage(reordered)}
-                                renderItem={(c) => {
-                                    const metrics = getClientMetrics(c.id, c.opening_balance);
-                                    const isDue = metrics.pending > 0;
-                                    const isAdv = metrics.pending < 0;
-                                    return (
-                                        <View key={c.id} style={styles.clientCard}>
-                                            {/* Top Row: Full Client Name with Drag Indicator & Action Icons */}
-                                            <View style={styles.clientCardHeader}>
-                                                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginRight: 8 }}>
-                                                    <MaterialCommunityIcons name="drag-horizontal-variant" size={18} color="#94A3B8" style={{ marginTop: 2 }} />
-                                                    <Text style={styles.clientCardName}>{c.name}</Text>
-                                                </View>
-
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                    <TouchableOpacity 
-                                                        style={styles.clientIconBtn}
-                                                        onPress={() => openEditClientModal(c)}
-                                                        hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                                                    >
-                                                        <MaterialCommunityIcons name="pencil-outline" size={16} color="#475569" />
-                                                    </TouchableOpacity>
-
-                                                    <TouchableOpacity 
-                                                        style={[styles.clientIconBtn, { backgroundColor: '#FEE2E2' }]}
-                                                        onPress={() => handleDeleteClient(c)}
-                                                        hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                                                    >
-                                                        <MaterialCommunityIcons name="trash-can-outline" size={16} color="#DC2626" />
-                                                    </TouchableOpacity>
-                                                </View>
+                                dragHint="Hold & drag row to arrange order"
+                                onOrderChange={(reordered) => handleReorderClients(reordered)}
+                                renderItem={(c) => (
+                                    <View style={styles.reorderCompactCard}>
+                                        <MaterialCommunityIcons name="drag-horizontal-variant" size={22} color="#64748B" style={{ marginRight: 10 }} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }} numberOfLines={1}>
+                                                {c.name}
+                                            </Text>
+                                            <Text style={{ fontSize: 11, color: '#64748B' }} numberOfLines={1}>
+                                                {c.phone ? `📞 ${c.phone}` : 'No Phone'} {c.address ? `• 📍 ${c.address}` : ''}
+                                            </Text>
+                                        </View>
+                                        <MaterialCommunityIcons name="chevron-right" size={18} color="#94A3B8" />
+                                    </View>
+                                )}
+                            />
+                        ) : (
+                            filteredClients.map((c) => {
+                                const metrics = getClientMetrics(c.id, c.opening_balance);
+                                const isDue = metrics.pending > 0;
+                                const isAdv = metrics.pending < 0;
+                                return (
+                                    <View key={c.id} style={styles.clientCardFluid}>
+                                        {/* Top Row: Full Client Name with Action Icons */}
+                                        <View style={styles.clientCardHeader}>
+                                            <View style={{ flex: 1, marginRight: 8 }}>
+                                                <Text style={styles.clientCardName}>{c.name}</Text>
                                             </View>
 
-                                            {/* Sub Row: Phone Dialer Chip, Address & Net Balance Badge */}
-                                            <View style={styles.clientSubRow}>
-                                                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 8 }}>
-                                                    {c.phone ? (
-                                                        <TouchableOpacity 
-                                                            style={styles.phoneChip}
-                                                            onPress={() => handleCall(c.phone)}
-                                                            activeOpacity={0.7}
-                                                        >
-                                                            <MaterialCommunityIcons name="phone" size={12} color="#2563EB" />
-                                                            <Text style={styles.phoneChipText}>{c.phone}</Text>
-                                                        </TouchableOpacity>
-                                                    ) : (
-                                                        <Text style={styles.clientCardSub}>No Phone</Text>
-                                                    )}
-                                                    {c.address ? (
-                                                        <View style={styles.addressChip}>
-                                                            <MaterialCommunityIcons name="map-marker-outline" size={12} color="#64748B" />
-                                                            <Text style={styles.addressChipText} numberOfLines={1}>{c.address}</Text>
-                                                        </View>
-                                                    ) : null}
-                                                </View>
-
-                                                <View style={[styles.clientBalanceBadge, isDue ? styles.clientBalanceDue : isAdv ? styles.clientBalanceAdv : styles.clientBalanceZero]}>
-                                                    <Text style={styles.clientBalanceLabel}>NET BALANCE</Text>
-                                                    <Text style={[styles.clientBalanceVal, isDue ? { color: '#DC2626' } : isAdv ? { color: '#16A34A' } : { color: '#475569' }]} numberOfLines={1}>
-                                                        {isDue ? '₹' + metrics.pending.toLocaleString() + ' Due' : isAdv ? '₹' + Math.abs(metrics.pending).toLocaleString() + ' Adv' : '₹0 Settled'}
-                                                    </Text>
-                                                </View>
-                                            </View>
-
-                                            {/* Stats Row */}
-                                            <View style={styles.clientStatsRow}>
-                                                <View style={styles.clientStatCol}>
-                                                    <Text style={styles.clientStatLabel}>Total Billed</Text>
-                                                    <Text style={styles.clientStatVal} numberOfLines={1}>₹{metrics.billed.toLocaleString()}</Text>
-                                                </View>
-                                                <View style={styles.clientStatDivider} />
-                                                <View style={styles.clientStatCol}>
-                                                    <Text style={styles.clientStatLabel}>Received</Text>
-                                                    <Text style={[styles.clientStatVal, { color: '#059669' }]} numberOfLines={1}>₹{metrics.received.toLocaleString()}</Text>
-                                                </View>
-                                                <View style={styles.clientStatDivider} />
-                                                <View style={styles.clientStatCol}>
-                                                    <Text style={styles.clientStatLabel}>Entries</Text>
-                                                    <Text style={styles.clientStatVal}>{metrics.txnsCount}</Text>
-                                                </View>
-                                            </View>
-
-                                            {/* Action Buttons Row */}
-                                            <View style={styles.clientActionRow}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                                 <TouchableOpacity 
-                                                    style={styles.clientPassbookBtn}
-                                                    onPress={() => {
-                                                        setSelectedClientForStatement(c);
-                                                        setIsClientStatementModalVisible(true);
-                                                    }}
-                                                    activeOpacity={0.8}
+                                                    style={styles.clientIconBtn}
+                                                    onPress={() => openEditClientModal(c)}
+                                                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                                                 >
-                                                    <MaterialCommunityIcons name="book-open-outline" size={14} color="#2563EB" />
-                                                    <Text style={styles.clientPassbookBtnText}>Passbook</Text>
+                                                    <MaterialCommunityIcons name="pencil-outline" size={16} color="#475569" />
                                                 </TouchableOpacity>
 
                                                 <TouchableOpacity 
-                                                    style={styles.clientEntryBtn}
-                                                    onPress={() => {
-                                                        setSelectedClientForTxn(c);
-                                                        setEditingClientTxn(null);
-                                                        setClientTxnAmount('');
-                                                        setClientTxnNotes('');
-                                                        setIsClientTxnModalVisible(true);
-                                                    }}
-                                                    activeOpacity={0.8}
+                                                    style={[styles.clientIconBtn, { backgroundColor: '#FEE2E2' }]}
+                                                    onPress={() => handleDeleteClient(c)}
+                                                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                                                 >
-                                                    <MaterialCommunityIcons name="plus-circle" size={14} color="#FFFFFF" />
-                                                    <Text style={styles.clientEntryBtnText}>+ Entry</Text>
-                                                </TouchableOpacity>
-
-                                                <TouchableOpacity 
-                                                    style={styles.clientPdfBtn}
-                                                    onPress={() => exportClientPdf(c)}
-                                                    activeOpacity={0.8}
-                                                >
-                                                    <MaterialCommunityIcons name="file-pdf-box" size={16} color="#DC2626" />
-                                                    <Text style={styles.clientPdfBtnText}>PDF</Text>
+                                                    <MaterialCommunityIcons name="trash-can-outline" size={16} color="#DC2626" />
                                                 </TouchableOpacity>
                                             </View>
                                         </View>
-                                    );
-                                }}
-                            />
+
+                                        {/* Sub Row: Phone Dialer Chip, Address & Net Balance Badge */}
+                                        <View style={styles.clientSubRow}>
+                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 8 }}>
+                                                {c.phone ? (
+                                                    <TouchableOpacity 
+                                                        style={styles.phoneChip}
+                                                        onPress={() => handleCall(c.phone)}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <MaterialCommunityIcons name="phone" size={12} color="#2563EB" />
+                                                        <Text style={styles.phoneChipText}>{c.phone}</Text>
+                                                    </TouchableOpacity>
+                                                ) : (
+                                                    <Text style={styles.clientCardSub}>No Phone</Text>
+                                                )}
+                                                {c.address ? (
+                                                    <View style={styles.addressChip}>
+                                                        <MaterialCommunityIcons name="map-marker-outline" size={12} color="#64748B" />
+                                                        <Text style={styles.addressChipText} numberOfLines={1}>{c.address}</Text>
+                                                    </View>
+                                                ) : null}
+                                            </View>
+
+                                            <View style={[styles.clientBalanceBadge, isDue ? styles.clientBalanceDue : isAdv ? styles.clientBalanceAdv : styles.clientBalanceZero]}>
+                                                <Text style={styles.clientBalanceLabel}>NET BALANCE</Text>
+                                                <Text style={[styles.clientBalanceVal, isDue ? { color: '#DC2626' } : isAdv ? { color: '#16A34A' } : { color: '#475569' }]} numberOfLines={1}>
+                                                    {isDue ? '₹' + metrics.pending.toLocaleString() + ' Due' : isAdv ? '₹' + Math.abs(metrics.pending).toLocaleString() + ' Adv' : '₹0 Settled'}
+                                                </Text>
+                                            </View>
+                                        </View>
+
+                                        {/* Stats Row */}
+                                        <View style={styles.clientStatsRow}>
+                                            <View style={styles.clientStatCol}>
+                                                <Text style={styles.clientStatLabel}>Total Billed</Text>
+                                                <Text style={styles.clientStatVal} numberOfLines={1}>₹{metrics.billed.toLocaleString()}</Text>
+                                            </View>
+                                            <View style={styles.clientStatDivider} />
+                                            <View style={styles.clientStatCol}>
+                                                <Text style={styles.clientStatLabel}>Received</Text>
+                                                <Text style={[styles.clientStatVal, { color: '#059669' }]} numberOfLines={1}>₹{metrics.received.toLocaleString()}</Text>
+                                            </View>
+                                            <View style={styles.clientStatDivider} />
+                                            <View style={styles.clientStatCol}>
+                                                <Text style={styles.clientStatLabel}>Entries</Text>
+                                                <Text style={styles.clientStatVal}>{metrics.txnsCount}</Text>
+                                            </View>
+                                        </View>
+
+                                        {/* Action Buttons Row */}
+                                        <View style={styles.clientActionRow}>
+                                            <TouchableOpacity 
+                                                style={styles.clientPassbookBtn}
+                                                onPress={() => {
+                                                    setSelectedClientForStatement(c);
+                                                    setIsClientStatementModalVisible(true);
+                                                }}
+                                                activeOpacity={0.8}
+                                            >
+                                                <MaterialCommunityIcons name="book-open-outline" size={14} color="#2563EB" />
+                                                <Text style={styles.clientPassbookBtnText}>Passbook</Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity 
+                                                style={styles.clientEntryBtn}
+                                                onPress={() => {
+                                                    setSelectedClientForTxn(c);
+                                                    setEditingClientTxn(null);
+                                                    setClientTxnAmount('');
+                                                    setClientTxnNotes('');
+                                                    setIsClientTxnModalVisible(true);
+                                                }}
+                                                activeOpacity={0.8}
+                                            >
+                                                <MaterialCommunityIcons name="plus-circle" size={14} color="#FFFFFF" />
+                                                <Text style={styles.clientEntryBtnText}>+ Entry</Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity 
+                                                style={styles.clientPdfBtn}
+                                                onPress={() => exportClientPdf(c)}
+                                                activeOpacity={0.8}
+                                            >
+                                                <MaterialCommunityIcons name="file-pdf-box" size={16} color="#DC2626" />
+                                                <Text style={styles.clientPdfBtnText}>PDF</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                );
+                            })
                         )}
                     </ScrollView>
                 </View>
@@ -1457,12 +1722,12 @@ export default function DailyLedgerScreen({ navigation }) {
                             </View>
 
                             <TouchableOpacity 
-                                style={[styles.submitBtn, { backgroundColor: '#0F172A' }]} 
+                                style={[styles.submitBtn, { backgroundColor: '#2563EB', marginTop: 18 }]} 
                                 onPress={handleAddClient} 
                                 activeOpacity={0.85}
                             >
-                                <MaterialCommunityIcons name="account-plus" size={18} color="#FFFFFF" />
-                                <Text style={styles.submitBtnText}>Save Client</Text>
+                                <MaterialCommunityIcons name="account-plus" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
+                                <Text style={[styles.submitBtnText, { color: '#FFFFFF', fontSize: 16, fontWeight: '800' }]}>Save Client</Text>
                             </TouchableOpacity>
                         </ScrollView>
                     </View>
@@ -1839,12 +2104,12 @@ export default function DailyLedgerScreen({ navigation }) {
                             </View>
 
                             <TouchableOpacity 
-                                style={[styles.submitBtn, { backgroundColor: '#0F172A' }]} 
+                                style={[styles.submitBtn, { backgroundColor: '#2563EB', marginTop: 18 }]} 
                                 onPress={handleSaveEditedClient} 
                                 activeOpacity={0.85}
                             >
-                                <MaterialCommunityIcons name="check-bold" size={18} color="#FFFFFF" />
-                                <Text style={styles.submitBtnText}>Save Changes</Text>
+                                <MaterialCommunityIcons name="check-bold" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
+                                <Text style={[styles.submitBtnText, { color: '#FFFFFF', fontSize: 16, fontWeight: '800' }]}>Save Changes</Text>
                             </TouchableOpacity>
                         </ScrollView>
                     </View>
@@ -2756,6 +3021,54 @@ const styles = StyleSheet.create({
         shadowRadius: 3,
         height: '100%',
         justifyContent: 'space-between',
+    },
+    clientCardFluid: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 14,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04,
+        shadowRadius: 3,
+        marginBottom: 12,
+    },
+    reorderToggleBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 8,
+        backgroundColor: '#EFF6FF',
+        borderWidth: 1,
+        borderColor: '#BFDBFE',
+    },
+    reorderToggleBtnActive: {
+        backgroundColor: '#2563EB',
+        borderColor: '#2563EB',
+    },
+    reorderToggleBtnText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#2563EB',
+    },
+    reorderCompactCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        height: 56,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 1,
     },
     clientCardHeader: {
         flexDirection: 'row',

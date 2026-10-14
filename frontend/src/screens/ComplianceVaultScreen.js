@@ -769,7 +769,7 @@ export default function ComplianceVaultScreen({ navigation }) {
           activeOpacity={0.8}
         >
           <Text style={styles.metricLabel}>TOTAL MONTHLY EMI</Text>
-          <Text style={styles.metricValue}>₹{totalMonthlyEmi.toLocaleString()}</Text>
+          <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit>₹{totalMonthlyEmi.toLocaleString()}</Text>
           <Text style={[styles.metricSub, activeFilter === 'EMI_DUE' && { color: '#2563EB', fontWeight: '800' }]}>
             {activeFilter === 'EMI_DUE' ? 'Filtering active (Tap to reset)' : `${records.length} Vehicles tracked`}
           </Text>

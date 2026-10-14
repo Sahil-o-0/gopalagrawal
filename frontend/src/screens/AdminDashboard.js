@@ -124,6 +124,7 @@ export default function AdminDashboard({ navigation, route }) {
   const [editRole, setEditRole] = useState('STAFF');
   const [editPassword, setEditPassword] = useState('');
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [isUserArrangeMode, setIsUserArrangeMode] = useState(false);
 
   // Edit States for EMI
   const [editingEmi, setEditingEmi] = useState(null);
@@ -1003,7 +1004,22 @@ export default function AdminDashboard({ navigation, route }) {
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={async () => { setIsRefreshing(true); await fetchData(); setIsRefreshing(false); }} />}
       >
          <View style={styles.emiHeader}>
-            <View><Text style={styles.emiHeaderLabel}>TEAM MANAGEMENT</Text><Text style={styles.emiHeaderTitle}>Staff & Managers</Text></View>
+            <View>
+              <Text style={styles.emiHeaderLabel}>TEAM MANAGEMENT</Text>
+              <Text style={styles.emiHeaderTitle}>Staff & Managers</Text>
+            </View>
+            {users.length > 1 && (
+              <TouchableOpacity 
+                style={[styles.reorderToggleBtn, isUserArrangeMode && styles.reorderToggleBtnActive]} 
+                onPress={() => setIsUserArrangeMode(!isUserArrangeMode)}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons name={isUserArrangeMode ? "check-circle" : "swap-vertical"} size={16} color={isUserArrangeMode ? "#FFFFFF" : "#2563EB"} />
+                <Text style={[styles.reorderToggleBtnText, isUserArrangeMode && { color: "#FFFFFF" }]}>
+                  {isUserArrangeMode ? "Done Arranging" : "Arrange Order"}
+                </Text>
+              </TouchableOpacity>
+            )}
          </View>
          {users.length === 0 ? (
            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
@@ -1011,114 +1027,137 @@ export default function AdminDashboard({ navigation, route }) {
              <Text style={{ fontSize: 16, fontWeight: '700', color: '#64748B', marginTop: 10 }}>No Staff Found</Text>
              <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>Add your first team member using the + button below.</Text>
            </View>
-         ) : (
+         ) : isUserArrangeMode ? (
            <DraggableCardList
              items={users}
-             itemHeight={160}
-             gap={12}
+             itemHeight={64}
+             gap={8}
              paddingHorizontal={0}
              storageKey="@admin_users_order_v1"
              scrollViewRef={usersScrollViewRef}
              scrollYRef={usersScrollYRef}
-             dragHint="Hold & drag staff card to arrange order"
+             dragHint="Hold & drag row to arrange staff order"
              onOrderChange={(reordered) => setUsers(reordered)}
-             renderItem={(u) => {
-               // Calculate current balance: dailyLedgerEntries filtered by u.id (staff_id) + u.opening_balance
-               const uLedgerEntries = dailyLedgerEntries.filter(e => e.staff_id === u.id);
-               const ledgerSum = uLedgerEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
-               const currentBalance = ledgerSum + (u.opening_balance || 0);
-               const site = sites.find(s => s.id === u.site_id);
-               const siteName = site ? site.name : 'No Site';
-               
-               // Format added/created date
-               const createdDate = u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A';
-               const createdBy = u.created_by || 'N/A';
-
-               return (
-                 <TouchableOpacity 
-                   key={`u-${u.id}`} 
-                   style={styles.staffCard} 
-                   activeOpacity={0.85}
-                   onPress={() => navigation.navigate('UserProfile', { userProfile: u, userToken, dailyLedgerEntries, sites })}
-                 >
-                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                     {/* Photo or fallback placeholder */}
-                     {u.profile_photo_url && typeof u.profile_photo_url === 'string' && u.profile_photo_url.trim().length > 0 ? (
-                       <Image 
-                         source={{ uri: u.profile_photo_url }} 
-                         style={{ width: 50, height: 50, borderRadius: 25, marginRight: 12, backgroundColor: '#E2E8F0', borderWidth: 1.5, borderColor: '#CBD5E1' }} 
-                         resizeMode="cover"
-                       />
-                     ) : (
-                       <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: u.role === 'MANAGER' ? '#DBEAFE' : '#D1FAE5', justifyContent: 'center', alignItems: 'center', marginRight: 12, borderWidth: 1.5, borderColor: u.role === 'MANAGER' ? '#BFDBFE' : '#A7F3D0' }}>
-                         <Text style={{ fontSize: 20 }}>{u.role === 'MANAGER' ? '👔' : '👤'}</Text>
-                       </View>
-                     )}
-                     
-                     <View style={{ flex: 1, marginRight: 6 }}>
-                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                         <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
-                           <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }} numberOfLines={1}>{u.full_name || u.username}</Text>
-                           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: u.is_active ? '#10B981' : '#F59E0B', marginLeft: 6 }} />
-                         </View>
-                         <MaterialCommunityIcons name="drag-horizontal-variant" size={18} color="#94A3B8" />
-                       </View>
-                       
-                       {/* User ID (Username) Badge & Role */}
-                       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
-                         <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                           <Text style={{ fontSize: 10, fontWeight: '800', color: '#334155' }}>User ID: {u.username}</Text>
-                         </View>
-                         <Text style={{ fontSize: 10, fontWeight: '600', color: '#64748B' }}>#{u.id}</Text>
-                         <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '600' }}>• {u.designation || u.role}</Text>
-                       </View>
-                       
-                       {/* Phone Dialer & Site */}
-                       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 3 }}>
-                         {u.phone_number ? (
-                           <TouchableOpacity
-                             onPress={() => {
-                               const clean = String(u.phone_number).replace(/[^0-9+]/g, '');
-                               if (clean) Linking.openURL(`tel:${clean}`);
-                             }}
-                             activeOpacity={0.7}
-                             style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
-                           >
-                             <MaterialCommunityIcons name="phone" size={12} color="#2563EB" />
-                             <Text style={{ fontSize: 11, color: '#2563EB', fontWeight: '700' }}>{u.phone_number}</Text>
-                           </TouchableOpacity>
-                         ) : (
-                           <Text style={{ fontSize: 11, color: '#94A3B8' }}>📞 N/A</Text>
-                         )}
-                         <Text style={{ fontSize: 11, color: '#64748B' }}>📍 {siteName}</Text>
-                       </View>
-
-                       {u.assigned_vehicle ? (
-                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
-                           {u.assigned_vehicle.split(',').map((v, idx) => (
-                             <View key={idx} style={{ backgroundColor: '#EFF6FF', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, borderWidth: 1, borderColor: '#BFDBFE' }}>
-                               <Text style={{ fontSize: 10, color: '#1D4ED8', fontWeight: '700' }}>🚛 {v.trim()}</Text>
-                             </View>
-                           ))}
-                         </View>
-                       ) : null}
-                       
-                       {/* Audit Trail */}
-                       <Text style={{ fontSize: 9.5, color: '#9CA3AF', marginTop: 3 }}>Add By: {createdBy} | {createdDate}</Text>
-                     </View>
-                     
-                     {/* Current Balance */}
-                     <View style={{ alignItems: 'flex-end', marginLeft: 4, alignSelf: 'center' }}>
-                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#6B7280', marginBottom: 2 }}>BALANCE</Text>
-                       <Text style={{ fontSize: 14, fontWeight: '900', color: currentBalance < 0 ? '#DC2626' : '#111827' }}>
-                         ₹{currentBalance.toLocaleString()}
-                       </Text>
-                     </View>
+             renderItem={(u) => (
+               <View style={styles.reorderCompactCard}>
+                 <MaterialCommunityIcons name="drag-horizontal-variant" size={22} color="#64748B" style={{ marginRight: 10 }} />
+                 {u.profile_photo_url && typeof u.profile_photo_url === 'string' && u.profile_photo_url.trim().length > 0 ? (
+                   <Image 
+                     source={{ uri: u.profile_photo_url }} 
+                     style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10, backgroundColor: '#E2E8F0' }} 
+                     resizeMode="cover"
+                   />
+                 ) : (
+                   <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: u.role === 'MANAGER' ? '#DBEAFE' : '#D1FAE5', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                     <Text style={{ fontSize: 16 }}>{u.role === 'MANAGER' ? '👔' : '👤'}</Text>
                    </View>
-                 </TouchableOpacity>
-               );
-             }}
+                 )}
+                 <View style={{ flex: 1 }}>
+                   <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }} numberOfLines={1}>
+                     {u.full_name || u.username}
+                   </Text>
+                   <Text style={{ fontSize: 11, color: '#64748B' }} numberOfLines={1}>
+                     {u.designation || u.role} • ID: {u.username}
+                   </Text>
+                 </View>
+                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: u.is_active ? '#10B981' : '#F59E0B' }} />
+               </View>
+             )}
            />
+         ) : (
+           users.map((u) => {
+             // Calculate current balance: dailyLedgerEntries filtered by u.id (staff_id) + u.opening_balance
+             const uLedgerEntries = dailyLedgerEntries.filter(e => e.staff_id === u.id);
+             const ledgerSum = uLedgerEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+             const currentBalance = ledgerSum + (u.opening_balance || 0);
+             const site = sites.find(s => s.id === u.site_id);
+             const siteName = site ? site.name : 'No Site';
+             
+             // Format added/created date
+             const createdDate = u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A';
+             const createdBy = u.created_by || 'N/A';
+
+             return (
+               <TouchableOpacity 
+                 key={`u-${u.id}`} 
+                 style={styles.staffCardFluid} 
+                 activeOpacity={0.85}
+                 onPress={() => navigation.navigate('UserProfile', { userProfile: u, userToken, dailyLedgerEntries, sites })}
+               >
+                 <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                   {/* Photo or fallback placeholder */}
+                   {u.profile_photo_url && typeof u.profile_photo_url === 'string' && u.profile_photo_url.trim().length > 0 ? (
+                     <Image 
+                       source={{ uri: u.profile_photo_url }} 
+                       style={{ width: 48, height: 48, borderRadius: 24, marginRight: 12, backgroundColor: '#E2E8F0', borderWidth: 1.5, borderColor: '#CBD5E1', marginTop: 2 }} 
+                       resizeMode="cover"
+                     />
+                   ) : (
+                     <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: u.role === 'MANAGER' ? '#DBEAFE' : '#D1FAE5', justifyContent: 'center', alignItems: 'center', marginRight: 12, borderWidth: 1.5, borderColor: u.role === 'MANAGER' ? '#BFDBFE' : '#A7F3D0', marginTop: 2 }}>
+                       <Text style={{ fontSize: 18 }}>{u.role === 'MANAGER' ? '👔' : '👤'}</Text>
+                     </View>
+                   )}
+                   
+                   <View style={{ flex: 1, marginRight: 8 }}>
+                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                       <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', marginRight: 6 }}>{u.full_name || u.username}</Text>
+                       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: u.is_active ? '#10B981' : '#F59E0B' }} />
+                     </View>
+                     
+                     {/* User ID (Username) Badge & Role */}
+                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                       <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                         <Text style={{ fontSize: 10, fontWeight: '800', color: '#334155' }}>User ID: {u.username}</Text>
+                       </View>
+                       <Text style={{ fontSize: 10, fontWeight: '600', color: '#64748B' }}>#{u.id}</Text>
+                       <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '600' }}>• {u.designation || u.role}</Text>
+                     </View>
+                     
+                     {/* Phone Dialer & Site */}
+                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                       {u.phone_number ? (
+                         <TouchableOpacity
+                           onPress={() => {
+                             const clean = String(u.phone_number).replace(/[^0-9+]/g, '');
+                             if (clean) Linking.openURL(`tel:${clean}`);
+                           }}
+                           activeOpacity={0.7}
+                           style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+                         >
+                           <MaterialCommunityIcons name="phone" size={12} color="#2563EB" />
+                           <Text style={{ fontSize: 11, color: '#2563EB', fontWeight: '700' }}>{u.phone_number}</Text>
+                         </TouchableOpacity>
+                       ) : (
+                         <Text style={{ fontSize: 11, color: '#94A3B8' }}>📞 N/A</Text>
+                       )}
+                       <Text style={{ fontSize: 11, color: '#64748B' }}>📍 {siteName}</Text>
+                     </View>
+
+                     {u.assigned_vehicle ? (
+                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                         {u.assigned_vehicle.split(',').map((v, idx) => (
+                           <View key={idx} style={{ backgroundColor: '#EFF6FF', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: '#BFDBFE' }}>
+                             <Text style={{ fontSize: 10, color: '#1D4ED8', fontWeight: '700' }}>🚛 {v.trim()}</Text>
+                           </View>
+                         ))}
+                       </View>
+                     ) : null}
+                     
+                     {/* Audit Trail */}
+                     <Text style={{ fontSize: 9.5, color: '#9CA3AF', marginTop: 4 }}>Add By: {createdBy} | {createdDate}</Text>
+                   </View>
+                   
+                   {/* Current Balance */}
+                   <View style={{ alignItems: 'flex-end', marginLeft: 4, alignSelf: 'flex-start' }}>
+                     <Text style={{ fontSize: 9, fontWeight: '800', color: '#6B7280', marginBottom: 2 }}>BALANCE</Text>
+                     <Text style={{ fontSize: 14, fontWeight: '900', color: currentBalance < 0 ? '#DC2626' : '#111827' }}>
+                       ₹{currentBalance.toLocaleString()}
+                     </Text>
+                   </View>
+                 </View>
+               </TouchableOpacity>
+             );
+           })
          )}
       </ScrollView>
       {/* Floating circular + New User button */}
@@ -1345,18 +1384,33 @@ export default function AdminDashboard({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.emiMetricsRow}>
-          <View style={[styles.emiMetricCard, {borderLeftColor: '#111827'}]}>
-            <Text style={styles.emiMetricLabel}>TOTAL MONTHLY</Text>
-            <Text style={styles.emiMetricValue}>₹{totalOutflow.toLocaleString()}</Text>
+        {/* Responsive EMI Metrics: 2 cards on top, 1 full-width on bottom */}
+        <View style={{ marginBottom: 20 }}>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+            <View style={[styles.emiMetricCard, { flex: 1, borderLeftColor: '#111827' }]}>
+              <Text style={styles.emiMetricLabel}>TOTAL MONTHLY</Text>
+              <Text style={styles.emiMetricValue} numberOfLines={1} adjustsFontSizeToFit>
+                ₹{totalOutflow.toLocaleString()}
+              </Text>
+            </View>
+            <View style={[styles.emiMetricCard, { flex: 1, borderLeftColor: '#DC2626' }]}>
+              <Text style={styles.emiMetricLabel}>DUE SOON</Text>
+              <Text style={[styles.emiMetricValue, { color: '#DC2626' }]} numberOfLines={1}>
+                {due7}
+              </Text>
+            </View>
           </View>
-          <View style={[styles.emiMetricCard, {borderLeftColor: '#DC2626'}]}>
-            <Text style={styles.emiMetricLabel}>DUE SOON</Text>
-            <Text style={[styles.emiMetricValue, {color: '#DC2626'}]}>{due7}</Text>
-          </View>
-          <View style={[styles.emiMetricCard, {borderLeftColor: '#D97706'}]}>
-            <Text style={styles.emiMetricLabel}>EXPIRING COMPLIANCE</Text>
-            <Text style={[styles.emiMetricValue, {color: '#D97706'}]}>{expiringCompliance}</Text>
+
+          <View style={[styles.emiMetricCard, { borderLeftColor: '#D97706', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={styles.emiMetricLabel}>EXPIRING COMPLIANCE</Text>
+              <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600', marginTop: 2 }}>
+                Insurance & Fitness within 15 days
+              </Text>
+            </View>
+            <Text style={[styles.emiMetricValue, { color: '#D97706' }]}>
+              {expiringCompliance}
+            </Text>
           </View>
         </View>
 
@@ -2148,6 +2202,54 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
   },
+  staffCardFluid: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    marginBottom: 10,
+  },
+  reorderToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  reorderToggleBtnActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  reorderToggleBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  reorderCompactCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    height: 56,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
   emiCard: { backgroundColor: 'white', borderRadius: 16, padding: 16, marginBottom: 14, elevation: 3 },
   emiCardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   emiCardIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' },
@@ -2160,7 +2262,7 @@ const styles = StyleSheet.create({
   emiCardAmountLabel: { fontSize: 9, fontWeight: '800', color: '#9CA3AF' },
   emiCardAmount: { fontSize: 18, fontWeight: '900' },
   emiCardDueDate: { fontSize: 14, fontWeight: '700' },
-  emiCardActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  emiCardActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   emiMarkPaidBtn: { backgroundColor: '#059669', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
   emiMarkPaidText: { color: 'white', fontWeight: '800', fontSize: 13 },
   emiIconBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' },

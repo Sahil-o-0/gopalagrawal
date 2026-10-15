@@ -67,6 +67,27 @@ export default function DailyLedgerScreen({ navigation }) {
     const [isClientStatementModalVisible, setIsClientStatementModalVisible] = useState(false);
     const [selectedClientForStatement, setSelectedClientForStatement] = useState(null);
 
+    // Client Khata Stats Filter State ('ALL' | 'DUE' | 'ADVANCE' | 'SETTLED')
+    const [clientKhataFilter, setClientKhataFilter] = useState('ALL');
+
+    // Date-Wise Report (matching khatabahi.jpeg) States
+    const [reportStartDate, setReportStartDate] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 13);
+        return d;
+    });
+    const [reportEndDate, setReportEndDate] = useState(new Date());
+    const [showReportStartDatePicker, setShowReportStartDatePicker] = useState(false);
+    const [showReportEndDatePicker, setShowReportEndDatePicker] = useState(false);
+    const [isReportFilterModalVisible, setIsReportFilterModalVisible] = useState(false);
+    const [reportPartyFilter, setReportPartyFilter] = useState('ALL');
+    const [reportExpandedDate, setReportExpandedDate] = useState(null);
+
+    // Export Action Sheet Modal States
+    const [isExportModalVisible, setIsExportModalVisible] = useState(false);
+    const [exportTarget, setExportTarget] = useState(null); // { type: 'CLIENT_STATEMENT', client } or { type: 'DATE_REPORT', ... }
+    const [isExporting, setIsExporting] = useState(false);
+
     // Client Dropdown Picker and Search States
     const [clientSearchText, setClientSearchText] = useState('');
     const [isClientPickerVisible, setIsClientPickerVisible] = useState(false);
@@ -566,31 +587,109 @@ export default function DailyLedgerScreen({ navigation }) {
 
     const totalClientsPending = clientStats.totalReceivable;
 
-    const exportClientPdf = async (client) => {
-        if (!client) return;
-        try {
+    // Helper to format date range for Khatabahi Report (e.g. 01 OCT 26)
+    const formatKhatabahiRange = (date) => {
+        if (!date) return '';
+        const d = new Date(date);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = d.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+        const year = String(d.getFullYear()).slice(-2);
+        return `${day} ${month} ${year}`;
+    };
+
+    const formatRowDate = (dateStr) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = d.toLocaleString('en-US', { month: 'short' });
+        return `${day} ${month}`;
+    };
+
+    // Calculate aggregated Date-Wise Khatabahi data matching khatabahi.jpeg
+    const getReportData = () => {
+        const start = new Date(reportStartDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(reportEndDate);
+        end.setHours(23, 59, 59, 999);
+
+        const txns = clientTransactions.filter(t => {
+            if (reportPartyFilter !== 'ALL' && String(t.client_id) !== String(reportPartyFilter)) return false;
+            if (!t.date) return false;
+            const d = new Date(t.date);
+            return d >= start && d <= end;
+        });
+
+        let totalIn = 0;  // RECEIVED / ADVANCE
+        let totalOut = 0; // BILLED
+
+        const dateMap = {};
+
+        txns.forEach(t => {
+            const dateStr = t.date;
+            const type = t.type || t.txn_type || 'BILLED';
+            const amt = parseFloat(t.amount) || 0;
+            const isIn = type === 'RECEIVED' || type === 'ADVANCE';
+            const isOut = type === 'BILLED';
+
+            if (isIn) totalIn += amt;
+            if (isOut) totalOut += amt;
+
+            if (!dateMap[dateStr]) {
+                dateMap[dateStr] = {
+                    date: dateStr,
+                    totalIn: 0,
+                    totalOut: 0,
+                    balance: 0,
+                    transactions: []
+                };
+            }
+            if (isIn) dateMap[dateStr].totalIn += amt;
+            if (isOut) dateMap[dateStr].totalOut += amt;
+            dateMap[dateStr].transactions.push(t);
+        });
+
+        const sortedDates = Object.keys(dateMap).sort((a, b) => new Date(b) - new Date(a)).map(d => {
+            const item = dateMap[d];
+            item.balance = item.totalIn - item.totalOut;
+            return item;
+        });
+
+        return {
+            totalIn,
+            totalOut,
+            netBalance: totalIn - totalOut,
+            days: sortedDates,
+            totalTxns: txns.length
+        };
+    };
+
+    // HTML Generator for Client Passbook or Date-Wise Report
+    const generateStatementHtml = (target) => {
+        if (!target) return '';
+        const currentDateStr = new Date().toLocaleDateString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+        });
+
+        if (target.type === 'CLIENT_STATEMENT') {
+            const client = target.client;
             const metrics = getClientMetrics(client.id, client.opening_balance);
             const txns = clientTransactions
-                .filter(t => t.client_id === client.id)
+                .filter(t => String(t.client_id) === String(client.id))
                 .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-            const currentDateStr = new Date().toLocaleDateString('en-IN', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric'
-            });
-
-            let runningBal = client.opening_balance || 0;
+            let runningBal = parseFloat(client.opening_balance) || 0;
             let rowsHtml = '';
 
-            if (client.opening_balance && client.opening_balance > 0) {
+            if (client.opening_balance && parseFloat(client.opening_balance) !== 0) {
                 rowsHtml += `
                     <tr style="background: #F8FAFC; font-weight: 600;">
                         <td>-</td>
                         <td><strong>Opening Balance</strong></td>
                         <td>-</td>
                         <td style="color: #475569;">INITIAL</td>
-                        <td style="text-align: right; color: #DC2626;">₹${client.opening_balance.toLocaleString('en-IN')}</td>
+                        <td style="text-align: right; color: #DC2626;">₹${parseFloat(client.opening_balance).toLocaleString('en-IN')}</td>
                         <td style="text-align: right; color: #64748B;">-</td>
                         <td style="text-align: right; font-weight: 700; color: #DC2626;">₹${runningBal.toLocaleString('en-IN')}</td>
                     </tr>
@@ -598,9 +697,11 @@ export default function DailyLedgerScreen({ navigation }) {
             }
 
             txns.forEach((t) => {
-                const isDebit = t.type === 'BILLED';
-                const debitAmt = isDebit ? t.amount : 0;
-                const creditAmt = !isDebit ? t.amount : 0;
+                const type = t.type || t.txn_type || 'BILLED';
+                const isDebit = type === 'BILLED';
+                const amt = parseFloat(t.amount) || 0;
+                const debitAmt = isDebit ? amt : 0;
+                const creditAmt = !isDebit ? amt : 0;
                 runningBal += (debitAmt - creditAmt);
 
                 rowsHtml += `
@@ -608,7 +709,7 @@ export default function DailyLedgerScreen({ navigation }) {
                         <td style="white-space: nowrap;">${t.date || '-'}</td>
                         <td>${t.notes || (isDebit ? 'Material / Freight Billed' : 'Payment Received')}</td>
                         <td><span class="mode-tag">${t.payment_mode || 'CASH'}</span></td>
-                        <td><span class="${isDebit ? 'badge-debit' : 'badge-credit'}">${t.type}</span></td>
+                        <td><span class="${isDebit ? 'badge-debit' : 'badge-credit'}">${type}</span></td>
                         <td style="text-align: right; color: #DC2626;">${debitAmt > 0 ? '₹' + debitAmt.toLocaleString('en-IN') : '-'}</td>
                         <td style="text-align: right; color: #16A34A;">${creditAmt > 0 ? '₹' + creditAmt.toLocaleString('en-IN') : '-'}</td>
                         <td style="text-align: right; font-weight: 700; color: ${runningBal > 0 ? '#DC2626' : runningBal < 0 ? '#16A34A' : '#475569'};">
@@ -629,30 +730,31 @@ export default function DailyLedgerScreen({ navigation }) {
                 : '₹0 (SETTLED)';
             const netStatusColor = metrics.pending > 0 ? '#DC2626' : metrics.pending < 0 ? '#16A34A' : '#475569';
 
-            const htmlContent = `
+            return `
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <meta charset="utf-8">
                     <title>Client Statement - ${client.name}</title>
                     <style>
-                        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #0F172A; background: #fff; line-height: 1.4; }
-                        .header-box { border-bottom: 3px solid #0F172A; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+                        @page { size: A4 portrait; margin: 12mm; }
+                        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 16px; color: #0F172A; background: #fff; line-height: 1.4; }
+                        .header-box { border-bottom: 3px solid #0F172A; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-end; }
                         .company-name { font-size: 22px; font-weight: 900; color: #0F172A; letter-spacing: 0.5px; }
                         .company-tag { font-size: 11px; color: #64748B; font-weight: 600; text-transform: uppercase; margin-top: 2px; }
                         .doc-title { text-align: right; }
                         .doc-title h2 { margin: 0; font-size: 16px; font-weight: 800; color: #2563EB; }
                         .doc-title span { font-size: 11px; color: #64748B; }
 
-                        .client-hero { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; gap: 16px; }
+                        .client-hero { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; gap: 16px; }
                         .client-info h3 { margin: 0 0 4px 0; font-size: 18px; font-weight: 800; color: #0F172A; }
                         .client-info p { margin: 2px 0; font-size: 12px; color: #475569; }
                         
-                        .balance-box { background: #FFFFFF; border: 2px solid ${netStatusColor}; border-radius: 8px; padding: 12px 16px; text-align: right; min-width: 180px; }
+                        .balance-box { background: #FFFFFF; border: 2px solid ${netStatusColor}; border-radius: 8px; padding: 10px 14px; text-align: right; min-width: 180px; }
                         .bal-label { font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; }
-                        .bal-val { font-size: 18px; font-weight: 900; color: ${netStatusColor}; margin-top: 2px; }
+                        .bal-val { font-size: 17px; font-weight: 900; color: ${netStatusColor}; margin-top: 2px; }
 
-                        .summary-grid { display: flex; gap: 12px; margin-bottom: 20px; }
+                        .summary-grid { display: flex; gap: 12px; margin-bottom: 16px; }
                         .summary-card { flex: 1; background: #F1F5F9; border-radius: 8px; padding: 10px 14px; }
                         .sc-label { font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; }
                         .sc-val { font-size: 15px; font-weight: 800; margin-top: 3px; color: #0F172A; }
@@ -664,9 +766,9 @@ export default function DailyLedgerScreen({ navigation }) {
                         .badge-credit { background: #DCFCE7; color: #16A34A; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; }
                         .mode-tag { background: #F1F5F9; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
 
-                        .footer-note { margin-top: 40px; border-top: 1px dashed #CBD5E1; padding-top: 14px; display: flex; justify-content: space-between; font-size: 11px; color: #94A3B8; }
-                        .sign-box { margin-top: 30px; text-align: right; }
+                        .sign-box { margin-top: 26px; text-align: right; }
                         .sign-line { display: inline-block; width: 160px; border-bottom: 1px solid #000; margin-bottom: 4px; }
+                        .footer-note { margin-top: 20px; border-top: 1px dashed #CBD5E1; padding-top: 10px; display: flex; justify-content: space-between; font-size: 11px; color: #94A3B8; }
                     </style>
                 </head>
                 <body>
@@ -738,58 +840,281 @@ export default function DailyLedgerScreen({ navigation }) {
                 </body>
                 </html>
             `;
+        }
 
-            Alert.alert(
-                `PDF Statement: ${client.name}`,
-                'Choose how you want to export this client statement:',
-                [
-                    {
-                        text: 'Save as PDF / Print',
-                        onPress: async () => {
-                            try {
-                                await Print.printAsync({ html: htmlContent });
-                            } catch (err) {
-                                Alert.alert('Print Error', err.message || 'Failed to print PDF');
-                            }
-                        }
-                    },
-                    {
-                        text: 'Share PDF File',
-                        onPress: async () => {
-                            try {
-                                const { uri: tempUri } = await Print.printToFileAsync({ html: htmlContent });
-                                const cleanName = (client.name || 'Client').replace(/[^a-zA-Z0-9]/g, '_');
-                                const fileName = `Statement_${cleanName}_${Date.now()}.pdf`;
-                                const destUri = `${FileSystem.documentDirectory}${fileName}`;
-                                await FileSystem.copyAsync({ from: tempUri, to: destUri });
-                                await Sharing.shareAsync(destUri, {
-                                    mimeType: 'application/pdf',
-                                    dialogTitle: `${client.name} - Khatabook Statement`
-                                });
-                            } catch (shareErr) {
-                                console.log('Direct share fallback to print:', shareErr);
-                                await Print.printAsync({ html: htmlContent });
-                            }
-                        }
-                    },
-                    { text: 'Cancel', style: 'cancel' }
-                ]
-            );
-        } catch (e) {
-            console.error('PDF export error:', e);
-            Alert.alert('Export Error', 'Failed to generate PDF statement.');
+        if (target.type === 'DATE_REPORT') {
+            const reportData = getReportData();
+            const startStr = formatKhatabahiRange(reportStartDate);
+            const endStr = formatKhatabahiRange(reportEndDate);
+            const partyLabel = target.partyName || 'All Clients';
+
+            let rowsHtml = '';
+            reportData.days.forEach(d => {
+                const rowDateFormatted = formatRowDate(d.date);
+                rowsHtml += `
+                    <tr style="background: #F8FAFC; font-weight: 700;">
+                        <td><strong>${rowDateFormatted}</strong> (${d.date})</td>
+                        <td style="text-align: right; color: #16A34A;">₹${d.totalIn.toLocaleString('en-IN')}</td>
+                        <td style="text-align: right; color: #DC2626;">₹${d.totalOut.toLocaleString('en-IN')}</td>
+                        <td style="text-align: right; color: ${d.balance >= 0 ? '#1D4ED8' : '#DC2626'}; font-weight: 800;">₹${d.balance.toLocaleString('en-IN')}</td>
+                    </tr>
+                `;
+                d.transactions.forEach(t => {
+                    const c = clients.find(cl => String(cl.id) === String(t.client_id));
+                    const tType = t.type || t.txn_type || 'BILLED';
+                    const isDebit = tType === 'BILLED';
+                    rowsHtml += `
+                        <tr style="font-size: 11px; color: #475569;">
+                            <td style="padding-left: 20px;">↳ ${c ? c.name : 'Client #' + t.client_id} <span style="font-size: 10px; color: #94A3B8;">(${t.notes || t.payment_mode || 'Cash'})</span></td>
+                            <td style="text-align: right; color: #16A34A;">${!isDebit ? '₹' + parseFloat(t.amount).toLocaleString('en-IN') : '-'}</td>
+                            <td style="text-align: right; color: #DC2626;">${isDebit ? '₹' + parseFloat(t.amount).toLocaleString('en-IN') : '-'}</td>
+                            <td style="text-align: right; font-size: 10px; color: #64748B;">${tType}</td>
+                        </tr>
+                    `;
+                });
+            });
+
+            if (!rowsHtml) {
+                rowsHtml = `<tr><td colspan="4" style="text-align: center; color: #94A3B8; padding: 24px;">No transactions found in this date range.</td></tr>`;
+            }
+
+            return `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Khatabahi Date-Wise Report (${startStr} - ${endStr})</title>
+                    <style>
+                        @page { size: A4 portrait; margin: 12mm; }
+                        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 16px; color: #0F172A; background: #fff; line-height: 1.4; }
+                        .header-box { border-bottom: 3px solid #1E40AF; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-end; }
+                        .company-name { font-size: 22px; font-weight: 900; color: #1E40AF; letter-spacing: 0.5px; }
+                        .company-tag { font-size: 11px; color: #64748B; font-weight: 600; text-transform: uppercase; margin-top: 2px; }
+                        .doc-title { text-align: right; }
+                        .doc-title h2 { margin: 0; font-size: 16px; font-weight: 800; color: #0F172A; }
+                        .doc-title span { font-size: 11px; color: #64748B; }
+
+                        .equation-hero { background: #EFF6FF; border: 1.5px solid #BFDBFE; border-radius: 10px; padding: 16px; margin-bottom: 20px; display: flex; justify-content: space-around; align-items: center; text-align: center; }
+                        .eq-col { flex: 1; }
+                        .eq-label { font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; margin-bottom: 4px; }
+                        .eq-val-in { font-size: 20px; font-weight: 900; color: #16A34A; }
+                        .eq-val-out { font-size: 20px; font-weight: 900; color: #DC2626; }
+                        .eq-val-net { font-size: 20px; font-weight: 900; color: #1D4ED8; }
+                        .eq-op { font-size: 24px; font-weight: 800; color: #64748B; padding: 0 8px; }
+
+                        .filter-info { font-size: 12px; color: #475569; margin-bottom: 14px; background: #F8FAFC; padding: 8px 12px; border-radius: 6px; border: 1px solid #E2E8F0; }
+
+                        table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 12px; }
+                        th { background: #1E40AF; color: #FFFFFF; text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+                        td { padding: 8px 10px; border-bottom: 1px solid #E2E8F0; }
+
+                        .sign-box { margin-top: 26px; text-align: right; }
+                        .sign-line { display: inline-block; width: 160px; border-bottom: 1px solid #000; margin-bottom: 4px; }
+                        .footer-note { margin-top: 20px; border-top: 1px dashed #CBD5E1; padding-top: 10px; display: flex; justify-content: space-between; font-size: 11px; color: #94A3B8; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header-box">
+                        <div>
+                            <div class="company-name">GOPAL AGRAWAL ENTERPRISES</div>
+                            <div class="company-tag">Daily Ledger & Khatabahi Report</div>
+                        </div>
+                        <div class="doc-title">
+                            <h2>DATE-WISE REPORT</h2>
+                            <span>Period: ${startStr} — ${endStr}</span>
+                        </div>
+                    </div>
+
+                    <div class="filter-info">
+                        <strong>Report Period:</strong> ${startStr} to ${endStr} &nbsp;|&nbsp; <strong>Client Filter:</strong> ${partyLabel} &nbsp;|&nbsp; <strong>Total Entries:</strong> ${reportData.totalTxns}
+                    </div>
+
+                    <div class="equation-hero">
+                        <div class="eq-col">
+                            <div class="eq-label">Total In (Received)</div>
+                            <div class="eq-val-in">₹${reportData.totalIn.toLocaleString('en-IN')}</div>
+                        </div>
+                        <div class="eq-op">—</div>
+                        <div class="eq-col">
+                            <div class="eq-label">Total Out (Billed)</div>
+                            <div class="eq-val-out">₹${reportData.totalOut.toLocaleString('en-IN')}</div>
+                        </div>
+                        <div class="eq-op">=</div>
+                        <div class="eq-col">
+                            <div class="eq-label">Net Balance</div>
+                            <div class="eq-val-net">₹${reportData.netBalance.toLocaleString('en-IN')}</div>
+                        </div>
+                    </div>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date / Entry Particulars</th>
+                                <th style="text-align: right;">Total In (₹)</th>
+                                <th style="text-align: right;">Total Out (₹)</th>
+                                <th style="text-align: right;">Balance (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+
+                    <div class="sign-box">
+                        <div class="sign-line"></div>
+                        <div style="font-size: 12px; font-weight: 700;">Authorized Signatory</div>
+                        <div style="font-size: 11px; color: #64748B;">Gopal Agrawal Enterprises</div>
+                    </div>
+
+                    <div class="footer-note">
+                        <div>Computer Generated Khatabahi Daily Ledger Report</div>
+                        <div>Generated: ${new Date().toLocaleString('en-IN')}</div>
+                    </div>
+                </body>
+                </html>
+            `;
+        }
+        return '';
+    };
+
+    // Vector SVG Graphic Generator for "Save as Image" option
+    const generateStatementSvg = (target) => {
+        const isReport = target.type === 'DATE_REPORT';
+        const title = isReport 
+            ? `Khatabahi Date-Wise Report` 
+            : `Statement - ${(target.client?.name || 'Client')}`;
+        const dateRange = isReport
+            ? `${formatKhatabahiRange(reportStartDate)} - ${formatKhatabahiRange(reportEndDate)}`
+            : new Date().toLocaleDateString('en-IN');
+
+        let inVal = 0;
+        let outVal = 0;
+        let netVal = 0;
+
+        if (isReport) {
+            const d = getReportData();
+            inVal = d.totalIn;
+            outVal = d.totalOut;
+            netVal = d.netBalance;
+        } else {
+            const m = getClientMetrics(target.client.id, target.client.opening_balance);
+            inVal = m.received;
+            outVal = m.billed;
+            netVal = m.pending;
+        }
+
+        return `
+            <svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480">
+                <rect width="100%" height="100%" fill="#F8FAFC"/>
+                <rect width="100%" height="70" fill="#1E40AF"/>
+                <text x="30" y="38" fill="#FFFFFF" font-family="sans-serif" font-size="20" font-weight="bold">GOPAL AGRAWAL ENTERPRISES</text>
+                <text x="30" y="56" fill="#93C5FD" font-family="sans-serif" font-size="11" font-weight="bold">FLEET TRANSPORT &amp; KHATABOOK SYSTEM</text>
+                <text x="770" y="42" fill="#FFFFFF" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="end">${dateRange}</text>
+
+                <rect x="30" y="90" width="740" height="85" rx="10" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5"/>
+                <text x="50" y="125" fill="#0F172A" font-family="sans-serif" font-size="18" font-weight="bold">${title}</text>
+                <text x="50" y="152" fill="#64748B" font-family="sans-serif" font-size="12">Official Account Record &amp; Financial Position</text>
+
+                <rect x="30" y="195" width="230" height="120" rx="10" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1"/>
+                <text x="50" y="230" fill="#065F46" font-family="sans-serif" font-size="12" font-weight="bold">TOTAL IN (RECEIVED)</text>
+                <text x="50" y="270" fill="#047857" font-family="sans-serif" font-size="22" font-weight="900">₹${inVal.toLocaleString('en-IN')}</text>
+
+                <rect x="285" y="195" width="230" height="120" rx="10" fill="#FEF2F2" stroke="#FECACA" stroke-width="1"/>
+                <text x="305" y="230" fill="#991B1B" font-family="sans-serif" font-size="12" font-weight="bold">TOTAL OUT (BILLED)</text>
+                <text x="305" y="270" fill="#B91C1C" font-family="sans-serif" font-size="22" font-weight="900">₹${outVal.toLocaleString('en-IN')}</text>
+
+                <rect x="540" y="195" width="230" height="120" rx="10" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="1"/>
+                <text x="560" y="230" fill="#1E40AF" font-family="sans-serif" font-size="12" font-weight="bold">NET POSITION</text>
+                <text x="560" y="270" fill="#1D4ED8" font-family="sans-serif" font-size="22" font-weight="900">₹${Math.abs(netVal).toLocaleString('en-IN')}</text>
+                <text x="560" y="295" fill="#64748B" font-family="sans-serif" font-size="11">${netVal >= 0 ? '(Due / Receivable)' : '(Advance Held)'}</text>
+
+                <line x1="30" y1="410" x2="770" y2="410" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4"/>
+                <text x="30" y="440" fill="#94A3B8" font-family="sans-serif" font-size="11">Generated on ${new Date().toLocaleString('en-IN')} • Fleet Management App</text>
+                <text x="770" y="440" fill="#0F172A" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="end">Authorized Signatory</text>
+            </svg>
+        `;
+    };
+
+    const openExportModal = (target) => {
+        setExportTarget(target);
+        setIsExportModalVisible(true);
+    };
+
+    const exportClientPdf = (client) => {
+        openExportModal({
+            type: 'CLIENT_STATEMENT',
+            client: client
+        });
+    };
+
+    const handleExportAction = async (actionType) => {
+        if (!exportTarget) return;
+        try {
+            setIsExporting(true);
+            const html = generateStatementHtml(exportTarget);
+            const title = exportTarget.type === 'DATE_REPORT' 
+                ? 'Khatabahi_Report' 
+                : `Statement_${(exportTarget.client?.name || 'Client').replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+            if (actionType === 'PRINT_A4') {
+                await Print.printAsync({ html });
+                setIsExportModalVisible(false);
+                return;
+            }
+
+            if (actionType === 'SAVE_PDF' || actionType === 'WHATSAPP') {
+                const { uri: tempUri } = await Print.printToFileAsync({ html });
+                const fileName = `${title}_${Date.now()}.pdf`;
+                const destUri = `${FileSystem.documentDirectory}${fileName}`;
+                await FileSystem.copyAsync({ from: tempUri, to: destUri });
+
+                if (actionType === 'SAVE_PDF') {
+                    await Sharing.shareAsync(destUri, {
+                        mimeType: 'application/pdf',
+                        dialogTitle: 'Save / Download PDF Statement'
+                    });
+                } else if (actionType === 'WHATSAPP') {
+                    await Sharing.shareAsync(destUri, {
+                        mimeType: 'application/pdf',
+                        dialogTitle: 'Share PDF Statement via WhatsApp'
+                    });
+                }
+                setIsExportModalVisible(false);
+                return;
+            }
+
+            if (actionType === 'SAVE_IMAGE') {
+                const svgContent = generateStatementSvg(exportTarget);
+                const fileName = `${title}_${Date.now()}.svg`;
+                const imageUri = `${FileSystem.documentDirectory}${fileName}`;
+                await FileSystem.writeAsStringAsync(imageUri, svgContent);
+                await Sharing.shareAsync(imageUri, {
+                    mimeType: 'image/svg+xml',
+                    dialogTitle: 'Save / Share Statement Image'
+                });
+                setIsExportModalVisible(false);
+                return;
+            }
+        } catch (err) {
+            console.error('Export error:', err);
+            Alert.alert('Export Error', err.message || 'Failed to complete export action.');
+        } finally {
+            setIsExporting(false);
         }
     };
     
-    // Active View: Cashflow vs Freight Ledger
+    // Active View: Cashflow vs Client Khata vs Date Report vs Freight Ledger
     const filteredClients = clients.filter(c => {
+        const m = getClientMetrics(c.id, c.opening_balance);
+        if (clientKhataFilter === 'DUE' && m.pending <= 0) return false;
+        if (clientKhataFilter === 'ADVANCE' && m.pending >= 0) return false;
+        if (clientKhataFilter === 'SETTLED' && m.pending !== 0) return false;
         if (!clientSearchText.trim()) return true;
         const q = clientSearchText.toLowerCase();
         return (c.name && c.name.toLowerCase().includes(q)) || (c.phone && c.phone.includes(q));
     });
 
-    // Active View: Cashflow vs Client Khata vs Freight Ledger
-    const [activeView, setActiveView] = useState('CASHFLOW'); // 'CASHFLOW', 'CLIENTS', 'FREIGHT'
+    const [activeView, setActiveView] = useState('CASHFLOW'); // 'CASHFLOW', 'CLIENTS', 'REPORTS', 'FREIGHT'
     const [freightData, setFreightData] = useState({
         summary: {
             total_freight_billed: 0,
@@ -1067,6 +1392,15 @@ export default function DailyLedgerScreen({ navigation }) {
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                    style={[styles.topSegmentBtn, activeView === 'REPORTS' && styles.topSegmentBtnActive]}
+                    onPress={() => setActiveView('REPORTS')}
+                    activeOpacity={0.8}
+                >
+                    <MaterialCommunityIcons name="chart-box-outline" size={16} color={activeView === 'REPORTS' ? '#2563EB' : '#64748B'} />
+                    <Text style={[styles.topSegmentText, activeView === 'REPORTS' && styles.topSegmentTextActive]}>Date Report</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                     style={[styles.topSegmentBtn, activeView === 'FREIGHT' && styles.topSegmentBtnActive]}
                     onPress={() => { setActiveView('FREIGHT'); fetchFreightLedger(); }}
                     activeOpacity={0.8}
@@ -1269,6 +1603,14 @@ export default function DailyLedgerScreen({ navigation }) {
                                 ) : null}
                             </View>
                             <TouchableOpacity 
+                                style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#1E40AF', paddingHorizontal: 12, height: 40, borderRadius: 10 }}
+                                onPress={() => setActiveView('REPORTS')}
+                                activeOpacity={0.8}
+                            >
+                                <MaterialCommunityIcons name="calendar-text-outline" size={16} color="#FFFFFF" />
+                                <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>Report</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
                                 style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#0F172A', paddingHorizontal: 14, height: 40, borderRadius: 10 }}
                                 onPress={() => setIsAddClientModalVisible(true)}
                                 activeOpacity={0.8}
@@ -1289,15 +1631,23 @@ export default function DailyLedgerScreen({ navigation }) {
                         }}
                         scrollEventThrottle={16}
                     >
-                        {/* Top Executive Stats Block */}
+                        {/* Top Executive Stats Block with Clickable Filters */}
                         <View style={styles.clientStatsBlock}>
                             <View style={styles.clientStatsDualRow}>
-                                {/* Receivable Card */}
-                                <View style={[styles.clientStatsCard, { borderLeftColor: '#EF4444' }]}>
+                                {/* Receivable Card - Clickable Filter */}
+                                <TouchableOpacity 
+                                    style={[
+                                        styles.clientStatsCard, 
+                                        { borderLeftColor: '#EF4444' },
+                                        clientKhataFilter === 'DUE' && styles.clientStatsCardActiveDue
+                                    ]}
+                                    onPress={() => setClientKhataFilter(prev => prev === 'DUE' ? 'ALL' : 'DUE')}
+                                    activeOpacity={0.8}
+                                >
                                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                         <Text style={styles.clientStatsCardLabel}>TOTAL RECEIVABLE</Text>
-                                        <View style={[styles.statIconBadge, { backgroundColor: '#FEE2E2' }]}>
-                                            <MaterialCommunityIcons name="arrow-down-left" size={14} color="#DC2626" />
+                                        <View style={[styles.statIconBadge, { backgroundColor: clientKhataFilter === 'DUE' ? '#DC2626' : '#FEE2E2' }]}>
+                                            <MaterialCommunityIcons name="arrow-down-left" size={14} color={clientKhataFilter === 'DUE' ? '#FFFFFF' : '#DC2626'} />
                                         </View>
                                     </View>
                                     <Text style={styles.clientStatsHindiLabel}>मार्केट से लेना बाकी</Text>
@@ -1305,14 +1655,27 @@ export default function DailyLedgerScreen({ navigation }) {
                                         ₹{Math.round(clientStats.totalReceivable).toLocaleString()}
                                     </Text>
                                     <Text style={styles.clientStatsCardSub}>{clientStats.dueCount} parties with pending dues</Text>
-                                </View>
+                                    {clientKhataFilter === 'DUE' && (
+                                        <View style={styles.statActiveBadge}>
+                                            <Text style={styles.statActiveBadgeText}>FILTER ACTIVE (TAP TO RESET)</Text>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
 
-                                {/* Customer Advance Card */}
-                                <View style={[styles.clientStatsCard, { borderLeftColor: '#10B981' }]}>
+                                {/* Customer Advance Card - Clickable Filter */}
+                                <TouchableOpacity 
+                                    style={[
+                                        styles.clientStatsCard, 
+                                        { borderLeftColor: '#10B981' },
+                                        clientKhataFilter === 'ADVANCE' && styles.clientStatsCardActiveAdv
+                                    ]}
+                                    onPress={() => setClientKhataFilter(prev => prev === 'ADVANCE' ? 'ALL' : 'ADVANCE')}
+                                    activeOpacity={0.8}
+                                >
                                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                         <Text style={styles.clientStatsCardLabel}>CUSTOMER ADVANCE</Text>
-                                        <View style={[styles.statIconBadge, { backgroundColor: '#DCFCE7' }]}>
-                                            <MaterialCommunityIcons name="hand-coin" size={14} color="#16A34A" />
+                                        <View style={[styles.statIconBadge, { backgroundColor: clientKhataFilter === 'ADVANCE' ? '#16A34A' : '#DCFCE7' }]}>
+                                            <MaterialCommunityIcons name="hand-coin" size={14} color={clientKhataFilter === 'ADVANCE' ? '#FFFFFF' : '#16A34A'} />
                                         </View>
                                     </View>
                                     <Text style={styles.clientStatsHindiLabel}>अग्रिम प्राप्त / जमा</Text>
@@ -1320,20 +1683,77 @@ export default function DailyLedgerScreen({ navigation }) {
                                         ₹{Math.round(clientStats.totalAdvance).toLocaleString()}
                                     </Text>
                                     <Text style={styles.clientStatsCardSub}>{clientStats.advanceCount} parties in credit advance</Text>
-                                </View>
+                                    {clientKhataFilter === 'ADVANCE' && (
+                                        <View style={[styles.statActiveBadge, { backgroundColor: '#10B981' }]}>
+                                            <Text style={styles.statActiveBadgeText}>FILTER ACTIVE (TAP TO RESET)</Text>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
                             </View>
 
-                            {/* Net Summary Bar */}
-                            <View style={styles.clientNetBar}>
+                            {/* Net Summary Bar - Clickable Filter */}
+                            <TouchableOpacity 
+                                style={[
+                                    styles.clientNetBar,
+                                    clientKhataFilter === 'SETTLED' && styles.clientNetBarActive
+                                ]}
+                                onPress={() => setClientKhataFilter(prev => prev === 'SETTLED' ? 'ALL' : 'SETTLED')}
+                                activeOpacity={0.8}
+                            >
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                                    <MaterialCommunityIcons name="scale-balance" size={15} color="#64748B" />
+                                    <MaterialCommunityIcons name="scale-balance" size={15} color={clientKhataFilter === 'SETTLED' ? '#2563EB' : '#64748B'} />
                                     <Text style={styles.clientNetBarText} numberOfLines={1}>
                                         Net: <Text style={{ fontWeight: '900', color: (clientStats.totalReceivable - clientStats.totalAdvance) >= 0 ? '#DC2626' : '#16A34A' }}>
                                             ₹{Math.abs(clientStats.totalReceivable - clientStats.totalAdvance).toLocaleString()} {(clientStats.totalReceivable - clientStats.totalAdvance) >= 0 ? 'Receivable' : 'Advance'}
                                         </Text>
                                     </Text>
                                 </View>
-                                <Text style={styles.clientNetBarRight}>{clients.length} Clients ({clientStats.settledCount} Settled)</Text>
+                                <Text style={[styles.clientNetBarRight, clientKhataFilter === 'SETTLED' && { color: '#2563EB', fontWeight: '900' }]}>
+                                    {clients.length} Clients ({clientStats.settledCount} Settled {clientKhataFilter === 'SETTLED' ? '✓' : ''})
+                                </Text>
+                            </TouchableOpacity>
+
+                            {/* Quick Filter Chips Row */}
+                            <View style={styles.clientFilterChipsRow}>
+                                <TouchableOpacity 
+                                    style={[styles.clientFilterChip, clientKhataFilter === 'ALL' && styles.clientFilterChipActive]}
+                                    onPress={() => setClientKhataFilter('ALL')}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={[styles.clientFilterChipText, clientKhataFilter === 'ALL' && styles.clientFilterChipTextActive]}>
+                                        All ({clients.length})
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity 
+                                    style={[styles.clientFilterChip, clientKhataFilter === 'DUE' && styles.clientFilterChipActiveDue]}
+                                    onPress={() => setClientKhataFilter('DUE')}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={[styles.clientFilterChipText, clientKhataFilter === 'DUE' && styles.clientFilterChipTextActiveDue]}>
+                                        Due ({clientStats.dueCount})
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity 
+                                    style={[styles.clientFilterChip, clientKhataFilter === 'ADVANCE' && styles.clientFilterChipActiveAdv]}
+                                    onPress={() => setClientKhataFilter('ADVANCE')}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={[styles.clientFilterChipText, clientKhataFilter === 'ADVANCE' && styles.clientFilterChipTextActiveAdv]}>
+                                        Advance ({clientStats.advanceCount})
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity 
+                                    style={[styles.clientFilterChip, clientKhataFilter === 'SETTLED' && styles.clientFilterChipActiveSettled]}
+                                    onPress={() => setClientKhataFilter('SETTLED')}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={[styles.clientFilterChipText, clientKhataFilter === 'SETTLED' && styles.clientFilterChipTextActiveSettled]}>
+                                        Settled ({clientStats.settledCount})
+                                    </Text>
+                                </TouchableOpacity>
                             </View>
                         </View>
 
@@ -1510,6 +1930,250 @@ export default function DailyLedgerScreen({ navigation }) {
                             })
                         )}
                     </ScrollView>
+                </View>
+            ) : activeView === 'REPORTS' ? (
+                <View style={styles.khatabahiContainer}>
+                    {/* Khatabahi Blue Header matching khatabahi.jpeg */}
+                    <View style={styles.khatabahiHeader}>
+                        <View style={styles.khatabahiHeaderTitleRow}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <MaterialCommunityIcons name="notebook-outline" size={22} color="#FFFFFF" />
+                                <Text style={styles.khatabahiHeaderTitle}>My Business</Text>
+                                <MaterialCommunityIcons name="pencil" size={16} color="rgba(255,255,255,0.7)" />
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                                <TouchableOpacity onPress={() => Alert.alert('Khatabahi Guide', 'Aggregates all daily Inflow (Payments received/advance) vs Outflow (Billed freight/materials). Tap Download Report to export as PDF, print in A4, or send via WhatsApp.')}>
+                                    <MaterialCommunityIcons name="help-circle-outline" size={22} color="#FFFFFF" />
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setIsReportFilterModalVisible(true)}>
+                                    <MaterialCommunityIcons name="tune-vertical" size={22} color="#FFFFFF" />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        {/* CASHBOOK | REPORTS subtabs */}
+                        <View style={styles.khatabahiTabsRow}>
+                            <TouchableOpacity 
+                                style={styles.khatabahiTab} 
+                                onPress={() => setActiveView('CLIENTS')}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={styles.khatabahiTabText}>CASHBOOK</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={[styles.khatabahiTab, styles.khatabahiTabActive]} 
+                                activeOpacity={0.8}
+                            >
+                                <Text style={[styles.khatabahiTabText, styles.khatabahiTabTextActive]}>REPORTS</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {/* Date Selector & Filters Bar (exact match to khatabahi.jpeg) */}
+                    <View style={styles.khatabahiDateBar}>
+                        <TouchableOpacity 
+                            style={styles.khatabahiDateSelectorBtn}
+                            onPress={() => setShowReportStartDatePicker(true)}
+                            activeOpacity={0.8}
+                        >
+                            <MaterialCommunityIcons name="calendar-month-outline" size={20} color="#1D4ED8" />
+                            <Text style={styles.khatabahiDateSelectorText}>
+                                {formatKhatabahiRange(reportStartDate)} | {formatKhatabahiRange(reportEndDate)}
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={styles.khatabahiFiltersBtn}
+                            onPress={() => setIsReportFilterModalVisible(true)}
+                            activeOpacity={0.8}
+                        >
+                            <View style={styles.khatabahiFiltersBadge}>
+                                <Text style={styles.khatabahiFiltersBadgeText}>New</Text>
+                            </View>
+                            <MaterialCommunityIcons name="tune-vertical" size={18} color="#1D4ED8" />
+                            <Text style={styles.khatabahiFiltersText}>Filters</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {showReportStartDatePicker && (
+                        <DateTimePicker
+                            value={reportStartDate}
+                            mode="date"
+                            display="default"
+                            onChange={(event, selectedDate) => {
+                                setShowReportStartDatePicker(false);
+                                if (selectedDate) {
+                                    setReportStartDate(selectedDate);
+                                    setShowReportEndDatePicker(true);
+                                }
+                            }}
+                        />
+                    )}
+
+                    {showReportEndDatePicker && (
+                        <DateTimePicker
+                            value={reportEndDate}
+                            mode="date"
+                            display="default"
+                            onChange={(event, selectedDate) => {
+                                setShowReportEndDatePicker(false);
+                                if (selectedDate) {
+                                    if (selectedDate < reportStartDate) {
+                                        Alert.alert('Invalid Range', 'End date cannot be earlier than start date.');
+                                        return;
+                                    }
+                                    setReportEndDate(selectedDate);
+                                }
+                            }}
+                        />
+                    )}
+
+                    {/* Active Party Filter Chip if not ALL */}
+                    {reportPartyFilter !== 'ALL' && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#EFF6FF', paddingHorizontal: 16, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#DBEAFE' }}>
+                            <Text style={{ fontSize: 12, color: '#1E40AF', fontWeight: '700' }}>
+                                Party: {clients.find(c => String(c.id) === String(reportPartyFilter))?.name || 'Selected'}
+                            </Text>
+                            <TouchableOpacity onPress={() => setReportPartyFilter('ALL')}>
+                                <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '800' }}>Clear Filter ✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
+
+                    {(() => {
+                        const reportData = getReportData();
+                        return (
+                            <View style={{ flex: 1 }}>
+                                {/* Equation Summary Card (exact match to khatabahi.jpeg) */}
+                                <View style={styles.khatabahiEquationCard}>
+                                    <View style={styles.khatabahiEquationCol}>
+                                        <Text style={styles.khatabahiEquationLabel}>Total In</Text>
+                                        <Text style={[styles.khatabahiEquationVal, { color: '#16A34A' }]}>
+                                            ₹ {reportData.totalIn.toLocaleString('en-IN')}
+                                        </Text>
+                                    </View>
+
+                                    <Text style={styles.khatabahiEquationOp}>—</Text>
+
+                                    <View style={styles.khatabahiEquationCol}>
+                                        <Text style={styles.khatabahiEquationLabel}>Total Out</Text>
+                                        <Text style={[styles.khatabahiEquationVal, { color: '#DC2626' }]}>
+                                            ₹ {reportData.totalOut.toLocaleString('en-IN')}
+                                        </Text>
+                                    </View>
+
+                                    <Text style={styles.khatabahiEquationOp}>=</Text>
+
+                                    <View style={styles.khatabahiEquationCol}>
+                                        <Text style={styles.khatabahiEquationLabel}>Net Balance</Text>
+                                        <Text style={[styles.khatabahiEquationVal, { color: reportData.netBalance >= 0 ? '#1D4ED8' : '#DC2626' }]}>
+                                            ₹ {reportData.netBalance.toLocaleString('en-IN')}
+                                        </Text>
+                                    </View>
+
+                                    <TouchableOpacity 
+                                        style={styles.khatabahiExpandCircle}
+                                        onPress={() => Alert.alert('Net Balance Info', `Inflow (Received): ₹${reportData.totalIn.toLocaleString()}\nOutflow (Billed): ₹${reportData.totalOut.toLocaleString()}\nNet Balance: ₹${reportData.netBalance.toLocaleString()}`)}
+                                    >
+                                        <MaterialCommunityIcons name="chevron-down" size={18} color="#1D4ED8" />
+                                    </TouchableOpacity>
+                                </View>
+
+                                {/* Table Column Headers */}
+                                <View style={styles.khatabahiTableHead}>
+                                    <Text style={[styles.khatabahiTableHeadCol, { width: 85 }]}>Date</Text>
+                                    <Text style={[styles.khatabahiTableHeadCol, { flex: 1, textAlign: 'center' }]}>Total In</Text>
+                                    <Text style={[styles.khatabahiTableHeadCol, { flex: 1, textAlign: 'center' }]}>Total Out</Text>
+                                    <Text style={[styles.khatabahiTableHeadCol, { flex: 1, textAlign: 'right' }]}>Balance</Text>
+                                    <View style={{ width: 24 }} />
+                                </View>
+
+                                {/* Table Rows List */}
+                                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+                                    {reportData.days.length === 0 ? (
+                                        <View style={{ alignItems: 'center', paddingVertical: 50 }}>
+                                            <MaterialCommunityIcons name="calendar-blank-outline" size={48} color="#CBD5E1" />
+                                            <Text style={{ fontSize: 15, fontWeight: '700', color: '#64748B', marginTop: 12 }}>No Transactions in Period</Text>
+                                            <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>Pick another date range or record client transactions.</Text>
+                                        </View>
+                                    ) : (
+                                        reportData.days.map((dayItem) => {
+                                            const isExpanded = reportExpandedDate === dayItem.date;
+                                            return (
+                                                <View key={dayItem.date} style={styles.khatabahiTableRow}>
+                                                    <TouchableOpacity 
+                                                        style={styles.khatabahiTableRowMain}
+                                                        onPress={() => setReportExpandedDate(isExpanded ? null : dayItem.date)}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <Text style={[styles.khatabahiRowDate, { width: 85 }]}>{formatRowDate(dayItem.date)}</Text>
+                                                        <Text style={[styles.khatabahiRowIn, { flex: 1 }]}>₹ {dayItem.totalIn.toLocaleString('en-IN')}</Text>
+                                                        <Text style={[styles.khatabahiRowOut, { flex: 1 }]}>₹ {dayItem.totalOut.toLocaleString('en-IN')}</Text>
+                                                        <Text style={[styles.khatabahiRowBal, { flex: 1, color: dayItem.balance >= 0 ? '#1D4ED8' : '#DC2626' }]}>
+                                                            ₹ {dayItem.balance.toLocaleString('en-IN')}
+                                                        </Text>
+                                                        <MaterialCommunityIcons 
+                                                            name={isExpanded ? "chevron-down" : "chevron-right"} 
+                                                            size={20} 
+                                                            color="#1D4ED8" 
+                                                        />
+                                                    </TouchableOpacity>
+
+                                                    {/* Expandable Entries Details */}
+                                                    {isExpanded && (
+                                                        <View style={styles.khatabahiRowDetailsBox}>
+                                                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 6, textTransform: 'uppercase' }}>
+                                                                Entries on {formatRowDate(dayItem.date)} ({dayItem.transactions.length})
+                                                            </Text>
+                                                            {dayItem.transactions.map((tx, idx) => {
+                                                                const c = clients.find(cl => String(cl.id) === String(tx.client_id));
+                                                                const txType = tx.type || tx.txn_type || 'BILLED';
+                                                                const isDebit = txType === 'BILLED';
+                                                                return (
+                                                                    <View key={tx.id || idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: idx < dayItem.transactions.length - 1 ? 1 : 0, borderBottomColor: '#E2E8F0' }}>
+                                                                        <View style={{ flex: 1, marginRight: 8 }}>
+                                                                            <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>{c ? c.name : 'Party #' + tx.client_id}</Text>
+                                                                            <Text style={{ fontSize: 11, color: '#64748B' }}>{tx.notes || tx.payment_mode || 'Cash'}</Text>
+                                                                        </View>
+                                                                        <View style={{ alignItems: 'flex-end' }}>
+                                                                            <Text style={{ fontSize: 13, fontWeight: '800', color: isDebit ? '#DC2626' : '#16A34A' }}>
+                                                                                {isDebit ? '- ₹' : '+ ₹'}{parseFloat(tx.amount || 0).toLocaleString()}
+                                                                            </Text>
+                                                                            <Text style={{ fontSize: 10, color: '#94A3B8' }}>{txType}</Text>
+                                                                        </View>
+                                                                    </View>
+                                                                );
+                                                            })}
+                                                        </View>
+                                                    )}
+                                                </View>
+                                            );
+                                        })
+                                    )}
+                                </ScrollView>
+
+                                {/* Sticky Bottom DOWNLOAD REPORT Button (exact match to khatabahi.jpeg) */}
+                                <View style={styles.khatabahiBottomSticky}>
+                                    <TouchableOpacity 
+                                        style={styles.khatabahiDownloadBtn}
+                                        onPress={() => {
+                                            openExportModal({
+                                                type: 'DATE_REPORT',
+                                                startDate: reportStartDate,
+                                                endDate: reportEndDate,
+                                                partyId: reportPartyFilter,
+                                                partyName: reportPartyFilter === 'ALL' ? 'All Clients' : clients.find(c => String(c.id) === String(reportPartyFilter))?.name || 'Selected Client'
+                                            });
+                                        }}
+                                        activeOpacity={0.85}
+                                    >
+                                        <MaterialCommunityIcons name="tray-arrow-down" size={20} color="#1D4ED8" />
+                                        <Text style={styles.khatabahiDownloadText}>DOWNLOAD REPORT</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        );
+                    })()}
                 </View>
             ) : (
                 <View style={{ flex: 1 }}>
@@ -1935,23 +2599,33 @@ export default function DailyLedgerScreen({ navigation }) {
             {/* Client Statement / Passbook Modal */}
             <Modal visible={isClientStatementModalVisible} animationType="slide" transparent={true}>
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+                    <View style={[styles.modalContent, { height: '88%' }]}>
                         <View style={styles.modalHeader}>
                             <View style={{ flex: 1, marginRight: 8 }}>
                                 <Text style={styles.modalTitle}>Khata Passbook</Text>
-                                <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A', marginTop: 2 }}>
+                                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', marginTop: 2 }}>
                                     {selectedClientForStatement ? selectedClientForStatement.name : ''}
                                 </Text>
+                                {selectedClientForStatement?.phone && (
+                                    <Text style={{ fontSize: 11, color: '#64748B' }}>
+                                        📞 {selectedClientForStatement.phone} {selectedClientForStatement.address ? `• ${selectedClientForStatement.address}` : ''}
+                                    </Text>
+                                )}
                             </View>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 {selectedClientForStatement && (
                                     <TouchableOpacity 
                                         style={styles.passbookPdfBtn}
-                                        onPress={() => exportClientPdf(selectedClientForStatement)}
+                                        onPress={() => {
+                                            openExportModal({
+                                                type: 'CLIENT_STATEMENT',
+                                                client: selectedClientForStatement
+                                            });
+                                        }}
                                         activeOpacity={0.8}
                                     >
-                                        <MaterialCommunityIcons name="file-pdf-box" size={18} color="#DC2626" />
-                                        <Text style={styles.passbookPdfBtnText}>Export PDF</Text>
+                                        <MaterialCommunityIcons name="export-variant" size={16} color="#2563EB" />
+                                        <Text style={[styles.passbookPdfBtnText, { color: '#2563EB' }]}>Export</Text>
                                     </TouchableOpacity>
                                 )}
                                 <TouchableOpacity onPress={() => setIsClientStatementModalVisible(false)}>
@@ -1962,7 +2636,31 @@ export default function DailyLedgerScreen({ navigation }) {
 
                         {selectedClientForStatement ? (() => {
                             const m = getClientMetrics(selectedClientForStatement.id, selectedClientForStatement.opening_balance);
-                            const txns = clientTransactions.filter(t => t.client_id === selectedClientForStatement.id);
+                            const rawTxns = clientTransactions
+                                .filter(t => String(t.client_id) === String(selectedClientForStatement.id))
+                                .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                            let runningBal = parseFloat(selectedClientForStatement.opening_balance) || 0;
+                            const enrichedTxns = rawTxns.map(t => {
+                                const type = t.type || t.txn_type || 'BILLED';
+                                const isDebit = type === 'BILLED';
+                                const amt = parseFloat(t.amount) || 0;
+                                if (isDebit) {
+                                    runningBal += amt;
+                                } else {
+                                    runningBal -= amt;
+                                }
+                                return {
+                                    ...t,
+                                    type,
+                                    txn_type: type,
+                                    amount: amt,
+                                    isDebit,
+                                    runningBalance: runningBal
+                                };
+                            });
+
+                            const displayTxns = [...enrichedTxns].reverse();
 
                             return (
                                 <View style={{ flex: 1 }}>
@@ -1975,69 +2673,242 @@ export default function DailyLedgerScreen({ navigation }) {
                                             </Text>
                                         </View>
                                         <View style={{ alignItems: 'flex-end' }}>
-                                            <Text style={{ fontSize: 11, color: '#64748B' }}>Total Billed: ₹{m.billed.toLocaleString()}</Text>
-                                            <Text style={{ fontSize: 11, color: '#16A34A', fontWeight: '700' }}>Total Paid: ₹{m.received.toLocaleString()}</Text>
+                                            <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '700' }}>Billed: ₹{m.billed.toLocaleString()}</Text>
+                                            <Text style={{ fontSize: 11, color: '#16A34A', fontWeight: '700' }}>Received: ₹{m.received.toLocaleString()}</Text>
+                                            <Text style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>{enrichedTxns.length} entries</Text>
                                         </View>
                                     </View>
 
                                     <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-                                        {selectedClientForStatement.opening_balance > 0 && (
-                                            <View style={styles.passbookRow}>
-                                                <View style={{ flex: 1 }}>
-                                                    <Text style={styles.passbookDate}>Previous Balance</Text>
-                                                    <Text style={styles.passbookNote}>Opening Khata Balance</Text>
-                                                </View>
-                                                <Text style={[styles.passbookAmt, { color: '#DC2626' }]}>+ ₹{selectedClientForStatement.opening_balance.toLocaleString()}</Text>
+                                        {displayTxns.length === 0 && (!selectedClientForStatement.opening_balance || parseFloat(selectedClientForStatement.opening_balance) === 0) ? (
+                                            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                                                <MaterialCommunityIcons name="book-open-page-variant-outline" size={40} color="#CBD5E1" />
+                                                <Text style={{ textAlign: 'center', color: '#94A3B8', marginTop: 10, fontSize: 13 }}>
+                                                    No transactions recorded yet for this client.
+                                                </Text>
                                             </View>
-                                        )}
-
-                                        {txns.length === 0 && (!selectedClientForStatement.opening_balance || selectedClientForStatement.opening_balance === 0) ? (
-                                            <Text style={{ textAlign: 'center', color: '#94A3B8', marginVertical: 30 }}>No transactions recorded yet.</Text>
                                         ) : (
-                                            txns.map(t => {
-                                                const isDebit = t.type === 'BILLED';
-                                                return (
-                                                    <View key={t.id} style={styles.passbookRow}>
-                                                        <View style={{ flex: 1 }}>
-                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                                <Text style={styles.passbookDate}>{t.date}</Text>
-                                                                <View style={[styles.passbookTypePill, { backgroundColor: isDebit ? '#FEF2F2' : '#F0FDF4' }]}>
-                                                                    <Text style={[styles.passbookTypePillText, { color: isDebit ? '#DC2626' : '#16A34A' }]}>
-                                                                        {t.type}
-                                                                    </Text>
+                                            <>
+                                                {displayTxns.map(t => {
+                                                    const isDebit = t.isDebit;
+                                                    const bal = t.runningBalance;
+                                                    return (
+                                                        <View key={t.id} style={styles.passbookRow}>
+                                                            <View style={{ flex: 1, marginRight: 10 }}>
+                                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                                    <Text style={styles.passbookDate}>{t.date}</Text>
+                                                                    <View style={[styles.passbookTypePill, { backgroundColor: isDebit ? '#FEF2F2' : '#F0FDF4' }]}>
+                                                                        <Text style={[styles.passbookTypePillText, { color: isDebit ? '#DC2626' : '#16A34A' }]}>
+                                                                            {t.type}
+                                                                        </Text>
+                                                                    </View>
+                                                                    <View style={styles.passbookModePill}>
+                                                                        <Text style={styles.passbookModeText}>{t.payment_mode || 'CASH'}</Text>
+                                                                    </View>
+                                                                </View>
+                                                                {t.notes ? <Text style={styles.passbookNote}>{t.notes}</Text> : null}
+                                                                <Text style={{ fontSize: 11, fontWeight: '700', color: bal > 0 ? '#DC2626' : bal < 0 ? '#16A34A' : '#64748B', marginTop: 3 }}>
+                                                                    Running Bal: ₹{Math.abs(bal).toLocaleString()} {bal > 0 ? 'Dr (Due)' : bal < 0 ? 'Cr (Adv)' : 'Settled'}
+                                                                </Text>
+                                                            </View>
+
+                                                            <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
+                                                                <Text style={[styles.passbookAmt, { color: isDebit ? '#DC2626' : '#16A34A' }]}>
+                                                                    {isDebit ? '+ ' : '- '}₹{t.amount.toLocaleString()}
+                                                                </Text>
+                                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                                                                    <TouchableOpacity 
+                                                                        onPress={() => openEditTxnModal(t, selectedClientForStatement)} 
+                                                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                                    >
+                                                                        <MaterialCommunityIcons name="pencil-outline" size={16} color="#2563EB" />
+                                                                    </TouchableOpacity>
+                                                                    <TouchableOpacity 
+                                                                        onPress={() => handleDeleteClientTxn(t.id)} 
+                                                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                                    >
+                                                                        <MaterialCommunityIcons name="trash-can-outline" size={16} color="#DC2626" />
+                                                                    </TouchableOpacity>
                                                                 </View>
                                                             </View>
-                                                            {t.notes ? <Text style={styles.passbookNote}>{t.notes}</Text> : null}
-                                                            <Text style={{ fontSize: 10, color: '#94A3B8', marginTop: 1 }}>Mode: {t.payment_mode}</Text>
                                                         </View>
+                                                    );
+                                                })}
 
-                                                        <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
-                                                            <Text style={[styles.passbookAmt, { color: isDebit ? '#DC2626' : '#16A34A' }]}>
-                                                                {isDebit ? '+ ' : '- '}₹{t.amount.toLocaleString()}
-                                                            </Text>
-                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}>
-                                                                <TouchableOpacity 
-                                                                    onPress={() => openEditTxnModal(t, selectedClientForStatement)} 
-                                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                                                >
-                                                                    <MaterialCommunityIcons name="pencil-outline" size={16} color="#2563EB" />
-                                                                </TouchableOpacity>
-                                                                <TouchableOpacity 
-                                                                    onPress={() => handleDeleteClientTxn(t.id)} 
-                                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                                                >
-                                                                    <MaterialCommunityIcons name="trash-can-outline" size={16} color="#DC2626" />
-                                                                </TouchableOpacity>
-                                                            </View>
+                                                {selectedClientForStatement.opening_balance > 0 && (
+                                                    <View style={[styles.passbookRow, { backgroundColor: '#F8FAFC', borderLeftWidth: 3, borderLeftColor: '#DC2626' }]}>
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={styles.passbookDate}>Opening Balance</Text>
+                                                            <Text style={styles.passbookNote}>Initial Balance Brought Forward</Text>
                                                         </View>
+                                                        <Text style={[styles.passbookAmt, { color: '#DC2626' }]}>+ ₹{parseFloat(selectedClientForStatement.opening_balance).toLocaleString()}</Text>
                                                     </View>
-                                                );
-                                            })
+                                                )}
+                                            </>
                                         )}
                                     </ScrollView>
+
+                                    <TouchableOpacity
+                                        style={{ backgroundColor: '#0F172A', borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', marginTop: 10, flexDirection: 'row', gap: 8 }}
+                                        onPress={() => {
+                                            setSelectedClientForTxn(selectedClientForStatement);
+                                            setEditingClientTxn(null);
+                                            setClientTxnAmount('');
+                                            setClientTxnNotes('');
+                                            setIsClientTxnModalVisible(true);
+                                        }}
+                                    >
+                                        <MaterialCommunityIcons name="plus-circle" size={16} color="#FFFFFF" />
+                                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>Record New Transaction</Text>
+                                    </TouchableOpacity>
                                 </View>
                             );
                         })() : null}
+                    </View>
+                </View>
+            </Modal>
+
+            {/* PDF Viewer / Export Options Modal with 4 Specific Actions */}
+            <Modal visible={isExportModalVisible} animationType="fade" transparent={true}>
+                <View style={styles.exportModalOverlay}>
+                    <View style={styles.exportModalContent}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                            <View style={{ flex: 1, marginRight: 10 }}>
+                                <Text style={{ fontSize: 17, fontWeight: '900', color: '#0F172A' }}>
+                                    {exportTarget?.type === 'DATE_REPORT' ? 'Export Date-Wise Report' : 'Export Khata Statement'}
+                                </Text>
+                                <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                                    {exportTarget?.type === 'DATE_REPORT' 
+                                        ? `${formatKhatabahiRange(reportStartDate)} - ${formatKhatabahiRange(reportEndDate)}`
+                                        : exportTarget?.client?.name || 'Party Statement'}
+                                </Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setIsExportModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                <MaterialCommunityIcons name="close" size={24} color="#64748B" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {isExporting ? (
+                            <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+                                <ActivityIndicator size="large" color="#2563EB" />
+                                <Text style={{ marginTop: 12, fontSize: 13, color: '#64748B', fontWeight: '600' }}>Preparing statement export...</Text>
+                            </View>
+                        ) : (
+                            <View style={{ gap: 10 }}>
+                                {/* Option 1: Save as PDF */}
+                                <TouchableOpacity 
+                                    style={styles.exportOptionCard} 
+                                    onPress={() => handleExportAction('SAVE_PDF')}
+                                    activeOpacity={0.8}
+                                >
+                                    <View style={[styles.exportOptionIconBox, { backgroundColor: '#FEE2E2' }]}>
+                                        <MaterialCommunityIcons name="file-pdf-box" size={24} color="#DC2626" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.exportOptionTitle}>Save as PDF</Text>
+                                        <Text style={styles.exportOptionSub}>Save or download formatted PDF file to device</Text>
+                                    </View>
+                                    <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
+                                </TouchableOpacity>
+
+                                {/* Option 2: Print in A4 */}
+                                <TouchableOpacity 
+                                    style={styles.exportOptionCard} 
+                                    onPress={() => handleExportAction('PRINT_A4')}
+                                    activeOpacity={0.8}
+                                >
+                                    <View style={[styles.exportOptionIconBox, { backgroundColor: '#EFF6FF' }]}>
+                                        <MaterialCommunityIcons name="printer" size={24} color="#2563EB" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.exportOptionTitle}>Print in A4</Text>
+                                        <Text style={styles.exportOptionSub}>System print preview formatted for standard A4 paper</Text>
+                                    </View>
+                                    <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
+                                </TouchableOpacity>
+
+                                {/* Option 3: Send via WhatsApp */}
+                                <TouchableOpacity 
+                                    style={styles.exportOptionCard} 
+                                    onPress={() => handleExportAction('WHATSAPP')}
+                                    activeOpacity={0.8}
+                                >
+                                    <View style={[styles.exportOptionIconBox, { backgroundColor: '#DCFCE7' }]}>
+                                        <MaterialCommunityIcons name="whatsapp" size={24} color="#16A34A" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.exportOptionTitle}>Send via WhatsApp</Text>
+                                        <Text style={styles.exportOptionSub}>Share statement file (type or pick contact in WhatsApp)</Text>
+                                    </View>
+                                    <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
+                                </TouchableOpacity>
+
+                                {/* Option 4: Save as Image */}
+                                <TouchableOpacity 
+                                    style={styles.exportOptionCard} 
+                                    onPress={() => handleExportAction('SAVE_IMAGE')}
+                                    activeOpacity={0.8}
+                                >
+                                    <View style={[styles.exportOptionIconBox, { backgroundColor: '#F3E8FF' }]}>
+                                        <MaterialCommunityIcons name="image-outline" size={24} color="#7C3AED" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.exportOptionTitle}>Save as Image</Text>
+                                        <Text style={styles.exportOptionSub}>Save or share high-resolution statement graphic</Text>
+                                    </View>
+                                    <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Date-Wise Report Filters Modal */}
+            <Modal visible={isReportFilterModalVisible} animationType="slide" transparent={true}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <View>
+                                <Text style={styles.modalTitle}>Report Filters</Text>
+                                <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>Filter Date-Wise Report by client</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setIsReportFilterModalVisible(false)}>
+                                <MaterialCommunityIcons name="close" size={24} color="#0F172A" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={[styles.inputLabel, { marginTop: 10 }]}>SELECT PARTY</Text>
+                        <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={false}>
+                            <TouchableOpacity
+                                style={[styles.exportOptionCard, { marginBottom: 6 }, reportPartyFilter === 'ALL' && { borderColor: '#1D4ED8', backgroundColor: '#EFF6FF' }]}
+                                onPress={() => { setReportPartyFilter('ALL'); setIsReportFilterModalVisible(false); }}
+                            >
+                                <MaterialCommunityIcons name="account-group" size={20} color={reportPartyFilter === 'ALL' ? '#1D4ED8' : '#64748B'} style={{ marginRight: 10 }} />
+                                <Text style={[{ fontSize: 14, fontWeight: '700', color: '#0F172A' }, reportPartyFilter === 'ALL' && { color: '#1D4ED8', fontWeight: '900' }]}>
+                                    All Clients ({clients.length})
+                                </Text>
+                            </TouchableOpacity>
+
+                            {clients.map(c => {
+                                const isSel = String(reportPartyFilter) === String(c.id);
+                                return (
+                                    <TouchableOpacity
+                                        key={c.id}
+                                        style={[styles.exportOptionCard, { marginBottom: 6 }, isSel && { borderColor: '#1D4ED8', backgroundColor: '#EFF6FF' }]}
+                                        onPress={() => { setReportPartyFilter(c.id); setIsReportFilterModalVisible(false); }}
+                                    >
+                                        <MaterialCommunityIcons name="account" size={20} color={isSel ? '#1D4ED8' : '#64748B'} style={{ marginRight: 10 }} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[{ fontSize: 14, fontWeight: '700', color: '#0F172A' }, isSel && { color: '#1D4ED8', fontWeight: '900' }]}>
+                                                {c.name}
+                                            </Text>
+                                            {c.phone ? <Text style={{ fontSize: 11, color: '#64748B' }}>{c.phone}</Text> : null}
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
                     </View>
                 </View>
             </Modal>
@@ -3638,5 +4509,367 @@ const styles = StyleSheet.create({
     },
     clientTypeBtnSubActive: {
         color: 'rgba(255,255,255,0.85)',
+    },
+
+    /* Client Khata Filter Highlights */
+    clientStatsCardActiveDue: {
+        borderWidth: 2,
+        borderColor: '#EF4444',
+        backgroundColor: '#FEF2F2',
+    },
+    clientStatsCardActiveAdv: {
+        borderWidth: 2,
+        borderColor: '#10B981',
+        backgroundColor: '#F0FDF4',
+    },
+    clientNetBarActive: {
+        borderWidth: 2,
+        borderColor: '#2563EB',
+        backgroundColor: '#EFF6FF',
+    },
+    statActiveBadge: {
+        backgroundColor: '#EF4444',
+        borderRadius: 4,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+        alignSelf: 'flex-start',
+        marginTop: 4,
+    },
+    statActiveBadgeText: {
+        color: '#FFFFFF',
+        fontSize: 8.5,
+        fontWeight: '900',
+        letterSpacing: 0.3,
+    },
+    clientFilterChipsRow: {
+        flexDirection: 'row',
+        gap: 6,
+        marginTop: 10,
+    },
+    clientFilterChip: {
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRadius: 8,
+        backgroundColor: '#F1F5F9',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    clientFilterChipActive: {
+        backgroundColor: '#0F172A',
+        borderColor: '#0F172A',
+    },
+    clientFilterChipActiveDue: {
+        backgroundColor: '#FEF2F2',
+        borderColor: '#DC2626',
+    },
+    clientFilterChipActiveAdv: {
+        backgroundColor: '#F0FDF4',
+        borderColor: '#16A34A',
+    },
+    clientFilterChipActiveSettled: {
+        backgroundColor: '#EFF6FF',
+        borderColor: '#2563EB',
+    },
+    clientFilterChipText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#64748B',
+    },
+    clientFilterChipTextActive: {
+        color: '#FFFFFF',
+    },
+    clientFilterChipTextActiveDue: {
+        color: '#DC2626',
+    },
+    clientFilterChipTextActiveAdv: {
+        color: '#16A34A',
+    },
+    clientFilterChipTextActiveSettled: {
+        color: '#2563EB',
+    },
+
+    /* Khatabahi Date-Wise Report Styles (matching khatabahi.jpeg) */
+    khatabahiContainer: {
+        flex: 1,
+        backgroundColor: '#F8FAFC',
+    },
+    khatabahiHeader: {
+        backgroundColor: '#0D47A1',
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 4,
+    },
+    khatabahiHeaderTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    khatabahiHeaderTitle: {
+        fontSize: 18,
+        fontWeight: '900',
+        color: '#FFFFFF',
+        letterSpacing: 0.3,
+    },
+    khatabahiTabsRow: {
+        flexDirection: 'row',
+        marginTop: 14,
+    },
+    khatabahiTab: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: 10,
+    },
+    khatabahiTabActive: {
+        borderBottomWidth: 3,
+        borderBottomColor: '#FFFFFF',
+    },
+    khatabahiTabText: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: 'rgba(255, 255, 255, 0.65)',
+        letterSpacing: 0.8,
+    },
+    khatabahiTabTextActive: {
+        color: '#FFFFFF',
+    },
+    khatabahiDateBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        gap: 10,
+        backgroundColor: '#FFFFFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#E2E8F0',
+    },
+    khatabahiDateSelectorBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#CBD5E1',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        gap: 8,
+    },
+    khatabahiDateSelectorText: {
+        fontSize: 13.5,
+        fontWeight: '800',
+        color: '#1D4ED8',
+        letterSpacing: 0.4,
+    },
+    khatabahiFiltersBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#CBD5E1',
+        borderRadius: 8,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        gap: 6,
+        position: 'relative',
+    },
+    khatabahiFiltersBadge: {
+        position: 'absolute',
+        top: -6,
+        right: 8,
+        backgroundColor: '#10B981',
+        borderRadius: 4,
+        paddingHorizontal: 4,
+        paddingVertical: 1,
+    },
+    khatabahiFiltersBadgeText: {
+        color: '#FFFFFF',
+        fontSize: 8.5,
+        fontWeight: '900',
+    },
+    khatabahiFiltersText: {
+        fontSize: 13.5,
+        fontWeight: '800',
+        color: '#1D4ED8',
+    },
+    khatabahiEquationCard: {
+        backgroundColor: '#EFF6FF',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottomWidth: 1,
+        borderBottomColor: '#DBEAFE',
+    },
+    khatabahiEquationCol: {
+        alignItems: 'center',
+        minWidth: 70,
+    },
+    khatabahiEquationLabel: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#64748B',
+        marginBottom: 3,
+    },
+    khatabahiEquationVal: {
+        fontSize: 16,
+        fontWeight: '900',
+    },
+    khatabahiEquationOp: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#64748B',
+    },
+    khatabahiExpandCircle: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        backgroundColor: '#DBEAFE',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    khatabahiTableHead: {
+        flexDirection: 'row',
+        backgroundColor: '#F1F5F9',
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E2E8F0',
+        alignItems: 'center',
+    },
+    khatabahiTableHeadCol: {
+        fontSize: 11.5,
+        fontWeight: '800',
+        color: '#64748B',
+        textTransform: 'uppercase',
+    },
+    khatabahiTableRow: {
+        backgroundColor: '#FFFFFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+    },
+    khatabahiTableRowMain: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    khatabahiRowDate: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#0F172A',
+    },
+    khatabahiRowIn: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#16A34A',
+        textAlign: 'center',
+    },
+    khatabahiRowOut: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#DC2626',
+        textAlign: 'center',
+    },
+    khatabahiRowBal: {
+        fontSize: 14,
+        fontWeight: '800',
+        textAlign: 'right',
+    },
+    khatabahiRowDetailsBox: {
+        marginTop: 10,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#F1F5F9',
+        backgroundColor: '#F8FAFC',
+        borderRadius: 8,
+        padding: 10,
+    },
+    khatabahiBottomSticky: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 22,
+        borderTopWidth: 1,
+        borderTopColor: '#E2E8F0',
+        elevation: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    khatabahiDownloadBtn: {
+        borderWidth: 1.8,
+        borderColor: '#1D4ED8',
+        borderRadius: 8,
+        paddingVertical: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: '#FFFFFF',
+    },
+    khatabahiDownloadText: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#1D4ED8',
+        letterSpacing: 1,
+    },
+
+    /* PDF Viewer / Export Modal Styles */
+    exportModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.55)',
+        justifyContent: 'flex-end',
+    },
+    exportModalContent: {
+        backgroundColor: '#FFFFFF',
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        padding: 20,
+        paddingBottom: 32,
+    },
+    exportOptionCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 14,
+        borderRadius: 12,
+        backgroundColor: '#F8FAFC',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    exportOptionIconBox: {
+        width: 44,
+        height: 44,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 14,
+    },
+    exportOptionTitle: {
+        fontSize: 15,
+        fontWeight: '800',
+        color: '#0F172A',
+    },
+    exportOptionSub: {
+        fontSize: 11.5,
+        color: '#64748B',
+        marginTop: 2,
+    },
+    passbookModePill: {
+        backgroundColor: '#F1F5F9',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    passbookModeText: {
+        fontSize: 10,
+        color: '#64748B',
+        fontWeight: '700',
     }
 });

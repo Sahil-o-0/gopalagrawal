@@ -1074,7 +1074,7 @@ export default function AdminDashboard({ navigation, route }) {
              const siteName = site ? site.name : 'No Site';
              
              // Format added/created date
-             const createdDate = u.created_at ? (() => { const d = new Date(u.created_at); return \-\-\; })() : 'N/A';
+              const createdDate = u.created_at ? (() => { const d = new Date(u.created_at); const dd = String(d.getDate()).padStart(2, '0'); const mm = String(d.getMonth() + 1).padStart(2, '0'); const yyyy = d.getFullYear(); return `${dd}-${mm}-${yyyy}`; })() : 'N/A';
              const createdBy = u.created_by || 'N/A';
 
              return (

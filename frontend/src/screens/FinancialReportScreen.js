@@ -18,6 +18,17 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
+// Converts any date string (ISO or YYYY-MM-DD) to DD-MM-YYYY
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+};
+
 export default function FinancialReportScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const topPadding = Math.max(insets.top, Platform.OS === 'android' ? 36 : 20);
@@ -485,12 +496,14 @@ export default function FinancialReportScreen({ navigation }) {
           <TouchableOpacity style={styles.navArrow} onPress={handlePrev} activeOpacity={0.7}>
             <MaterialCommunityIcons name="chevron-left" size={24} color="#1E293B" />
           </TouchableOpacity>
-          <View style={{ alignItems: 'center' }}>
-            <Text style={styles.dateNavTitle}>
+          <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: 4 }}>
+            <Text style={styles.dateNavTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
               {period === 'monthly' ? `${MONTH_NAMES[month - 1]} ${year}` : `Year ${year}`}
             </Text>
-            <Text style={styles.dateNavRange}>
-              {reportData?.date_range ? `${reportData.date_range.start} to ${reportData.date_range.end}` : ''}
+            <Text style={styles.dateNavRange} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+              {reportData?.date_range
+                ? `${formatDate(reportData.date_range.start)} to ${formatDate(reportData.date_range.end)}`
+                : ''}
             </Text>
           </View>
           <TouchableOpacity style={styles.navArrow} onPress={handleNext} activeOpacity={0.7}>
@@ -526,23 +539,28 @@ export default function FinancialReportScreen({ navigation }) {
               </View>
 
               <Text style={styles.heroLabel}>NET OPERATING PROFIT</Text>
-              <Text style={[styles.heroProfitVal, { color: summary.net_profit >= 0 ? "#065F46" : "#991B1B" }]}>
+              <Text
+                style={[styles.heroProfitVal, { color: summary.net_profit >= 0 ? "#065F46" : "#991B1B" }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
                 ₹{summary.net_profit.toLocaleString('en-IN')}
               </Text>
-              <Text style={styles.heroFormula}>Earnings minus (Diesel + Maintenance + Salaries + EMI)</Text>
+              <Text style={styles.heroFormula} numberOfLines={2}>Earnings minus (Diesel + Maintenance + Salaries + EMI)</Text>
 
               {/* Sub Comparison Row */}
               <View style={styles.heroSubGrid}>
                 <View style={styles.heroSubItem}>
                   <Text style={styles.heroSubLabel}>GROSS EARNINGS</Text>
-                  <Text style={[styles.heroSubVal, { color: '#2563EB' }]}>
+                  <Text style={[styles.heroSubVal, { color: '#2563EB' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
                     ₹{summary.total_earnings.toLocaleString('en-IN')}
                   </Text>
                 </View>
                 <View style={styles.heroSubDivider} />
                 <View style={styles.heroSubItem}>
                   <Text style={styles.heroSubLabel}>TOTAL EXPENSES</Text>
-                  <Text style={[styles.heroSubVal, { color: '#D97706' }]}>
+                  <Text style={[styles.heroSubVal, { color: '#D97706' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
                     ₹{summary.total_expenses.toLocaleString('en-IN')}
                   </Text>
                 </View>
@@ -637,13 +655,13 @@ export default function FinancialReportScreen({ navigation }) {
               <View style={styles.kpiRow}>
                 <View style={styles.kpiBox}>
                   <Text style={styles.kpiBoxLabel}>BILTI BILLED</Text>
-                  <Text style={styles.kpiBoxVal}>₹{freight.total_billed.toLocaleString('en-IN')}</Text>
+                  <Text style={styles.kpiBoxVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>₹{freight.total_billed.toLocaleString('en-IN')}</Text>
                   <Text style={styles.kpiBoxSub}>{freight.trips_count} Total Trips</Text>
                 </View>
 
                 <View style={styles.kpiBox}>
                   <Text style={styles.kpiBoxLabel}>COLLECTED</Text>
-                  <Text style={[styles.kpiBoxVal, { color: '#059669' }]}>
+                  <Text style={[styles.kpiBoxVal, { color: '#059669' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
                     ₹{freight.total_received.toLocaleString('en-IN')}
                   </Text>
                   <Text style={styles.kpiBoxSub}>Advance & Freight</Text>
@@ -651,7 +669,7 @@ export default function FinancialReportScreen({ navigation }) {
 
                 <View style={styles.kpiBox}>
                   <Text style={styles.kpiBoxLabel}>PENDING</Text>
-                  <Text style={[styles.kpiBoxVal, { color: '#DC2626' }]}>
+                  <Text style={[styles.kpiBoxVal, { color: '#DC2626' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
                     ₹{freight.total_pending.toLocaleString('en-IN')}
                   </Text>
                   <Text style={styles.kpiBoxSub}>Outstanding</Text>
@@ -678,16 +696,16 @@ export default function FinancialReportScreen({ navigation }) {
 
                 {monthlyTrend.map((item) => (
                   <View key={`m-${item.month}`} style={styles.tableRow}>
-                    <Text style={[styles.tableRowText, { flex: 1.2, fontWeight: '700' }]}>
+                    <Text style={[styles.tableRowText, { flex: 1.2, fontWeight: '700' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                       {item.month_name}
                     </Text>
-                    <Text style={[styles.tableRowText, { flex: 1.5, textAlign: 'right', color: '#2563EB' }]}>
+                    <Text style={[styles.tableRowText, { flex: 1.5, textAlign: 'right', color: '#2563EB' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
                       ₹{item.earnings.toLocaleString('en-IN')}
                     </Text>
-                    <Text style={[styles.tableRowText, { flex: 1.5, textAlign: 'right', color: '#D97706' }]}>
+                    <Text style={[styles.tableRowText, { flex: 1.5, textAlign: 'right', color: '#D97706' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
                       ₹{item.expenses.toLocaleString('en-IN')}
                     </Text>
-                    <Text style={[styles.tableRowText, { flex: 1.5, textAlign: 'right', fontWeight: '800', color: item.net_profit >= 0 ? '#059669' : '#DC2626' }]}>
+                    <Text style={[styles.tableRowText, { flex: 1.5, textAlign: 'right', fontWeight: '800', color: item.net_profit >= 0 ? '#059669' : '#DC2626' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
                       ₹{item.net_profit.toLocaleString('en-IN')}
                     </Text>
                   </View>

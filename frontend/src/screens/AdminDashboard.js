@@ -1074,7 +1074,7 @@ export default function AdminDashboard({ navigation, route }) {
              const siteName = site ? site.name : 'No Site';
              
              // Format added/created date
-             const createdDate = u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A';
+             const createdDate = u.created_at ? (() => { const d = new Date(u.created_at); return \-\-\; })() : 'N/A';
              const createdBy = u.created_by || 'N/A';
 
              return (
@@ -1254,9 +1254,9 @@ export default function AdminDashboard({ navigation, route }) {
                 <View style={styles.tripCardHeader}>
                   <View style={styles.tripVehicleBadge}>
                     <MaterialCommunityIcons name="truck-fast-outline" size={20} color="#0F172A" />
-                    <View style={{ marginLeft: 10 }}>
-                      <Text style={styles.tripVehicleNum}>{t.vehicle_number}</Text>
-                      <Text style={styles.tripDriverName}>Driver: {t.staff_name || 'Assigned Staff'}</Text>
+                    <View style={{ marginLeft: 10, flex: 1 }}>
+                      <Text style={styles.tripVehicleNum} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{t.vehicle_number}</Text>
+                      <Text style={styles.tripDriverName} numberOfLines={1}>Driver: {t.staff_name || 'Assigned Staff'}</Text>
                     </View>
                   </View>
                   <View style={[styles.tripStatusTag, { backgroundColor: isValidated ? '#ECFDF5' : '#FEF3C7', borderColor: isValidated ? '#A7F3D0' : '#FDE68A' }]}>
@@ -1283,20 +1283,20 @@ export default function AdminDashboard({ navigation, route }) {
                 <View style={styles.tripMetricsGrid}>
                   <View style={styles.tripMetricItem}>
                     <Text style={styles.tripMetricLabel}>MATERIAL</Text>
-                    <Text style={styles.tripMetricVal}>{t.material_type || 'N/A'}</Text>
-                    <Text style={styles.tripMetricSub}>{t.weight_tons ? `${t.weight_tons} Tons` : ''}</Text>
+                    <Text style={styles.tripMetricVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{t.material_type || 'N/A'}</Text>
+                    <Text style={styles.tripMetricSub} numberOfLines={1}>{t.weight_tons ? `${t.weight_tons} Tons` : ''}</Text>
                   </View>
                   <View style={styles.tripMetricDivider} />
                   <View style={styles.tripMetricItem}>
                     <Text style={styles.tripMetricLabel}>DISTANCE</Text>
-                    <Text style={styles.tripMetricVal}>{t.total_km || 0} KM</Text>
-                    <Text style={styles.tripMetricSub}>Logged odometer</Text>
+                    <Text style={styles.tripMetricVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{t.total_km || 0} KM</Text>
+                    <Text style={styles.tripMetricSub} numberOfLines={1}>Logged odometer</Text>
                   </View>
                   <View style={styles.tripMetricDivider} />
                   <View style={styles.tripMetricItem}>
                     <Text style={styles.tripMetricLabel}>DIESEL</Text>
-                    <Text style={styles.tripMetricVal}>{t.diesel_liters ? `${t.diesel_liters}L` : '0L'}</Text>
-                    <Text style={styles.tripMetricSub}>{t.diesel_cost ? `₹${t.diesel_cost}` : '₹0'}</Text>
+                    <Text style={styles.tripMetricVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{t.diesel_liters ? `${t.diesel_liters}L` : '0L'}</Text>
+                    <Text style={styles.tripMetricSub} numberOfLines={1}>{t.diesel_cost ? `₹${t.diesel_cost}` : '₹0'}</Text>
                   </View>
                 </View>
 
@@ -1338,9 +1338,9 @@ export default function AdminDashboard({ navigation, route }) {
                       })()}
                     </Text>
                   </View>
-                  <View style={{ alignItems: 'flex-end' }}>
+                  <View style={{ alignItems: 'flex-end', flex: 1, marginLeft: 8 }}>
                     <Text style={styles.tripDateLabel}>BHADA / INCOME</Text>
-                    <Text style={styles.tripIncomeValue}>₹{t.bhada || 0}</Text>
+                    <Text style={styles.tripIncomeValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>₹{t.bhada || 0}</Text>
                   </View>
                 </View>
 
@@ -1432,8 +1432,8 @@ export default function AdminDashboard({ navigation, route }) {
               </View>
 
               <View style={styles.emiCardMid}>
-                <View><Text style={styles.emiCardAmountLabel}>AMOUNT</Text><Text style={styles.emiCardAmount}>₹{parseFloat(e.emi_amount || 0).toLocaleString()}</Text></View>
-                <View style={{alignItems: 'flex-end'}}><Text style={styles.emiCardAmountLabel}>DUE DATE</Text><Text style={styles.emiCardDueDate}>{e.emi_due_date || 'N/A'}</Text></View>
+                <View><Text style={styles.emiCardAmountLabel}>AMOUNT</Text><Text style={styles.emiCardAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>₹{parseFloat(e.emi_amount || 0).toLocaleString()}</Text></View>
+                <View style={{alignItems: 'flex-end'}}><Text style={styles.emiCardAmountLabel}>DUE DATE</Text><Text style={styles.emiCardDueDate}>{e.emi_due_date ? (() => { const d = new Date(e.emi_due_date); if (isNaN(d.getTime())) return e.emi_due_date; return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`; })() : 'N/A'}</Text></View>
               </View>
 
               {/* Compliance Badges Row */}
@@ -1442,7 +1442,7 @@ export default function AdminDashboard({ navigation, route }) {
                   {e.insurance_expiry && (
                     <View style={{ flex: 1, backgroundColor: '#EFF6FF', padding: 6, borderRadius: 6 }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#1E40AF' }}>INSURANCE</Text>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{e.insurance_expiry}</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{(() => { const d = new Date(e.insurance_expiry); return isNaN(d.getTime()) ? e.insurance_expiry : `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`; })()}</Text>
                       <Text style={{ fontSize: 9, color: insDays <= 7 ? '#DC2626' : '#2563EB', fontWeight: '700' }}>
                         {insDays !== null ? (insDays < 0 ? `${Math.abs(insDays)}d Expired` : `${insDays}d left`) : ''}
                       </Text>
@@ -1451,7 +1451,7 @@ export default function AdminDashboard({ navigation, route }) {
                   {e.fitness_expiry && (
                     <View style={{ flex: 1, backgroundColor: '#F0FDF4', padding: 6, borderRadius: 6 }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#166534' }}>FITNESS EXPIRY</Text>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{e.fitness_expiry}</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{(() => { const d = new Date(e.fitness_expiry); return isNaN(d.getTime()) ? e.fitness_expiry : `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`; })()}</Text>
                       <Text style={{ fontSize: 9, color: fitDays <= 7 ? '#DC2626' : '#16A34A', fontWeight: '700' }}>
                         {fitDays !== null ? (fitDays < 0 ? `${Math.abs(fitDays)}d Expired` : `${fitDays}d left`) : ''}
                       </Text>

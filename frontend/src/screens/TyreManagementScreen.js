@@ -352,15 +352,28 @@ export default function TyreManagementScreen({ navigation }) {
   const fittedCount = filteredTyres.filter((t) => t.status === 'FITTED').length;
   const totalInvestment = filteredTyres.reduce((acc, t) => acc + (parseFloat(t.purchase_cost) || 0), 0);
 
-  // Distinct vehicles in filter chips
+  // Format date helper for cards (DD-MM-YYYY)
+  const formatCardDate = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  // Distinct vehicles in filter chips (sanitized & deduplicated)
   const vehicleFilterOptions = [
     'ALL',
     ...Array.from(
-      new Set([
-        ...vehiclesList.map((v) => v.vehicle_number),
-        ...tyres.map((t) => t.vehicle_number),
-      ])
-    ).filter(Boolean),
+      new Set(
+        [
+          ...vehiclesList.map((v) => (v?.vehicle_number ? String(v.vehicle_number).trim() : '')),
+          ...tyres.map((t) => (t?.vehicle_number ? String(t.vehicle_number).trim() : '')),
+        ].filter((v) => Boolean(v && v.length > 0))
+      )
+    ),
   ];
 
   return (
@@ -378,7 +391,7 @@ export default function TyreManagementScreen({ navigation }) {
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={openAddModal} activeOpacity={0.8}>
           <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
-          <Text style={styles.addBtnText}>+ Add Tyre(s)</Text>
+          <Text style={styles.addBtnText}>Add Tyre(s)</Text>
         </TouchableOpacity>
       </View>
 
@@ -404,10 +417,12 @@ export default function TyreManagementScreen({ navigation }) {
           <MaterialCommunityIcons name="magnify" size={20} color="#94A3B8" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search serial no, brand, vehicle, position..."
+            placeholder="Search serial no, brand, vehicle..."
             placeholderTextColor="#94A3B8"
             value={searchQuery}
             onChangeText={setSearchQuery}
+            numberOfLines={1}
+            multiline={false}
           />
           {searchQuery ? (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
@@ -417,25 +432,36 @@ export default function TyreManagementScreen({ navigation }) {
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-          {vehicleFilterOptions.map((vNum) => (
-            <TouchableOpacity
-              key={vNum}
-              style={[
-                styles.filterChip,
-                selectedVehicleFilter === vNum && styles.filterChipActive,
-              ]}
-              onPress={() => setSelectedVehicleFilter(vNum)}
-            >
-              <Text
+          {vehicleFilterOptions.map((vNum) => {
+            const isSelected = selectedVehicleFilter.toUpperCase() === vNum.toUpperCase();
+            return (
+              <TouchableOpacity
+                key={vNum}
                 style={[
-                  styles.filterChipText,
-                  selectedVehicleFilter === vNum && styles.filterChipTextActive,
+                  styles.filterChip,
+                  isSelected && styles.filterChipActive,
                 ]}
+                onPress={() => setSelectedVehicleFilter(vNum)}
+                activeOpacity={0.7}
               >
-                {vNum === 'ALL' ? '🚛 All Vehicles' : `🚛 ${vNum}`}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <MaterialCommunityIcons
+                  name="truck"
+                  size={15}
+                  color={isSelected ? '#FFFFFF' : '#2563EB'}
+                  style={{ marginRight: 5 }}
+                />
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    isSelected && styles.filterChipTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {vNum === 'ALL' ? 'All Vehicles' : vNum}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
@@ -549,7 +575,7 @@ export default function TyreManagementScreen({ navigation }) {
                   <Text style={styles.label}>PURCHASE DATE</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
                     <MaterialCommunityIcons name="calendar-range" size={14} color="#059669" />
-                    <Text style={styles.valText}>{tyre.purchase_date || 'N/A'}</Text>
+                    <Text style={styles.valText}>{formatCardDate(tyre.purchase_date)}</Text>
                   </View>
                 </View>
                 <View style={styles.detailItem}>
@@ -975,14 +1001,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
     marginHorizontal: 14,
     borderRadius: 10,
-    paddingHorizontal: 10,
-    height: 38,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    paddingVertical: Platform.OS === 'android' ? 2 : 6,
   },
   searchInput: {
     flex: 1,
     fontSize: 13,
     color: '#1E293B',
     marginLeft: 6,
+    paddingVertical: 0,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   filterScroll: {
     paddingHorizontal: 14,
@@ -990,8 +1020,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 7,
     borderRadius: 8,
     backgroundColor: '#F1F5F9',
     marginRight: 6,
@@ -1000,9 +1032,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB',
   },
   filterChipText: {
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#64748B',
+    color: '#475569',
+    includeFontPadding: false,
   },
   filterChipTextActive: {
     color: '#FFFFFF',

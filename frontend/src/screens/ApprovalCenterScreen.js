@@ -112,22 +112,26 @@ export default function ApprovalCenterScreen({ navigation }) {
     try {
       const siteId = selectedSite?.id || 1;
 
+      const sId = user?.id || user?.user_id;
       if (requestType === 'ADVANCE') {
         if (!advanceAmount || !advanceReason.trim()) {
           Alert.alert('Required', 'Please enter amount and reason');
           return;
         }
+        const payload = {
+          amount: parseFloat(advanceAmount),
+          reason: advanceReason.trim(),
+          site_id: siteId
+        };
+        if (sId) payload.staff_id = parseInt(sId);
+
         const res = await fetch(`${API_BASE_URL}/workforce/advances`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${userToken}`
           },
-          body: JSON.stringify({
-            amount: parseFloat(advanceAmount),
-            reason: advanceReason.trim(),
-            site_id: siteId
-          })
+          body: JSON.stringify(payload)
         });
         if (res.ok) {
           Alert.alert('Success', 'Advance request submitted!');
@@ -136,25 +140,29 @@ export default function ApprovalCenterScreen({ navigation }) {
           setIsRequestModalVisible(false);
           fetchAllData();
         } else {
-          Alert.alert('Error', 'Failed to submit advance request');
+          const data = await res.json().catch(() => ({}));
+          Alert.alert('Error', data?.detail || 'Failed to submit advance request');
         }
       } else if (requestType === 'LEAVE') {
         if (!leaveReason.trim()) {
           Alert.alert('Required', 'Please state the reason for leave');
           return;
         }
+        const payload = {
+          start_date: formatLocalDate(leaveStartDate),
+          end_date: formatLocalDate(leaveEndDate),
+          reason: leaveReason.trim(),
+          site_id: siteId
+        };
+        if (sId) payload.staff_id = parseInt(sId);
+
         const res = await fetch(`${API_BASE_URL}/workforce/leaves`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${userToken}`
           },
-          body: JSON.stringify({
-            start_date: formatLocalDate(leaveStartDate),
-            end_date: formatLocalDate(leaveEndDate),
-            reason: leaveReason.trim(),
-            site_id: siteId
-          })
+          body: JSON.stringify(payload)
         });
         if (res.ok) {
           Alert.alert('Success', 'Leave request submitted!');
@@ -162,7 +170,8 @@ export default function ApprovalCenterScreen({ navigation }) {
           setIsRequestModalVisible(false);
           fetchAllData();
         } else {
-          Alert.alert('Error', 'Failed to submit leave request');
+          const data = await res.json().catch(() => ({}));
+          Alert.alert('Error', data?.detail || 'Failed to submit leave request');
         }
       } else if (requestType === 'REPAIR') {
         if (!repairVehicle.trim() || !repairDescription.trim()) {

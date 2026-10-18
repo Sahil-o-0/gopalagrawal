@@ -142,17 +142,26 @@ export default function StaffDashboard({ navigation, route }) {
     if (!leaveStart || !leaveEnd || !leaveReason) return Alert.alert("Required", "Please fill all leave fields");
     try {
       setIsLoading(true);
+      const sId = user?.id || user?.user_id;
+      const payload = {
+        start_date: leaveStart,
+        end_date: leaveEnd,
+        reason: leaveReason.trim()
+      };
+      if (sId) payload.staff_id = parseInt(sId);
+      if (selectedSite?.id) payload.site_id = selectedSite.id;
+
       const resp = await fetch(`${API_BASE_URL}/workforce/leaves`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
-        body: JSON.stringify({ staff_id: user.id, start_date: leaveStart, end_date: leaveEnd, reason: leaveReason })
+        body: JSON.stringify(payload)
       });
       if (resp.ok) {
-        Alert.alert("Success", "Leave request submitted");
+        Alert.alert("Success", "Leave request submitted successfully!");
         setLeaveStart(''); setLeaveEnd(''); setLeaveReason('');
       } else {
-        const data = await resp.json();
-        Alert.alert("Error", data.detail || "Could not submit leave");
+        const data = await resp.json().catch(() => ({}));
+        Alert.alert("Error", data?.detail || "Could not submit leave");
       }
     } catch (e) { Alert.alert("Error", "Network error"); } finally { setIsLoading(false); }
   };
@@ -161,16 +170,25 @@ export default function StaffDashboard({ navigation, route }) {
     if (!advanceAmount || !advanceReason) return Alert.alert("Required", "Please fill advance fields");
     try {
       setIsLoading(true);
+      const sId = user?.id || user?.user_id;
+      const payload = {
+        amount: parseFloat(advanceAmount),
+        reason: advanceReason.trim()
+      };
+      if (sId) payload.staff_id = parseInt(sId);
+      if (selectedSite?.id) payload.site_id = selectedSite.id;
+
       const resp = await fetch(`${API_BASE_URL}/workforce/advances`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
-        body: JSON.stringify({ staff_id: user.id, amount: parseFloat(advanceAmount), reason: advanceReason })
+        body: JSON.stringify(payload)
       });
       if (resp.ok) {
-        Alert.alert("Success", "Advance request submitted");
+        Alert.alert("Success", "Advance request submitted successfully!");
         setAdvanceAmount(''); setAdvanceReason('');
       } else {
-        Alert.alert("Error", "Could not submit advance");
+        const data = await resp.json().catch(() => ({}));
+        Alert.alert("Error", data?.detail || "Could not submit advance");
       }
     } catch (e) { Alert.alert("Error", "Network error"); } finally { setIsLoading(false); }
   };

@@ -398,7 +398,7 @@ export default function LoginScreen() {
               style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}
               activeOpacity={0.7}
             >
-              <Text style={styles.centerVersionTag}>App Version: v5.9</Text>
+              <Text style={styles.centerVersionTag}>App Version: v6.0</Text>
               <MaterialCommunityIcons name="refresh" size={12} color="#94A3B8" />
             </TouchableOpacity>
           </View>

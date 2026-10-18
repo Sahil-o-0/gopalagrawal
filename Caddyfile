@@ -1,7 +1,3 @@
-http://aadharshilagroup.online, http://www.aadharshilagroup.online {
-    reverse_proxy backend:8000
-}
-
 aadharshilagroup.online, www.aadharshilagroup.online {
     reverse_proxy backend:8000
 }

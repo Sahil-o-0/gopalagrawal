@@ -1046,6 +1046,9 @@ export default function DailyLedgerScreen({ navigation }) {
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [filterMode, setFilterMode] = useState('MONTH'); // DAY, MONTH
 
+    // Activity Ledger Category Filter
+    const [activityFilter, setActivityFilter] = useState('ALL'); // ALL, FUEL, TRIP_INCOME, SALARY, CLIENT_PAYMENT
+
     // Manual Entry State
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [entryType, setEntryType] = useState('EXPENSE'); // INCOME, EXPENSE
@@ -1429,8 +1432,53 @@ export default function DailyLedgerScreen({ navigation }) {
                         <Text style={styles.listTitle}>Activity Ledger</Text>
                     </View>
                     <View style={styles.countBadge}>
-                        <Text style={styles.listCount}>{ledgerData.length} records</Text>
+                        <Text style={styles.listCount}>
+                            {ledgerData.filter(item => {
+                                if (activityFilter === 'ALL') return true;
+                                if (activityFilter === 'FUEL') return item.category === 'FUEL' || item.category === 'DIESEL';
+                                if (activityFilter === 'TRIP_INCOME') return item.category === 'TRIP_INCOME';
+                                if (activityFilter === 'CLIENT_PAYMENT') return item.category === 'CLIENT_PAYMENT';
+                                if (activityFilter === 'SALARY') return ['SALARY', 'WAGE_PAYOUT', 'ADVANCE'].includes(item.category);
+                                return true;
+                            }).length} records
+                        </Text>
                     </View>
+                </View>
+
+                {/* Activity Category Filter Chips */}
+                <View style={{ marginBottom: 10 }}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                        {[
+                            { key: 'ALL', label: 'All Activities', icon: 'format-list-bulleted' },
+                            { key: 'FUEL', label: '⛽ Fuel & Diesel', icon: 'gas-station' },
+                            { key: 'TRIP_INCOME', label: '🚚 Trip Bhada', icon: 'truck-fast' },
+                            { key: 'CLIENT_PAYMENT', label: '💳 Client Payments', icon: 'account-cash' },
+                            { key: 'SALARY', label: '👥 Wages & Advance', icon: 'account-group' }
+                        ].map(f => {
+                            const isAct = activityFilter === f.key;
+                            return (
+                                <TouchableOpacity
+                                    key={f.key}
+                                    onPress={() => setActivityFilter(f.key)}
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        backgroundColor: isAct ? '#0F172A' : '#F1F5F9',
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 6,
+                                        borderRadius: 8,
+                                        borderWidth: 1,
+                                        borderColor: isAct ? '#0F172A' : '#E2E8F0'
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={{ fontSize: 11, fontWeight: isAct ? '800' : '600', color: isAct ? '#FFFFFF' : '#475569' }}>
+                                        {f.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </ScrollView>
                 </View>
 
                 {isLoading ? (
@@ -1444,17 +1492,27 @@ export default function DailyLedgerScreen({ navigation }) {
                         <Text style={styles.emptyText}>No cash transactions logged for this selected period.</Text>
                     </View>
                 ) : (
-                    ledgerData.map((item) => {
-                        const isIncome = item.transaction_type === 'INCOME';
-                        return (
-                            <View key={item.id} style={styles.transactionCard}>
-                                <View style={[styles.typePillIcon, { backgroundColor: isIncome ? '#ECFDF5' : '#FEF2F2' }]}>
-                                    <MaterialCommunityIcons 
-                                        name={isIncome ? "arrow-down-bold" : "arrow-up-bold"} 
-                                        size={18} 
-                                        color={isIncome ? "#059669" : "#DC2626"} 
-                                    />
-                                </View>
+                    ledgerData
+                        .filter(item => {
+                            if (activityFilter === 'ALL') return true;
+                            if (activityFilter === 'FUEL') return item.category === 'FUEL' || item.category === 'DIESEL';
+                            if (activityFilter === 'TRIP_INCOME') return item.category === 'TRIP_INCOME';
+                            if (activityFilter === 'CLIENT_PAYMENT') return item.category === 'CLIENT_PAYMENT';
+                            if (activityFilter === 'SALARY') return ['SALARY', 'WAGE_PAYOUT', 'ADVANCE'].includes(item.category);
+                            return true;
+                        })
+                        .map((item) => {
+                            const isIncome = item.transaction_type === 'INCOME';
+                            const isFuel = item.category === 'FUEL' || item.category === 'DIESEL';
+                            return (
+                                <View key={item.id} style={styles.transactionCard}>
+                                    <View style={[styles.typePillIcon, { backgroundColor: isFuel ? '#FEF3C7' : (isIncome ? '#ECFDF5' : '#FEF2F2') }]}>
+                                        <MaterialCommunityIcons 
+                                            name={isFuel ? "gas-station" : (isIncome ? "arrow-down-bold" : "arrow-up-bold")} 
+                                            size={18} 
+                                            color={isFuel ? "#D97706" : (isIncome ? "#059669" : "#DC2626")} 
+                                        />
+                                    </View>
                                 <View style={styles.transMain}>
                                     <View style={styles.transHeader}>
                                         <Text style={styles.transCategory} numberOfLines={1}>{item.category?.replace(/_/g, ' ')}</Text>

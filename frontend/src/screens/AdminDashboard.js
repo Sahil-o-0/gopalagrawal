@@ -1743,6 +1743,26 @@ export default function AdminDashboard({ navigation, route }) {
                   <Text style={{ fontSize: 12, color: '#64748B' }}>Material: <Text style={{ fontWeight: '700', color: '#1E293B' }}>{selectedTrip?.material_type || 'N/A'}</Text> ({selectedTrip?.weight_tons || 0}T)</Text>
                   <Text style={{ fontSize: 12, color: '#64748B' }}>Distance: <Text style={{ fontWeight: '700', color: '#1E293B' }}>{selectedTrip?.total_km || 0} KM</Text></Text>
                 </View>
+                {(Number(selectedTrip?.diesel_cost || 0) > 0 || Number(selectedTrip?.diesel_liters || 0) > 0) && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, marginTop: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <MaterialCommunityIcons name="gas-station" size={14} color="#D97706" style={{ marginRight: 6 }} />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>
+                        Diesel Logged: {selectedTrip.diesel_liters || 0} L
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#B45309' }}>
+                        ₹{Number(selectedTrip.diesel_cost || 0).toLocaleString('en-IN')} (Fuel Expense)
+                      </Text>
+                      {selectedTrip?.receipt_photo_url ? (
+                        <TouchableOpacity onPress={() => openImage(selectedTrip.receipt_photo_url)} style={{ marginLeft: 6 }}>
+                          <MaterialCommunityIcons name="receipt" size={16} color="#B45309" />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  </View>
+                )}
               </View>
 
               {/* Billing Party / Client Selection */}

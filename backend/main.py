@@ -9,6 +9,11 @@ from routers import auth, trip, workforce, site, reports, client
 from services.push_service import send_scheduled_compliance_push_notifications
 
 # Create the database tables
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"[DB Init Warning] {e}")
+
 import os
 try:
     from zoneinfo import ZoneInfo

@@ -28,6 +28,7 @@ def compute_client_metrics(client: Client):
         "txns_count": len(txns)
     }
 
+@router.get("", response_model=List[schemas.client.ClientResponse])
 @router.get("/", response_model=List[schemas.client.ClientResponse])
 def get_all_clients(
     site_id: Optional[int] = None,
@@ -61,6 +62,7 @@ def get_all_clients(
         result.append(c_dict)
     return result
 
+@router.post("", response_model=schemas.client.ClientResponse)
 @router.post("/", response_model=schemas.client.ClientResponse)
 def create_client(
     client_in: schemas.client.ClientCreate,
@@ -196,6 +198,7 @@ def get_all_transactions(
     return txns
 
 @router.post("/transactions", response_model=schemas.client.ClientTransactionResponse)
+@router.post("/transactions/", response_model=schemas.client.ClientTransactionResponse)
 def create_client_transaction(
     txn_in: schemas.client.ClientTransactionCreate,
     db: Session = Depends(dependencies.get_db),

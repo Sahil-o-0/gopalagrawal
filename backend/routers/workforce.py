@@ -213,10 +213,14 @@ def request_leave(
     db: Session = Depends(dependencies.get_db),
     current_user: User = Depends(dependencies.get_current_active_user)
 ):
-    if current_user.role == "STAFF" and leave.staff_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-        
+    user_role_str = str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role).upper()
+    if user_role_str == "STAFF":
+        target_staff_id = current_user.id
+    else:
+        target_staff_id = leave.staff_id or current_user.id
+
     leave_data = leave.model_dump()
+    leave_data["staff_id"] = target_staff_id
     if not leave_data.get("site_id"):
         leave_data["site_id"] = current_user.site_id or 1
 
@@ -301,10 +305,17 @@ def request_advance(
     db: Session = Depends(dependencies.get_db),
     current_user: User = Depends(dependencies.get_current_active_user)
 ):
-    if current_user.role == "STAFF" and advance.staff_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-        
+    user_role_str = str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role).upper()
+    
+    # If staff member, advance request is automatically for themselves
+    if user_role_str == "STAFF":
+        target_staff_id = current_user.id
+    else:
+        # Admin / Manager can request for themselves or for a designated staff member
+        target_staff_id = advance.staff_id or current_user.id
+
     adv_data = advance.model_dump()
+    adv_data["staff_id"] = target_staff_id
     if not adv_data.get("site_id"):
         adv_data["site_id"] = current_user.site_id or 1
 
@@ -312,6 +323,20 @@ def request_advance(
     db.add(new_adv)
     db.commit()
     db.refresh(new_adv)
+
+    # Dispatch instant push notification to Admin and Manager devices
+    try:
+        from services.push_service import send_push_to_admins_and_managers
+        staff_name = current_user.full_name or current_user.username
+        send_push_to_admins_and_managers(
+            title=f"💵 Advance Request: {staff_name}",
+            body=f"{staff_name} requested an advance of ₹{new_adv.amount:,.0f}. Reason: {new_adv.reason or 'Personal'}",
+            data={"type": "ADVANCE_REQUEST", "advance_id": new_adv.id, "staff_id": new_adv.staff_id},
+            site_id=new_adv.site_id
+        )
+    except Exception as e:
+        print(f"[Push Service Error] Could not send advance notification: {e}")
+
     return new_adv
 
 @router.get("/advances", response_model=List[schemas.workforce.AdvanceResponse])

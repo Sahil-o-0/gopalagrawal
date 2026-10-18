@@ -208,13 +208,13 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
             end_meter_reading: eMeter,
             diesel_liters: dieselLiters ? parseFloat(dieselLiters) : 0,
             diesel_cost: dieselCost ? parseFloat(dieselCost) : 0,
-            bhada: bhada ? parseFloat(bhada) : 0,
-            advance_freight_received: advanceFreight ? parseFloat(advanceFreight) : 0,
+            bhada: isManagerOrAdmin && bhada ? parseFloat(bhada) : 0,
+            advance_freight_received: isManagerOrAdmin && advanceFreight ? parseFloat(advanceFreight) : 0,
             loading_photo_url: loadingPhoto,
             unloading_photo_url: unloadingPhoto,
             odometer_photo_url: odometerPhoto,
             receipt_photo_url: receiptPhoto,
-            freight_notes: clientName.trim() || null
+            freight_notes: isManagerOrAdmin && clientName.trim() ? clientName.trim() : null
         };
 
         if (isManagerOrAdmin && staffId) {
@@ -238,7 +238,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     if (finalBhada > 0 && clientName.trim()) {
                         await syncTripFinancials(createdTrip?.id || '', finalBhada, clientName.trim(), vehicleNumber.trim().toUpperCase(), origin.trim(), destination.trim());
                     }
-                    Alert.alert("Success", isManagerOrAdmin ? "Trip logged and automatically approved!" : "Trip log submitted successfully!");
+                    Alert.alert("Success", isManagerOrAdmin ? "Trip logged and automatically approved!" : "Trip log submitted! Sent to Manager/Admin for approval & Bhada entry.");
                     clearForm();
                     if (onSuccess) onSuccess();
                 } else {
@@ -509,7 +509,10 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     </View>
                 </View>
 
-                {/* Billing Party / Client Selection */}
+                {/* Manager / Admin Only: Billing Party & Bhada Entry */}
+                {isManagerOrAdmin ? (
+                    <>
+                        {/* Billing Party / Client Selection */}
                 <View style={{ marginTop: 14 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                         <Text style={styles.inputLabel}>Billing Party / Client Name</Text>
@@ -611,6 +614,15 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                         </View>
                         <Text style={{ fontSize: 14, fontWeight: '800', color: (parseFloat(bhada) || 0) - (parseFloat(advanceFreight) || 0) > 0 ? '#DC2626' : '#16A34A' }}>
                             ₹{Math.max(0, (parseFloat(bhada) || 0) - (parseFloat(advanceFreight) || 0)).toLocaleString('en-IN')}
+                        </Text>
+                    </View>
+                )}
+                    </>
+                ) : (
+                    <View style={{ marginTop: 14, backgroundColor: '#EFF6FF', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#BFDBFE', flexDirection: 'row', alignItems: 'center' }}>
+                        <MaterialCommunityIcons name="shield-account" size={18} color="#2563EB" style={{ marginRight: 8 }} />
+                        <Text style={{ fontSize: 12, color: '#1E40AF', fontWeight: '700', flex: 1 }}>
+                            Trip will be sent for Manager / Admin approval. Billing Party & Freight / Bhada rate will be entered upon validation.
                         </Text>
                     </View>
                 )}

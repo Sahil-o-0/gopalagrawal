@@ -49,6 +49,7 @@ class TripLogUpdateStatus(BaseModel):
     status: str # e.g. "VALIDATED", "REJECTED"
     bhada: Optional[float] = None
     freight_notes: Optional[str] = None
+    weight_tons: Optional[float] = None
 
 class TripFreightPayment(BaseModel):
     amount_paid: float

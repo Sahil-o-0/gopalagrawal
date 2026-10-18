@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, ScrollView, ActivityIndicator, Image, Modal, StatusBar, Platform, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, ScrollView, ActivityIndicator, Image, Modal, StatusBar, Platform, FlatList, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { AuthContext } from '../context/AuthContext';
@@ -63,6 +63,11 @@ export default function ManagerDashboard({ navigation, route }) {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [receivedAmount, setReceivedAmount] = useState('');
   const [bookedAmount, setBookedAmount] = useState(''); // Trip Bhada
+  const [validationRate, setValidationRate] = useState('');
+  const [validationQuantity, setValidationQuantity] = useState('');
+  const [validationPartyName, setValidationPartyName] = useState('');
+  const [showValidationClientDropdown, setShowValidationClientDropdown] = useState(false);
+  const [clients, setClients] = useState([]);
   
   // Self Service States (Leave/Advance)
   const [leaveStart, setLeaveStart] = useState('');
@@ -81,8 +86,18 @@ export default function ManagerDashboard({ navigation, route }) {
     fetchData();
   }, [activeTab, selectedSite?.id]);
 
+  const fetchClients = async () => {
+    try {
+      const cResp = await fetch(`${API_BASE_URL}/clients/`, {
+        headers: { 'Authorization': `Bearer ${userToken}` }
+      });
+      if (cResp.ok) setClients(await cResp.json());
+    } catch (e) {}
+  };
+
   const fetchData = async () => {
     setIsLoading(true);
+    fetchClients();
     try {
       if (activeTab === 'trips') {
          const [tripsResp, usersResp] = await Promise.all([
@@ -123,7 +138,47 @@ export default function ManagerDashboard({ navigation, route }) {
 
   const openValidationModal = (trip) => {
     setSelectedTrip(trip);
+    const qty = trip?.weight_tons ? String(trip.weight_tons) : '';
+    setValidationQuantity(qty);
+    const bAmt = trip?.bhada ? parseFloat(trip.bhada) : 0;
+    const qNum = parseFloat(qty) || 0;
+    if (bAmt > 0 && qNum > 0) {
+      setValidationRate(String(Math.round((bAmt / qNum) * 100) / 100));
+      setBookedAmount(String(bAmt));
+    } else {
+      setValidationRate('');
+      setBookedAmount(bAmt > 0 ? String(bAmt) : '');
+    }
+    setValidationPartyName(trip?.freight_notes || '');
+    setShowValidationClientDropdown(false);
     setIsModalVisible(true);
+  };
+
+  const handleRateChange = (rVal) => {
+    setValidationRate(rVal);
+    const r = parseFloat(rVal);
+    const q = parseFloat(validationQuantity);
+    if (!isNaN(r) && !isNaN(q) && q > 0) {
+      setBookedAmount(String(Math.round(r * q)));
+    }
+  };
+
+  const handleQuantityChange = (qVal) => {
+    setValidationQuantity(qVal);
+    const q = parseFloat(qVal);
+    const r = parseFloat(validationRate);
+    if (!isNaN(r) && !isNaN(q) && r > 0) {
+      setBookedAmount(String(Math.round(r * q)));
+    }
+  };
+
+  const handleAmountChange = (amtVal) => {
+    setBookedAmount(amtVal);
+    const a = parseFloat(amtVal);
+    const q = parseFloat(validationQuantity);
+    if (!isNaN(a) && !isNaN(q) && q > 0) {
+      setValidationRate(String(Math.round((a / q) * 100) / 100));
+    }
   };
 
   const openImage = (url) => {
@@ -730,25 +785,233 @@ export default function ManagerDashboard({ navigation, route }) {
       {/* Validation Modal */}
       <Modal visible={isModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Validate Trip #{selectedTrip?.id}</Text>
-            <Text style={styles.modalSubtitle}>{selectedTrip?.vehicle_number} - {selectedTrip?.total_km} KM</Text>
-            
-            <TextInput 
-              style={styles.input} 
-              placeholder="Trip Bhada / Income (₹) REQUIRED" 
-              placeholderTextColor="#4B5563"
-              keyboardType="numeric"
-              value={bookedAmount}
-              onChangeText={setBookedAmount}
-            />
+          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <View>
+                <Text style={[styles.modalTitle, { textAlign: 'left', marginBottom: 2 }]}>Validate & Approve Trip</Text>
+                <Text style={{ fontSize: 13, color: '#64748B', fontWeight: '700' }}>Trip #{selectedTrip?.id} • {selectedTrip?.vehicle_number}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsModalVisible(false)} style={{ padding: 4 }}>
+                <MaterialCommunityIcons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
 
-            <View style={styles.modalActionRow}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsModalVisible(false)}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Trip Quick Summary Card */}
+              <View style={{ backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                  <MaterialCommunityIcons name="map-marker-distance" size={16} color="#059669" style={{ marginRight: 6 }} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B' }}>
+                    {selectedTrip?.origin || 'Start'} ➔ {selectedTrip?.destination || 'End'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 12, color: '#64748B' }}>Material: <Text style={{ fontWeight: '700', color: '#1E293B' }}>{selectedTrip?.material_type || 'N/A'}</Text> ({selectedTrip?.weight_tons || 0}T)</Text>
+                  <Text style={{ fontSize: 12, color: '#64748B' }}>Distance: <Text style={{ fontWeight: '700', color: '#1E293B' }}>{selectedTrip?.total_km || 0} KM</Text></Text>
+                </View>
+              </View>
+
+              {/* Billing Party / Client Selection */}
+              <View style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Billing Party (From Client Khata)
+                  </Text>
+                  {!!validationPartyName && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#A7F3D0' }}>
+                      <MaterialCommunityIcons name="check-circle" size={12} color="#059669" style={{ marginRight: 3 }} />
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#059669' }}>Khata Party</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Input with Auto-filter from Cloud Clients */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                  <MaterialCommunityIcons name="account-tie" size={18} color="#2563EB" style={{ marginRight: 8 }} />
+                  <TextInput 
+                    style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '600' }}
+                    placeholder="Search party from Client Khata"
+                    placeholderTextColor="#94A3B8"
+                    value={validationPartyName}
+                    onChangeText={(val) => {
+                      setValidationPartyName(val);
+                      setShowValidationClientDropdown(true);
+                    }}
+                    onFocus={() => setShowValidationClientDropdown(true)}
+                  />
+                  {!!validationPartyName ? (
+                    <TouchableOpacity onPress={() => { setValidationPartyName(''); setShowValidationClientDropdown(false); }}>
+                      <MaterialCommunityIcons name="close-circle" size={16} color="#94A3B8" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {/* Direct Suggestions from Cloud Client Khata */}
+                {showValidationClientDropdown && validationPartyName.trim().length > 0 && (
+                  <View style={{ marginTop: 4, backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', overflow: 'hidden' }}>
+                    {clients
+                      .filter(c => c.name.toLowerCase().includes(validationPartyName.trim().toLowerCase()))
+                      .slice(0, 4)
+                      .map(c => (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}
+                          onPress={() => {
+                            setValidationPartyName(c.name);
+                            setShowValidationClientDropdown(false);
+                            Keyboard.dismiss();
+                          }}
+                        >
+                          <MaterialCommunityIcons name="account" size={15} color="#475569" style={{ marginRight: 8 }} />
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B', flex: 1 }}>{c.name}</Text>
+                          {c.pending_balance ? (
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>Bal: ₹{Number(c.pending_balance).toLocaleString('en-IN')}</Text>
+                          ) : null}
+                        </TouchableOpacity>
+                      ))}
+                    {clients.filter(c => c.name.toLowerCase().includes(validationPartyName.trim().toLowerCase())).length === 0 && (
+                      <View style={{ paddingVertical: 8, paddingHorizontal: 12 }}>
+                        <Text style={{ fontSize: 12, color: '#94A3B8' }}>No party found in Client Khata. Add party in Client Khata first.</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Existing Clients Quick Chips */}
+                {clients.length > 0 && (
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>Select Party from Khata:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                      {clients.slice(0, 10).map(c => {
+                        const isSelected = validationPartyName.trim().toLowerCase() === c.name.toLowerCase();
+                        return (
+                          <TouchableOpacity
+                            key={c.id}
+                            onPress={() => {
+                              setValidationPartyName(c.name);
+                              setShowValidationClientDropdown(false);
+                              Keyboard.dismiss();
+                            }}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              backgroundColor: isSelected ? '#2563EB' : '#F1F5F9',
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              borderRadius: 8,
+                              marginRight: 6,
+                              borderWidth: 1,
+                              borderColor: isSelected ? '#2563EB' : '#E2E8F0'
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <MaterialCommunityIcons name="account-outline" size={12} color={isSelected ? '#FFFFFF' : '#475569'} style={{ marginRight: 4 }} />
+                            <Text style={{ fontSize: 11, fontWeight: isSelected ? '800' : '600', color: isSelected ? '#FFFFFF' : '#475569' }}>
+                              {c.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
+              {/* Rate and Quantity -> Amount Calculation */}
+              <View style={{ backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#CBD5E1', marginBottom: 14 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                  Freight / Bhada Calculation
+                </Text>
+
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                  {/* Quantity / Weight */}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                      Quantity (Tons) *
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                      <TextInput 
+                        style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                        placeholder="e.g. 25.4"
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="numeric"
+                        value={validationQuantity}
+                        onChangeText={handleQuantityChange}
+                      />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Tons</Text>
+                    </View>
+                  </View>
+
+                  {/* Rate per Ton */}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                      Rate (₹ / Ton) *
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#2563EB', marginRight: 4 }}>₹</Text>
+                      <TextInput 
+                        style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                        placeholder="e.g. 1500"
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="numeric"
+                        value={validationRate}
+                        onChangeText={handleRateChange}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                {/* Calculated Total Amount / Bhada */}
+                <View style={{ marginTop: 2 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B' }}>
+                      Total Bhada / Amount (₹) *
+                    </Text>
+                    {!!validationRate && !!validationQuantity && (
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#059669' }}>
+                        Auto-Calculated (Rate × Qty)
+                      </Text>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1.5, borderColor: '#2563EB', paddingHorizontal: 10, height: 46 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: '#2563EB', marginRight: 4 }}>₹</Text>
+                    <TextInput 
+                      style={{ flex: 1, fontSize: 16, color: '#0F172A', fontWeight: '800' }}
+                      placeholder="e.g. 38100"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                      value={bookedAmount}
+                      onChangeText={handleAmountChange}
+                    />
+                  </View>
+                </View>
+
+                {/* Formula Breakdown Banner */}
+                {!!validationRate && !!validationQuantity && (
+                  <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}>
+                    <MaterialCommunityIcons name="calculator" size={14} color="#2563EB" style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E40AF' }}>
+                      ₹{validationRate} / Ton × {validationQuantity} Tons = ₹{Number(bookedAmount || 0).toLocaleString('en-IN')}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Auto Sync Banner */}
+              <View style={{ backgroundColor: '#F0FDF4', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#BBF7D0', flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                <MaterialCommunityIcons name="check-decagram" size={16} color="#16A34A" style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#166534', flex: 1 }}>
+                  Validating will automatically log this Bhada to Daily Ledger (Trip Income) and Client Khata.
+                </Text>
+              </View>
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+              <TouchableOpacity style={[styles.cancelBtn, { flex: 1, marginTop: 0 }]} onPress={() => setIsModalVisible(false)}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={submitValidation}>
-                <Text style={styles.confirmBtnText}>Confirm Data</Text>
+              <TouchableOpacity style={[styles.confirmBtn, { flex: 2 }]} onPress={submitValidation}>
+                <Text style={styles.confirmBtnText}>Validate & Sync Ledger</Text>
               </TouchableOpacity>
             </View>
           </View>

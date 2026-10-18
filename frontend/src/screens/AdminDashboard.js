@@ -163,6 +163,8 @@ export default function AdminDashboard({ navigation, route }) {
   const [bookedAmount, setBookedAmount] = useState('');
   const [receivedAmount, setReceivedAmount] = useState('');
   const [validationPartyName, setValidationPartyName] = useState('');
+  const [validationRate, setValidationRate] = useState('');
+  const [validationQuantity, setValidationQuantity] = useState('');
   const [showValidationClientDropdown, setShowValidationClientDropdown] = useState(false);
   const [clients, setClients] = useState([]);
   const [viewerUrl, setViewerUrl] = useState('');
@@ -311,15 +313,18 @@ export default function AdminDashboard({ navigation, route }) {
       const vehNum = selectedTrip?.vehicle_number || '';
       const rOrigin = selectedTrip?.origin || '';
       const rDest = selectedTrip?.destination || '';
+      const rateVal = parseFloat(validationRate) || 0;
+      const qtyVal = parseFloat(validationQuantity) || selectedTrip?.weight_tons || 0;
 
-      // 1. Update Trip Status & freight_notes (Party Name)
+      // 1. Update Trip Status, Bhada, Party, and Weight
       await fetch(`${API_BASE_URL}/trips/${tripId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
         body: JSON.stringify({
           status: 'VALIDATED',
           bhada: incomeVal,
-          freight_notes: party || null
+          freight_notes: party || null,
+          weight_tons: qtyVal
         })
       });
 
@@ -332,7 +337,7 @@ export default function AdminDashboard({ navigation, route }) {
             transaction_type: 'INCOME',
             category: 'TRIP_INCOME',
             amount: incomeVal,
-            description: `Trip #${tripId} Bhada - ${vehNum}${party ? ` (Party: ${party})` : ''}`,
+            description: `Trip #${tripId} Bhada (${qtyVal}T @ ₹${rateVal}/T) - ${vehNum}${party ? ` (Party: ${party})` : ''}`,
             date: todayStr,
             site_id: selectedSite?.id || 1,
             reference_id: tripId,
@@ -357,7 +362,7 @@ export default function AdminDashboard({ navigation, route }) {
                 amount: incomeVal,
                 date: todayStr,
                 payment_mode: 'CREDIT',
-                notes: `Trip #${tripId} (${vehNum}): ${rOrigin || 'Start'} to ${rDest || 'End'}`
+                notes: `Trip #${tripId} (${vehNum}): ${rOrigin || 'Start'} to ${rDest || 'End'} [${qtyVal}T @ ₹${rateVal}/T]`
               })
             });
           }
@@ -387,6 +392,8 @@ export default function AdminDashboard({ navigation, route }) {
       setBookedAmount('');
       setReceivedAmount('');
       setValidationPartyName('');
+      setValidationRate('');
+      setValidationQuantity('');
       setShowValidationClientDropdown(false);
       fetchData();
     } catch (error) {
@@ -396,11 +403,48 @@ export default function AdminDashboard({ navigation, route }) {
 
   const openValidationModal = (trip) => {
     setSelectedTrip(trip);
-    setBookedAmount(trip?.bhada ? String(trip.bhada) : '');
+    const qty = trip?.weight_tons ? String(trip.weight_tons) : '';
+    setValidationQuantity(qty);
+    const bAmt = trip?.bhada ? parseFloat(trip.bhada) : 0;
+    const qNum = parseFloat(qty) || 0;
+    if (bAmt > 0 && qNum > 0) {
+      setValidationRate(String(Math.round((bAmt / qNum) * 100) / 100));
+      setBookedAmount(String(bAmt));
+    } else {
+      setValidationRate('');
+      setBookedAmount(bAmt > 0 ? String(bAmt) : '');
+    }
     setReceivedAmount(trip?.advance_freight_received ? String(trip.advance_freight_received) : '');
     setValidationPartyName(trip?.freight_notes || '');
     setShowValidationClientDropdown(false);
     setIsValidationModalVisible(true);
+  };
+
+  const handleRateChange = (rVal) => {
+    setValidationRate(rVal);
+    const r = parseFloat(rVal);
+    const q = parseFloat(validationQuantity);
+    if (!isNaN(r) && !isNaN(q) && q > 0) {
+      setBookedAmount(String(Math.round(r * q)));
+    }
+  };
+
+  const handleQuantityChange = (qVal) => {
+    setValidationQuantity(qVal);
+    const q = parseFloat(qVal);
+    const r = parseFloat(validationRate);
+    if (!isNaN(r) && !isNaN(q) && r > 0) {
+      setBookedAmount(String(Math.round(r * q)));
+    }
+  };
+
+  const handleAmountChange = (amtVal) => {
+    setBookedAmount(amtVal);
+    const a = parseFloat(amtVal);
+    const q = parseFloat(validationQuantity);
+    if (!isNaN(a) && !isNaN(q) && q > 0) {
+      setValidationRate(String(Math.round((a / q) * 100) / 100));
+    }
   };
 
   const openImage = (url) => {
@@ -1752,19 +1796,84 @@ export default function AdminDashboard({ navigation, route }) {
                 )}
               </View>
 
-              {/* Trip Bhada / Income */}
-              <View style={{ marginBottom: 14 }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
-                  Total Trip Bhada / Freight (₹) *
+              {/* Rate and Quantity -> Amount Calculation */}
+              <View style={{ backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#CBD5E1', marginBottom: 14 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                  Freight / Bhada Calculation
                 </Text>
-                <TextInput 
-                  style={[styles.input, { marginBottom: 0 }]} 
-                  placeholder="e.g. 45000" 
-                  placeholderTextColor="#94A3B8"
-                  keyboardType="numeric"
-                  value={bookedAmount}
-                  onChangeText={setBookedAmount}
-                />
+
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                  {/* Quantity / Weight */}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                      Quantity (Tons) *
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                      <TextInput 
+                        style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                        placeholder="e.g. 25.4"
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="numeric"
+                        value={validationQuantity}
+                        onChangeText={handleQuantityChange}
+                      />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Tons</Text>
+                    </View>
+                  </View>
+
+                  {/* Rate per Ton */}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                      Rate (₹ / Ton) *
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#2563EB', marginRight: 4 }}>₹</Text>
+                      <TextInput 
+                        style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                        placeholder="e.g. 1500"
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="numeric"
+                        value={validationRate}
+                        onChangeText={handleRateChange}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                {/* Calculated Total Amount / Bhada */}
+                <View style={{ marginTop: 2 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B' }}>
+                      Total Bhada / Amount (₹) *
+                    </Text>
+                    {!!validationRate && !!validationQuantity && (
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#059669' }}>
+                        Auto-Calculated (Rate × Qty)
+                      </Text>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1.5, borderColor: '#2563EB', paddingHorizontal: 10, height: 46 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: '#2563EB', marginRight: 4 }}>₹</Text>
+                    <TextInput 
+                      style={{ flex: 1, fontSize: 16, color: '#0F172A', fontWeight: '800' }}
+                      placeholder="e.g. 38100"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                      value={bookedAmount}
+                      onChangeText={handleAmountChange}
+                    />
+                  </View>
+                </View>
+
+                {/* Formula Breakdown Banner */}
+                {!!validationRate && !!validationQuantity && (
+                  <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}>
+                    <MaterialCommunityIcons name="calculator" size={14} color="#2563EB" style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E40AF' }}>
+                      ₹{validationRate} / Ton × {validationQuantity} Tons = ₹{Number(bookedAmount || 0).toLocaleString('en-IN')}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Auto Sync Banner */}

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 import datetime
 import schemas, database, dependencies
@@ -252,12 +252,12 @@ def get_leaves(
     db: Session = Depends(dependencies.get_db),
     current_user: User = Depends(dependencies.get_current_active_user)
 ):
-    query = db.query(LeaveRequest)
+    query = db.query(LeaveRequest).options(joinedload(LeaveRequest.staff))
     if current_user.role == "STAFF":
         query = query.filter(LeaveRequest.staff_id == current_user.id)
     if site_id is not None:
         query = query.filter(LeaveRequest.site_id == site_id)
-    return query.offset(skip).limit(limit).all()
+    return query.order_by(LeaveRequest.id.desc()).offset(skip).limit(limit).all()
 
 @router.patch("/leaves/{leave_id}/status", response_model=schemas.workforce.LeaveResponse)
 def update_leave_status(
@@ -346,12 +346,12 @@ def get_advances(
     db: Session = Depends(dependencies.get_db),
     current_user: User = Depends(dependencies.get_current_active_user)
 ):
-    query = db.query(AdvanceWageRequest)
+    query = db.query(AdvanceWageRequest).options(joinedload(AdvanceWageRequest.staff))
     if current_user.role == "STAFF":
         query = query.filter(AdvanceWageRequest.staff_id == current_user.id)
     if site_id is not None:
         query = query.filter(AdvanceWageRequest.site_id == site_id)
-    return query.offset(skip).limit(limit).all()
+    return query.order_by(AdvanceWageRequest.id.desc()).offset(skip).limit(limit).all()
 
 @router.patch("/advances/{advance_id}/status", response_model=schemas.workforce.AdvanceResponse)
 def update_advance_status(
@@ -427,7 +427,7 @@ def get_vehicle_repairs(
     db: Session = Depends(dependencies.get_db),
     current_user: User = Depends(dependencies.get_current_active_user)
 ):
-    query = db.query(VehicleRepairRequest)
+    query = db.query(VehicleRepairRequest).options(joinedload(VehicleRepairRequest.staff))
     if current_user.role == "STAFF":
         query = query.filter(VehicleRepairRequest.staff_id == current_user.id)
     if site_id is not None:

@@ -493,28 +493,36 @@ export default function ManagerDashboard({ navigation, route }) {
     );
   };
 
-  const renderAttendanceItem = ({ item }) => (
-    <View style={styles.card}>
-       <View style={styles.cardHeader}>
-         <Text style={styles.cardTitle}>Staff ID: {item.staff_id}</Text>
-         <Text style={styles.statusBadge}>{item.status}</Text>
-       </View>
-       <Text style={styles.dateText}>Date: {item.date}</Text>
-       {item.recorded_by_id && <Text style={styles.detailText}>Recorded By Admin/Manager: {item.recorded_by_id}</Text>}
-    </View>
-  );
+  const renderAttendanceItem = ({ item }) => {
+    const staff = users.find(u => Number(u.id) === Number(item.staff_id));
+    const name = item.staff_name || staff?.full_name || staff?.username || `Staff #${item.staff_id}`;
+    return (
+      <View style={styles.card}>
+         <View style={styles.cardHeader}>
+           <Text style={styles.cardTitle}>{name}</Text>
+           <Text style={styles.statusBadge}>{item.status}</Text>
+         </View>
+         <Text style={styles.dateText}>Date: {item.date}</Text>
+         {item.recorded_by_id && <Text style={styles.detailText}>Recorded By Admin/Manager: {item.recorded_by_id}</Text>}
+      </View>
+    );
+  };
 
-  const renderAdvanceItem = ({ item }) => (
-    <View style={styles.card}>
-       <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Staff ID: {item.staff_id}</Text>
-          <Text style={[styles.statusBadge, item.status === 'APPROVED' ? styles.statusValidated : item.status === 'REJECTED' ? {backgroundColor: '#FEE2E2', color: '#B91C1C'} : styles.statusPending]}>{item.status}</Text>
-       </View>
-       <Text style={styles.detailText}>Amount: ₹{item.amount}</Text>
-       <Text style={styles.detailText}>Reason: {item.reason}</Text>
-       <Text style={styles.dateText}>Req Date: {new Date(item.created_at).toLocaleDateString()}</Text>
-    </View>
-  );
+  const renderAdvanceItem = ({ item }) => {
+    const staff = users.find(u => Number(u.id) === Number(item.staff_id));
+    const name = item.staff_name || staff?.full_name || staff?.username || `Staff #${item.staff_id}`;
+    return (
+      <View style={styles.card}>
+         <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>{name}</Text>
+            <Text style={[styles.statusBadge, item.status === 'APPROVED' ? styles.statusValidated : item.status === 'REJECTED' ? {backgroundColor: '#FEE2E2', color: '#B91C1C'} : styles.statusPending]}>{item.status}</Text>
+         </View>
+         <Text style={styles.detailText}>Amount: ₹{item.amount}</Text>
+         <Text style={styles.detailText}>Reason: {item.reason}</Text>
+         <Text style={styles.dateText}>Req Date: {new Date(item.created_at).toLocaleDateString()}</Text>
+      </View>
+    );
+  };
 
   const insets = useSafeAreaInsets();
   const topPadding = Math.max(insets.top, Platform.OS === 'android' ? 36 : 20);

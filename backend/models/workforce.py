@@ -38,6 +38,18 @@ class Attendance(Base):
     recorded_by = relationship("User", foreign_keys=[recorded_by_id])
     site = relationship("Site", backref="attendance_records")
 
+    @property
+    def staff_name(self):
+        if self.staff:
+            return self.staff.full_name or self.staff.username
+        return None
+
+    @property
+    def staff_designation(self):
+        if self.staff:
+            return self.staff.designation
+        return None
+
 class LeaveRequest(Base):
     __tablename__ = "leave_requests"
     id = Column(Integer, primary_key=True, index=True)
@@ -51,6 +63,18 @@ class LeaveRequest(Base):
     staff = relationship("User", backref="leave_requests")
     site = relationship("Site", backref="leave_requests")
 
+    @property
+    def staff_name(self):
+        if self.staff:
+            return self.staff.full_name or self.staff.username
+        return None
+
+    @property
+    def staff_designation(self):
+        if self.staff:
+            return self.staff.designation
+        return None
+
 class AdvanceWageRequest(Base):
     __tablename__ = "advance_requests"
     id = Column(Integer, primary_key=True, index=True)
@@ -62,6 +86,18 @@ class AdvanceWageRequest(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     staff = relationship("User", backref="advance_requests")
     site = relationship("Site", backref="advance_requests")
+
+    @property
+    def staff_name(self):
+        if self.staff:
+            return self.staff.full_name or self.staff.username
+        return None
+
+    @property
+    def staff_designation(self):
+        if self.staff:
+            return self.staff.designation
+        return None
 
 class VehicleRepairRequest(Base):
     __tablename__ = "vehicle_repair_requests"
@@ -79,6 +115,18 @@ class VehicleRepairRequest(Base):
     
     staff = relationship("User", backref="repair_requests")
     site = relationship("Site", backref="repair_requests")
+
+    @property
+    def staff_name(self):
+        if self.staff:
+            return self.staff.full_name or self.staff.username
+        return None
+
+    @property
+    def staff_designation(self):
+        if self.staff:
+            return self.staff.designation
+        return None
 
 class VehicleEMI(Base):
     __tablename__ = "vehicle_emi"

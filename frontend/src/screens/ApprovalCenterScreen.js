@@ -54,6 +54,7 @@ export default function ApprovalCenterScreen({ navigation }) {
 
   // Image viewer modal
   const [viewerUrl, setViewerUrl] = useState(null);
+  const [usersList, setUsersList] = useState([]);
 
   useEffect(() => {
     fetchAllData();
@@ -64,7 +65,7 @@ export default function ApprovalCenterScreen({ navigation }) {
     try {
       const siteQuery = selectedSite?.id ? `?site_id=${selectedSite.id}` : '';
       
-      const [sumRes, advRes, leaveRes, repRes] = await Promise.all([
+      const promises = [
         fetch(`${API_BASE_URL}/workforce/approvals/summary${siteQuery}`, {
           headers: { 'Authorization': `Bearer ${userToken}` }
         }),
@@ -77,18 +78,53 @@ export default function ApprovalCenterScreen({ navigation }) {
         fetch(`${API_BASE_URL}/workforce/repairs${siteQuery}`, {
           headers: { 'Authorization': `Bearer ${userToken}` }
         }),
-      ]);
+      ];
 
-      if (sumRes.ok) setSummary(await sumRes.json());
-      if (advRes.ok) setAdvances(await advRes.json());
-      if (leaveRes.ok) setLeaves(await leaveRes.json());
-      if (repRes.ok) setRepairs(await repRes.json());
+      if (user?.role === 'ADMIN' || user?.role === 'MANAGER') {
+        promises.push(
+          fetch(`${API_BASE_URL}/users`, {
+            headers: { 'Authorization': `Bearer ${userToken}` }
+          })
+        );
+      }
+
+      const results = await Promise.all(promises);
+      const [sumRes, advRes, leaveRes, repRes, userRes] = results;
+
+      if (sumRes?.ok) setSummary(await sumRes.json());
+      if (advRes?.ok) setAdvances(await advRes.json());
+      if (leaveRes?.ok) setLeaves(await leaveRes.json());
+      if (repRes?.ok) setRepairs(await repRes.json());
+      if (userRes?.ok) setUsersList(await userRes.json());
     } catch (e) {
       console.log('Error fetching approvals data:', e);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
+  };
+
+  const getStaffDisplayName = (item) => {
+    if (item.staff_name && item.staff_name.trim()) {
+      return item.staff_name;
+    }
+    const sid = item.staff_id;
+    if (!sid) return 'Staff Member';
+    const matched = usersList.find(u => Number(u.id) === Number(sid));
+    if (matched) {
+      return matched.full_name || matched.username;
+    }
+    return `Staff #${sid}`;
+  };
+
+  const getStaffDesignation = (item) => {
+    if (item.staff_designation && item.staff_designation.trim()) {
+      return item.staff_designation;
+    }
+    const sid = item.staff_id;
+    if (!sid) return null;
+    const matched = usersList.find(u => Number(u.id) === Number(sid));
+    return matched?.designation || null;
   };
 
   // --- SUBMISSIONS ---
@@ -428,7 +464,15 @@ export default function ApprovalCenterScreen({ navigation }) {
                 {activeTab === 'advances' && (
                   <View style={styles.cardBody}>
                     <View style={styles.rowBetween}>
-                      <Text style={styles.staffTitle}>Staff ID: #{item.staff_id}</Text>
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <MaterialCommunityIcons name="account-circle" size={20} color="#2563EB" />
+                          <Text style={styles.staffTitle}>{getStaffDisplayName(item)}</Text>
+                        </View>
+                        {getStaffDesignation(item) ? (
+                          <Text style={styles.staffSubtitle}>{getStaffDesignation(item)}</Text>
+                        ) : null}
+                      </View>
                       <Text style={styles.amountHighlight}>₹{item.amount?.toLocaleString()}</Text>
                     </View>
                     <Text style={styles.reasonText}>
@@ -441,7 +485,15 @@ export default function ApprovalCenterScreen({ navigation }) {
                 {activeTab === 'leaves' && (
                   <View style={styles.cardBody}>
                     <View style={styles.rowBetween}>
-                      <Text style={styles.staffTitle}>Staff ID: #{item.staff_id}</Text>
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <MaterialCommunityIcons name="account-circle" size={20} color="#2563EB" />
+                          <Text style={styles.staffTitle}>{getStaffDisplayName(item)}</Text>
+                        </View>
+                        {getStaffDesignation(item) ? (
+                          <Text style={styles.staffSubtitle}>{getStaffDesignation(item)}</Text>
+                        ) : null}
+                      </View>
                       <View style={styles.dateBadge}>
                         <MaterialCommunityIcons name="calendar-range" size={14} color="#2563EB" style={{ marginRight: 4 }} />
                         <Text style={styles.dateBadgeText}>{item.start_date} to {item.end_date}</Text>
@@ -463,6 +515,12 @@ export default function ApprovalCenterScreen({ navigation }) {
                       </View>
                       <Text style={styles.amountHighlight}>Est: ₹{item.estimated_cost?.toLocaleString()}</Text>
                     </View>
+                    {item.staff_id ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2, marginBottom: 2 }}>
+                        <MaterialCommunityIcons name="account-outline" size={14} color="#64748B" />
+                        <Text style={styles.subDetailText}>Requested by: {getStaffDisplayName(item)}</Text>
+                      </View>
+                    ) : null}
                     <Text style={styles.reasonText}>
                       <Text style={{ fontWeight: '700' }}>Issue: </Text>
                       {item.issue_description}
@@ -810,6 +868,8 @@ const styles = StyleSheet.create({
   cardBody: { gap: 6, marginBottom: 12 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   staffTitle: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  staffSubtitle: { fontSize: 11, color: '#64748B', fontWeight: '600', marginLeft: 26, marginTop: 1 },
+  subDetailText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
   amountHighlight: { fontSize: 16, fontWeight: '900', color: '#0F172A' },
   vehicleHighlight: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
   reasonText: { fontSize: 13, color: '#475569', lineHeight: 18 },

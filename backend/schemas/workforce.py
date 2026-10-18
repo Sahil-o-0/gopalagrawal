@@ -27,6 +27,8 @@ class AttendanceResponse(AttendanceBase):
     id: int
     recorded_by_id: Optional[int] = None
     created_at: datetime.datetime
+    staff_name: Optional[str] = None
+    staff_designation: Optional[str] = None
     class Config: from_attributes = True
 
 class PunchRequest(BaseModel):
@@ -55,6 +57,8 @@ class LeaveResponse(LeaveBase):
     id: int
     status: str
     created_at: datetime.datetime
+    staff_name: Optional[str] = None
+    staff_designation: Optional[str] = None
     class Config: from_attributes = True
 
 # ADVANCE WAGES
@@ -74,6 +78,8 @@ class AdvanceResponse(AdvanceBase):
     id: int
     status: str
     created_at: datetime.datetime
+    staff_name: Optional[str] = None
+    staff_designation: Optional[str] = None
     class Config: from_attributes = True
 
 # VEHICLE REPAIRS & MAINTENANCE REQUESTS
@@ -99,6 +105,8 @@ class VehicleRepairResponse(VehicleRepairBase):
     id: int
     status: str
     created_at: datetime.datetime
+    staff_name: Optional[str] = None
+    staff_designation: Optional[str] = None
     class Config: from_attributes = True
 
 # VEHICLES EMI & COMPLIANCE VAULT

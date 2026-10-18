@@ -346,23 +346,6 @@ export default function AdminDashboard({ navigation, route }) {
       if (party) {
         try {
           let targetClient = clients.find(c => c.name.toLowerCase() === party.toLowerCase());
-          if (!targetClient) {
-            // Auto-create client in Khata
-            const createRes = await fetch(`${API_BASE_URL}/clients/`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
-              body: JSON.stringify({
-                name: party,
-                opening_balance: 0.0,
-                site_id: selectedSite?.id || 1
-              })
-            });
-            if (createRes.ok) {
-              targetClient = await createRes.json();
-              setClients(prev => [targetClient, ...prev]);
-            }
-          }
-
           if (targetClient && targetClient.id) {
             await fetch(`${API_BASE_URL}/clients/transactions`, {
               method: 'POST',
@@ -1666,21 +1649,22 @@ export default function AdminDashboard({ navigation, route }) {
               <View style={{ marginBottom: 14 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    Client / Party Name (Khata)
+                    Billing Party (From Client Khata)
                   </Text>
-                  {!!validationPartyName.trim() && !clients.some(c => c.name.toLowerCase() === validationPartyName.trim().toLowerCase()) && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                      <MaterialCommunityIcons name="plus-circle-outline" size={12} color="#2563EB" style={{ marginRight: 3 }} />
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>New Party (Auto-Add)</Text>
+                  {!!validationPartyName && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#A7F3D0' }}>
+                      <MaterialCommunityIcons name="check-circle" size={12} color="#059669" style={{ marginRight: 3 }} />
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#059669' }}>Khata Party</Text>
                     </View>
                   )}
                 </View>
 
+                {/* Input with Auto-filter from Cloud Clients */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
-                  <MaterialCommunityIcons name="account-tie" size={18} color="#64748B" style={{ marginRight: 8 }} />
+                  <MaterialCommunityIcons name="account-tie" size={18} color="#2563EB" style={{ marginRight: 8 }} />
                   <TextInput 
                     style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '600' }}
-                    placeholder="Search or enter Party / Client Name"
+                    placeholder="Search party from Client Khata"
                     placeholderTextColor="#94A3B8"
                     value={validationPartyName}
                     onChangeText={(val) => {
@@ -1696,7 +1680,7 @@ export default function AdminDashboard({ navigation, route }) {
                   ) : null}
                 </View>
 
-                {/* Inline Suggestions (Direct View - No Glitch) */}
+                {/* Direct Suggestions from Cloud Client Khata */}
                 {showValidationClientDropdown && validationPartyName.trim().length > 0 && (
                   <View style={{ marginTop: 4, backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', overflow: 'hidden' }}>
                     {clients
@@ -1719,19 +1703,10 @@ export default function AdminDashboard({ navigation, route }) {
                           ) : null}
                         </TouchableOpacity>
                       ))}
-                    {!clients.some(c => c.name.toLowerCase() === validationPartyName.trim().toLowerCase()) && (
-                      <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F0FDF4' }}
-                        onPress={() => {
-                          setShowValidationClientDropdown(false);
-                          Keyboard.dismiss();
-                        }}
-                      >
-                        <MaterialCommunityIcons name="plus-circle-outline" size={15} color="#16A34A" style={{ marginRight: 8 }} />
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#16A34A' }}>
-                          Use "{validationPartyName.trim()}" (Auto-add to Khata)
-                        </Text>
-                      </TouchableOpacity>
+                    {clients.filter(c => c.name.toLowerCase().includes(validationPartyName.trim().toLowerCase())).length === 0 && (
+                      <View style={{ paddingVertical: 8, paddingHorizontal: 12 }}>
+                        <Text style={{ fontSize: 12, color: '#94A3B8' }}>No party found in Client Khata. Add party in Client Khata first.</Text>
+                      </View>
                     )}
                   </View>
                 )}
@@ -1739,9 +1714,9 @@ export default function AdminDashboard({ navigation, route }) {
                 {/* Existing Clients Quick Chips */}
                 {clients.length > 0 && (
                   <View style={{ marginTop: 8 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>Select Party:</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>Select Party from Khata:</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
-                      {clients.slice(0, 8).map(c => {
+                      {clients.slice(0, 10).map(c => {
                         const isSelected = validationPartyName.trim().toLowerCase() === c.name.toLowerCase();
                         return (
                           <TouchableOpacity

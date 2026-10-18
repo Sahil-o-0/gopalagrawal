@@ -101,102 +101,40 @@ export default function DailyLedgerScreen({ navigation }) {
     const loadClientKhata = async () => {
         try {
             setClientLoading(true);
-            // 1. Instant load from local cache for immediate display
-            const storedClients = await AsyncStorage.getItem(CLIENTS_STORAGE_KEY);
-            const storedTxns = await AsyncStorage.getItem(CLIENTS_TXN_STORAGE_KEY);
-            if (storedClients) {
-                try { setClients(JSON.parse(storedClients)); } catch(e){}
-            }
-            if (storedTxns) {
-                try { setClientTransactions(JSON.parse(storedTxns)); } catch(e){}
-            }
+            // Purge any old local AsyncStorage so devices never hold stale local cache
+            AsyncStorage.multiRemove([CLIENTS_STORAGE_KEY, CLIENTS_TXN_STORAGE_KEY]).catch(() => {});
 
-            // 2. Fetch fresh cloud data from backend API
+            // Always fetch 100% fresh, live data directly from Cloud backend
             if (userToken) {
                 const clientsUrl = `${API_BASE_URL}/clients/${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`;
                 const txnsUrl = `${API_BASE_URL}/clients/transactions/all`;
 
                 const [clientsRes, txnsRes] = await Promise.all([
-                    fetch(clientsUrl, { headers: { 'Authorization': `Bearer ${userToken}` } }),
-                    fetch(txnsUrl, { headers: { 'Authorization': `Bearer ${userToken}` } })
+                    fetch(clientsUrl, { 
+                        headers: { 
+                            'Authorization': `Bearer ${userToken}`,
+                            'Cache-Control': 'no-cache'
+                        } 
+                    }),
+                    fetch(txnsUrl, { 
+                        headers: { 
+                            'Authorization': `Bearer ${userToken}`,
+                            'Cache-Control': 'no-cache'
+                        } 
+                    })
                 ]);
 
                 if (clientsRes.ok && txnsRes.ok) {
                     const serverClients = await clientsRes.json();
                     const serverTxns = await txnsRes.json();
-
-                    // If cloud DB is empty but client mobile has local accounts (e.g. 19,01,092 data!),
-                    // auto-migrate local data to cloud so all mobiles stay synced!
-                    if (serverClients.length === 0 && storedClients) {
-                        try {
-                            const localClients = JSON.parse(storedClients);
-                            const localTxns = storedTxns ? JSON.parse(storedTxns) : [];
-                            if (localClients.length > 0) {
-                                for (const lc of localClients) {
-                                    const postRes = await fetch(`${API_BASE_URL}/clients/`, {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json',
-                                            'Authorization': `Bearer ${userToken}`
-                                        },
-                                        body: JSON.stringify({
-                                            name: lc.name,
-                                            phone: lc.phone || null,
-                                            address: lc.address || null,
-                                            opening_balance: parseFloat(lc.opening_balance) || 0,
-                                            site_id: selectedSite?.id || null
-                                        })
-                                    });
-                                    if (postRes.ok) {
-                                        const createdC = await postRes.json();
-                                        const matchingTxns = localTxns.filter(t => String(t.client_id) === String(lc.id));
-                                        for (const lt of matchingTxns) {
-                                            await fetch(`${API_BASE_URL}/clients/transactions`, {
-                                                method: 'POST',
-                                                headers: {
-                                                    'Content-Type': 'application/json',
-                                                    'Authorization': `Bearer ${userToken}`
-                                                },
-                                                body: JSON.stringify({
-                                                    client_id: createdC.id,
-                                                    txn_type: lt.type || lt.txn_type || 'BILLED',
-                                                    amount: parseFloat(lt.amount) || 0,
-                                                    date: lt.date || new Date().toISOString().split('T')[0],
-                                                    payment_mode: lt.payment_mode || 'CASH',
-                                                    notes: lt.notes || null
-                                                })
-                                            });
-                                        }
-                                    }
-                                }
-                                const [freshC, freshT] = await Promise.all([
-                                    fetch(clientsUrl, { headers: { 'Authorization': `Bearer ${userToken}` } }),
-                                    fetch(txnsUrl, { headers: { 'Authorization': `Bearer ${userToken}` } })
-                                ]);
-                                if (freshC.ok && freshT.ok) {
-                                    const fc = await freshC.json();
-                                    const ft = await freshT.json();
-                                    setClients(fc);
-                                    setClientTransactions(ft);
-                                    await AsyncStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(fc));
-                                    await AsyncStorage.setItem(CLIENTS_TXN_STORAGE_KEY, JSON.stringify(ft));
-                                    setClientLoading(false);
-                                    return;
-                                }
-                            }
-                        } catch (migErr) {
-                            console.log('Migration error:', migErr);
-                        }
-                    }
-
                     setClients(serverClients);
                     setClientTransactions(serverTxns);
-                    await AsyncStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(serverClients));
-                    await AsyncStorage.setItem(CLIENTS_TXN_STORAGE_KEY, JSON.stringify(serverTxns));
+                } else {
+                    console.warn("Could not refresh client khata from cloud");
                 }
             }
         } catch (e) {
-            console.log('Error loading client khata:', e);
+            console.log('Error loading client khata from cloud:', e);
         } finally {
             setClientLoading(false);
         }
@@ -204,12 +142,10 @@ export default function DailyLedgerScreen({ navigation }) {
 
     const saveClientsToStorage = async (updated) => {
         setClients(updated);
-        await AsyncStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(updated));
     };
 
     const saveTxnsToStorage = async (updated) => {
         setClientTransactions(updated);
-        await AsyncStorage.setItem(CLIENTS_TXN_STORAGE_KEY, JSON.stringify(updated));
     };
 
     const handleReorderClients = async (reordered) => {
@@ -235,7 +171,7 @@ export default function DailyLedgerScreen({ navigation }) {
 
     const handleAddClient = async () => {
         if (!newClientName.trim()) {
-            Alert.alert('Missing Name', 'Please enter client or company name.');
+            Alert.alert('Missing Name', 'Please enter a client / party name.');
             return;
         }
 
@@ -248,46 +184,35 @@ export default function DailyLedgerScreen({ navigation }) {
         };
 
         try {
-            if (userToken && isOnline) {
-                const res = await fetch(`${API_BASE_URL}/clients/`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${userToken}`
-                    },
-                    body: JSON.stringify(payload)
-                });
-                if (res.ok) {
-                    const createdClient = await res.json();
-                    const updated = [createdClient, ...clients];
-                    await saveClientsToStorage(updated);
-                    setNewClientName('');
-                    setNewClientPhone('');
-                    setNewClientAddress('');
-                    setNewClientOpeningBalance('');
-                    setIsAddClientModalVisible(false);
-                    Alert.alert('Client Added', `Client "${createdClient.name}" added to cloud Khatabook.`);
-                    return;
-                }
+            if (!userToken) {
+                Alert.alert('Authentication Error', 'Please log in again.');
+                return;
+            }
+            const res = await fetch(`${API_BASE_URL}/clients/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${userToken}`
+                },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                const createdClient = await res.json();
+                setNewClientName('');
+                setNewClientPhone('');
+                setNewClientAddress('');
+                setNewClientOpeningBalance('');
+                setIsAddClientModalVisible(false);
+                await loadClientKhata();
+                Alert.alert('Party Added', `Party "${createdClient.name}" saved to Cloud Client Khata.`);
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                Alert.alert('Error', errData.detail || 'Could not save party to cloud.');
             }
         } catch (err) {
             console.log('Cloud client create error:', err);
+            Alert.alert('Connection Error', 'Could not reach server to save party.');
         }
-
-        // Offline fallback
-        const localClient = {
-            id: Date.now(),
-            ...payload,
-            created_at: new Date().toISOString()
-        };
-        const updated = [localClient, ...clients];
-        await saveClientsToStorage(updated);
-        setNewClientName('');
-        setNewClientPhone('');
-        setNewClientAddress('');
-        setNewClientOpeningBalance('');
-        setIsAddClientModalVisible(false);
-        Alert.alert('Client Added', `Client "${localClient.name}" added.`);
     };
 
     const handleCall = (phoneNumber) => {
@@ -326,33 +251,31 @@ export default function DailyLedgerScreen({ navigation }) {
         };
 
         try {
-            if (userToken && isOnline && clientToEdit.id) {
-                await fetch(`${API_BASE_URL}/clients/${clientToEdit.id}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${userToken}`
-                    },
-                    body: JSON.stringify(updatePayload)
-                });
+            if (!userToken) {
+                Alert.alert('Authentication Error', 'Please log in again.');
+                return;
+            }
+            const res = await fetch(`${API_BASE_URL}/clients/${clientToEdit.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${userToken}`
+                },
+                body: JSON.stringify(updatePayload)
+            });
+            if (res.ok) {
+                setIsEditClientModalVisible(false);
+                setClientToEdit(null);
+                await loadClientKhata();
+                Alert.alert('Updated', 'Party details updated in Cloud Client Khata.');
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                Alert.alert('Error', errData.detail || 'Failed to update party.');
             }
         } catch (err) {
             console.log('Cloud client edit error:', err);
+            Alert.alert('Connection Error', 'Could not reach server to update party.');
         }
-
-        const updated = clients.map(c => {
-            if (c.id === clientToEdit.id) {
-                return {
-                    ...c,
-                    ...updatePayload
-                };
-            }
-            return c;
-        });
-        await saveClientsToStorage(updated);
-        setIsEditClientModalVisible(false);
-        setClientToEdit(null);
-        Alert.alert('Updated', 'Client details saved successfully.');
     };
 
     const handleDeleteClient = (client) => {
@@ -404,7 +327,7 @@ export default function DailyLedgerScreen({ navigation }) {
 
     const handleRecordClientTxn = async () => {
         if (!selectedClientForTxn) {
-            Alert.alert('Error', 'Please select a client.');
+            Alert.alert('Error', 'Please select a party.');
             return;
         }
         const amt = parseFloat(clientTxnAmount);
@@ -425,8 +348,8 @@ export default function DailyLedgerScreen({ navigation }) {
             };
 
             try {
-                if (userToken && isOnline && editingClientTxn.id) {
-                    await fetch(`${API_BASE_URL}/clients/transactions/${editingClientTxn.id}`, {
+                if (userToken && editingClientTxn.id) {
+                    const res = await fetch(`${API_BASE_URL}/clients/transactions/${editingClientTxn.id}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
@@ -434,31 +357,21 @@ export default function DailyLedgerScreen({ navigation }) {
                         },
                         body: JSON.stringify(editPayload)
                     });
+                    if (res.ok) {
+                        setEditingClientTxn(null);
+                        setClientTxnAmount('');
+                        setClientTxnNotes('');
+                        setIsClientTxnModalVisible(false);
+                        await loadClientKhata();
+                        Alert.alert('Updated', 'Transaction updated in Cloud Khata.');
+                    } else {
+                        Alert.alert('Error', 'Could not update transaction.');
+                    }
                 }
             } catch (err) {
                 console.log('Cloud txn edit error:', err);
+                Alert.alert('Error', 'Network error updating transaction.');
             }
-
-            const updatedTxns = clientTransactions.map(t => {
-                if (t.id === editingClientTxn.id) {
-                    return {
-                        ...t,
-                        type: clientTxnType,
-                        txn_type: clientTxnType,
-                        amount: amt,
-                        date: dateStr,
-                        payment_mode: clientTxnMode,
-                        notes: clientTxnNotes.trim(),
-                    };
-                }
-                return t;
-            });
-            await saveTxnsToStorage(updatedTxns);
-            setEditingClientTxn(null);
-            setClientTxnAmount('');
-            setClientTxnNotes('');
-            setIsClientTxnModalVisible(false);
-            Alert.alert('Updated', 'Transaction updated successfully.');
             return;
         }
 
@@ -471,39 +384,29 @@ export default function DailyLedgerScreen({ navigation }) {
             notes: clientTxnNotes.trim() || null,
         };
 
-        let newTxn = {
-            id: Date.now(),
-            client_id: selectedClientForTxn.id,
-            type: clientTxnType,
-            txn_type: clientTxnType,
-            amount: amt,
-            date: dateStr,
-            payment_mode: clientTxnMode,
-            notes: clientTxnNotes.trim(),
-            created_at: new Date().toISOString()
-        };
-
         try {
-            if (userToken && isOnline) {
-                const res = await fetch(`${API_BASE_URL}/clients/transactions`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${userToken}`
-                    },
-                    body: JSON.stringify(createPayload)
-                });
-                if (res.ok) {
-                    const serverTxn = await res.json();
-                    newTxn = { ...serverTxn, type: serverTxn.txn_type };
-                }
+            if (!userToken) {
+                Alert.alert('Error', 'Please log in again.');
+                return;
+            }
+            const res = await fetch(`${API_BASE_URL}/clients/transactions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${userToken}`
+                },
+                body: JSON.stringify(createPayload)
+            });
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                Alert.alert('Error', errData.detail || 'Could not record transaction in cloud.');
+                return;
             }
         } catch (err) {
             console.log('Cloud txn create error:', err);
+            Alert.alert('Error', 'Could not reach server to record transaction.');
+            return;
         }
-
-        const updatedTxns = [newTxn, ...clientTransactions];
-        await saveTxnsToStorage(updatedTxns);
 
         if (syncClientTxnToDaily && (clientTxnType === 'RECEIVED' || clientTxnType === 'ADVANCE')) {
             const dailyPayload = {
@@ -515,49 +418,50 @@ export default function DailyLedgerScreen({ navigation }) {
                 site_id: selectedSite?.id || 1
             };
             try {
-                if (isOnline) {
-                    await fetch(API_BASE_URL + '/workforce/daily-ledger', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer ' + userToken
-                        },
-                        body: JSON.stringify(dailyPayload)
-                    });
-                    fetchLedger();
-                } else {
-                    await saveRequestOffline('/workforce/daily-ledger', 'POST', dailyPayload);
-                }
+                await fetch(API_BASE_URL + '/workforce/daily-ledger', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + userToken
+                    },
+                    body: JSON.stringify(dailyPayload)
+                });
             } catch (e) {
-                await saveRequestOffline('/workforce/daily-ledger', 'POST', dailyPayload);
+                console.log('Daily sync notice:', e);
             }
         }
 
         setClientTxnAmount('');
         setClientTxnNotes('');
         setIsClientTxnModalVisible(false);
-        Alert.alert('Recorded', 'Transaction of ₹' + amt.toLocaleString() + ' recorded for ' + selectedClientForTxn.name + '.');
+        await loadClientKhata();
+        Alert.alert('Recorded', 'Transaction of ₹' + amt.toLocaleString('en-IN') + ' recorded for ' + selectedClientForTxn.name + '.');
     };
 
     const handleDeleteClientTxn = (txnId) => {
-        Alert.alert('Delete Entry', 'Are you sure you want to delete this transaction?', [
+        Alert.alert('Delete Entry', 'Are you sure you want to delete this transaction from Cloud Khata?', [
             { text: 'Cancel', style: 'cancel' },
             {
                 text: 'Delete',
                 style: 'destructive',
                 onPress: async () => {
                     try {
-                        if (userToken && isOnline) {
-                            await fetch(`${API_BASE_URL}/clients/transactions/${txnId}`, {
+                        if (userToken) {
+                            const res = await fetch(`${API_BASE_URL}/clients/transactions/${txnId}`, {
                                 method: 'DELETE',
                                 headers: { 'Authorization': `Bearer ${userToken}` }
                             });
+                            if (res.ok) {
+                                await loadClientKhata();
+                                Alert.alert('Deleted', 'Transaction deleted from Cloud Khata.');
+                            } else {
+                                Alert.alert('Error', 'Could not delete transaction from cloud.');
+                            }
                         }
                     } catch (err) {
                         console.log('Cloud txn delete error:', err);
+                        Alert.alert('Error', 'Network error deleting transaction.');
                     }
-                    const updated = clientTransactions.filter(t => t.id !== txnId);
-                    await saveTxnsToStorage(updated);
                 }
             }
         ]);
@@ -1385,7 +1289,7 @@ export default function DailyLedgerScreen({ navigation }) {
 
                 <TouchableOpacity
                     style={[styles.topSegmentBtn, activeView === 'CLIENTS' && styles.topSegmentBtnActive]}
-                    onPress={() => setActiveView('CLIENTS')}
+                    onPress={() => { setActiveView('CLIENTS'); loadClientKhata(); }}
                     activeOpacity={0.8}
                 >
                     <MaterialCommunityIcons name="account-cash" size={16} color={activeView === 'CLIENTS' ? '#2563EB' : '#64748B'} />
@@ -1412,7 +1316,7 @@ export default function DailyLedgerScreen({ navigation }) {
                     activeOpacity={0.8}
                 >
                     <MaterialCommunityIcons name="truck-delivery" size={16} color={activeView === 'FREIGHT' ? '#2563EB' : '#64748B'} />
-                    <Text style={[styles.topSegmentText, activeView === 'FREIGHT' && styles.topSegmentTextActive]}>Freight Ledger</Text>
+                    <Text style={[styles.topSegmentText, activeView === 'FREIGHT' && styles.topSegmentTextActive]}>Trip Freight (Bilti)</Text>
                     {freightData.summary.total_freight_pending > 0 && (
                         <View style={styles.miniPendingPill}>
                             <Text style={styles.miniPendingPillText}>₹{Math.round(freightData.summary.total_freight_pending).toLocaleString()}</Text>
@@ -1629,6 +1533,7 @@ export default function DailyLedgerScreen({ navigation }) {
 
                     <ScrollView 
                         ref={clientScrollViewRef}
+                        refreshControl={<RefreshControl refreshing={clientLoading} onRefresh={loadClientKhata} />}
                         style={styles.content} 
                         contentContainerStyle={styles.scrollContent} 
                         showsVerticalScrollIndicator={false}

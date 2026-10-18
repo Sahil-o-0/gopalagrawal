@@ -2,7 +2,7 @@
 
 ## Android Package & Identity
 - **Package Name / Application ID**: `com.aadharshila.fleet`
-- **Current App Version**: `5.2`
+- **Current App Version**: `5.3`
 - **Domain**: `https://aadarshila.dummysite.cloud`
 
 ---

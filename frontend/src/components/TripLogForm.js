@@ -110,25 +110,6 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
             const todayStr = new Date().toISOString().split('T')[0];
             // 1. Find or create client in Client Khata
             let client = clientsList.find(c => c.name.toLowerCase() === targetParty.trim().toLowerCase());
-            if (!client) {
-                const newClientRes = await fetch(`${API_BASE_URL}/clients/`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${userToken}`
-                    },
-                    body: JSON.stringify({
-                        name: targetParty.trim(),
-                        opening_balance: 0.0,
-                        site_id: user?.site_id || 1
-                    })
-                });
-                if (newClientRes.ok) {
-                    client = await newClientRes.json();
-                    setClientsList(prev => [client, ...prev]);
-                }
-            }
-
             if (client && client.id) {
                 // 2. Add BILLED transaction in Client Khata
                 await fetch(`${API_BASE_URL}/clients/transactions`, {
@@ -531,108 +512,50 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 <View style={{ marginTop: 14 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                         <Text style={styles.inputLabel}>Billing Party / Client Name</Text>
-                        {!!clientName.trim() && (
-                            clientsList.some(c => c.name.toLowerCase() === clientName.trim().toLowerCase()) ? (
-                                <View style={styles.clientExistingBadge}>
-                                    <MaterialCommunityIcons name="check-circle" size={12} color="#059669" style={{ marginRight: 3 }} />
-                                    <Text style={styles.clientExistingBadgeText}>Khata Client</Text>
-                                </View>
-                            ) : (
-                                <View style={styles.clientNewBadge}>
-                                    <MaterialCommunityIcons name="plus-circle" size={12} color="#2563EB" style={{ marginRight: 3 }} />
-                                    <Text style={styles.clientNewBadgeText}>New (Auto-Add)</Text>
-                                </View>
-                            )
+                        {!!clientName && (
+                            <View style={styles.clientExistingBadge}>
+                                <MaterialCommunityIcons name="check-circle" size={12} color="#059669" style={{ marginRight: 3 }} />
+                                <Text style={styles.clientExistingBadgeText}>Client Khata Party</Text>
+                            </View>
                         )}
                     </View>
-                    <View style={styles.clientInputRow}>
-                        <MaterialCommunityIcons name="account-tie" size={20} color="#2563EB" style={{ marginRight: 8 }} />
-                        <TextInput 
-                            placeholderTextColor="#94A3B8" 
-                            style={styles.clientTextInput} 
-                            placeholder="Type Party Name or Browse" 
-                            value={clientName} 
-                            onChangeText={(val) => {
-                                setClientName(val);
-                                setShowClientDropdown(true);
-                            }}
-                            onFocus={() => setShowClientDropdown(true)}
-                        />
-                        {!!clientName ? (
-                            <TouchableOpacity onPress={() => { setClientName(''); setShowClientDropdown(false); }} style={{ padding: 4, marginRight: 6 }}>
-                                <MaterialCommunityIcons name="close-circle" size={18} color="#94A3B8" />
-                            </TouchableOpacity>
-                        ) : null}
-                        <TouchableOpacity 
-                            style={styles.browseClientsBtn}
-                            onPress={() => {
-                                setClientSearchModalText('');
-                                setIsClientPickerVisible(true);
-                                setShowClientDropdown(false);
-                            }}
-                            activeOpacity={0.8}
-                        >
-                            <MaterialCommunityIcons name="book-search-outline" size={16} color="#2563EB" style={{ marginRight: 4 }} />
-                            <Text style={styles.browseClientsBtnText}>Browse</Text>
-                        </TouchableOpacity>
-                    </View>
 
-                    {/* Inline Auto-complete Suggestions (Plain View - Direct Render) */}
-                    {showClientDropdown && clientName.trim().length > 0 && (
-                        <View style={styles.suggestionsContainer}>
-                            {clientsList
-                                .filter(c => c.name.toLowerCase().includes(clientName.trim().toLowerCase()))
-                                .slice(0, 4)
-                                .map(client => (
-                                    <TouchableOpacity
-                                        key={client.id}
-                                        style={styles.suggestionRow}
-                                        onPress={() => {
-                                            setClientName(client.name);
-                                            setShowClientDropdown(false);
-                                            Keyboard.dismiss();
-                                        }}
-                                    >
-                                        <MaterialCommunityIcons name="account" size={16} color="#475569" style={{ marginRight: 8 }} />
-                                        <Text style={styles.suggestionText}>{client.name}</Text>
-                                        {client.pending_balance ? (
-                                            <Text style={styles.suggestionBal}>Bal: ₹{Number(client.pending_balance).toLocaleString('en-IN')}</Text>
-                                        ) : null}
-                                    </TouchableOpacity>
-                                ))}
-
-                            {!clientsList.some(c => c.name.toLowerCase() === clientName.trim().toLowerCase()) && (
-                                <TouchableOpacity
-                                    style={styles.newPartySuggestionRow}
-                                    onPress={() => {
-                                        setShowClientDropdown(false);
-                                        Keyboard.dismiss();
-                                    }}
-                                >
-                                    <MaterialCommunityIcons name="plus-circle-outline" size={16} color="#16A34A" style={{ marginRight: 8 }} />
-                                    <Text style={styles.newPartySuggestionText}>
-                                        Use "{clientName.trim()}" (Auto-add to Khata)
-                                    </Text>
+                    {/* Selector Trigger Button */}
+                    <TouchableOpacity 
+                        style={styles.pickerTrigger} 
+                        onPress={() => {
+                            setClientSearchModalText('');
+                            setIsClientPickerVisible(true);
+                        }}
+                        activeOpacity={0.7}
+                    >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                            <MaterialCommunityIcons name="account-tie" size={20} color={clientName ? "#2563EB" : "#64748B"} style={{ marginRight: 8 }} />
+                            <Text style={clientName ? styles.pickerTriggerVal : styles.pickerTriggerPlaceholder} numberOfLines={1}>
+                                {clientName || "Select Party from Client Khata"}
+                            </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            {!!clientName && (
+                                <TouchableOpacity onPress={(e) => { e.stopPropagation(); setClientName(''); }} style={{ padding: 4, marginRight: 4 }}>
+                                    <MaterialCommunityIcons name="close-circle" size={18} color="#94A3B8" />
                                 </TouchableOpacity>
                             )}
+                            <MaterialCommunityIcons name="chevron-down" size={18} color="#64748B" />
                         </View>
-                    )}
+                    </TouchableOpacity>
 
-                    {/* Quick Select Client Chips */}
+                    {/* Quick Select Client Chips (Existing Client Khata Only) */}
                     {clientsList.length > 0 && (
                         <View style={{ marginTop: 8 }}>
-                            <Text style={styles.quickSelectHeader}>Recent Parties:</Text>
+                            <Text style={styles.quickSelectHeader}>Parties from Client Khata:</Text>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 4 }}>
-                                {clientsList.slice(0, 8).map(c => {
+                                {clientsList.slice(0, 10).map(c => {
                                     const isSelected = clientName.trim().toLowerCase() === c.name.toLowerCase();
                                     return (
                                         <TouchableOpacity
                                             key={c.id}
-                                            onPress={() => {
-                                                setClientName(c.name);
-                                                setShowClientDropdown(false);
-                                                Keyboard.dismiss();
-                                            }}
+                                            onPress={() => setClientName(c.name)}
                                             style={[styles.vehicleChip, isSelected && styles.vehicleChipActive]}
                                             activeOpacity={0.7}
                                         >
@@ -849,7 +772,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <View>
                                 <Text style={styles.modalTitle}>Select Client / Party</Text>
-                                <Text style={{ fontSize: 12, color: '#64748B' }}>Choose from Client Khata or type new</Text>
+                                <Text style={{ fontSize: 12, color: '#64748B' }}>Choose registered party from Client Khata</Text>
                             </View>
                             <TouchableOpacity onPress={() => setIsClientPickerVisible(false)} style={{ padding: 4 }}>
                                 <MaterialCommunityIcons name="close" size={22} color="#64748B" />
@@ -861,7 +784,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                             <TextInput
                                 placeholderTextColor="#94A3B8"
                                 style={styles.modalSearchInput}
-                                placeholder="Search party name or phone..."
+                                placeholder="Search party from Client Khata..."
                                 value={clientSearchModalText}
                                 onChangeText={setClientSearchModalText}
                                 autoFocus={true}
@@ -873,29 +796,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                             )}
                         </View>
 
-                        {/* If typed something not in list, show add new party option */}
-                        {!!clientSearchModalText.trim() && !clientsList.some(c => c.name.toLowerCase() === clientSearchModalText.trim().toLowerCase()) && (
-                            <TouchableOpacity
-                                style={styles.modalAddNewPartyCard}
-                                onPress={() => {
-                                    setClientName(clientSearchModalText.trim());
-                                    setIsClientPickerVisible(false);
-                                }}
-                            >
-                                <MaterialCommunityIcons name="plus-circle" size={20} color="#2563EB" style={{ marginRight: 10 }} />
-                                <View style={{ flex: 1 }}>
-                                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#2563EB' }}>
-                                        Add "{clientSearchModalText.trim()}"
-                                    </Text>
-                                    <Text style={{ fontSize: 11, color: '#64748B' }}>
-                                        New Party • Auto-adds to Client Khata upon save
-                                    </Text>
-                                </View>
-                                <MaterialCommunityIcons name="chevron-right" size={18} color="#2563EB" />
-                            </TouchableOpacity>
-                        )}
-
-                        <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+                        <ScrollView style={{ maxHeight: 340 }} keyboardShouldPersistTaps="handled">
                             {clientsList
                                 .filter(c => !clientSearchModalText.trim() || c.name.toLowerCase().includes(clientSearchModalText.trim().toLowerCase()) || (c.phone && c.phone.includes(clientSearchModalText.trim())))
                                 .map(client => {
@@ -923,6 +824,13 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                                         </TouchableOpacity>
                                     );
                                 })}
+                            {clientsList.filter(c => !clientSearchModalText.trim() || c.name.toLowerCase().includes(clientSearchModalText.trim().toLowerCase())).length === 0 && (
+                                <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                                    <MaterialCommunityIcons name="account-search-outline" size={36} color="#CBD5E1" />
+                                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#64748B', marginTop: 8 }}>No matching party found</Text>
+                                    <Text style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>Add parties in Client Khata screen first</Text>
+                                </View>
+                            )}
                         </ScrollView>
                     </View>
                 </TouchableOpacity>

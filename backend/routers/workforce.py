@@ -552,6 +552,28 @@ def create_daily_ledger_entry(
     ledger_data = ledger.model_dump()
     if not ledger_data.get("site_id"):
         ledger_data["site_id"] = 1
+
+    # Deduplication check for automated references (e.g. TRIP, CLIENT_TXN)
+    ref_id = ledger_data.get("reference_id")
+    ref_type = ledger_data.get("reference_type")
+    cat = ledger_data.get("category")
+    if ref_id and ref_type:
+        existing = db.query(DailyLedger).filter(
+            DailyLedger.reference_id == ref_id,
+            DailyLedger.reference_type == ref_type,
+            DailyLedger.category == cat
+        ).first()
+        if existing:
+            # Update existing entry rather than creating a duplicate
+            existing.amount = ledger_data.get("amount", existing.amount)
+            existing.transaction_type = ledger_data.get("transaction_type", existing.transaction_type)
+            existing.description = ledger_data.get("description", existing.description)
+            if ledger_data.get("date"):
+                existing.date = ledger_data.get("date")
+            db.commit()
+            db.refresh(existing)
+            return existing
+
     new_entry = DailyLedger(**ledger_data)
     if not new_entry.date:
         new_entry.date = datetime.date.today()
@@ -915,19 +937,25 @@ def create_ledger_entry(
     db.add(new_ledger)
     db.flush()
 
-    # INTEGRATION: Daily Ledger (Trip Income)
+    # INTEGRATION: Daily Ledger (Trip Income) - Only if not already logged
     import datetime
-    daily_entry = DailyLedger(
-        date=datetime.date.today(),
-        site_id=target_site_id,
-        transaction_type="INCOME",
-        category="TRIP_INCOME",
-        amount=ledger.total_amount_billed,
-        description=f"Trip Bhada: {trip.vehicle_number} (ID: {trip.id})",
-        reference_id=trip.id,
-        reference_type="TRIP"
-    )
-    db.add(daily_entry)
+    existing_daily = db.query(DailyLedger).filter(
+        DailyLedger.reference_id == trip.id,
+        DailyLedger.reference_type == "TRIP",
+        DailyLedger.category.in_(["TRIP_INCOME", "TRIP_EXPENSE"])
+    ).first()
+    if not existing_daily:
+        daily_entry = DailyLedger(
+            date=datetime.date.today(),
+            site_id=target_site_id,
+            transaction_type="INCOME",
+            category="TRIP_INCOME",
+            amount=ledger.total_amount_billed,
+            description=f"Trip Bhada: {trip.vehicle_number} (ID: {trip.id})",
+            reference_id=trip.id,
+            reference_type="TRIP"
+        )
+        db.add(daily_entry)
 
     db.commit()
     db.refresh(new_ledger)

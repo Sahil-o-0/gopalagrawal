@@ -24,6 +24,7 @@ class TripLog(Base):
     
     # Fuel Tracking
     diesel_liters = Column(Float, default=0.0)
+    diesel_rate = Column(Float, default=0.0)
     diesel_cost = Column(Float, default=0.0)
     
     # Pictures (Base64 Strings for MVP)

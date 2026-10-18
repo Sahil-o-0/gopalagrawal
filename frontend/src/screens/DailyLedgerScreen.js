@@ -1053,6 +1053,8 @@ export default function DailyLedgerScreen({ navigation }) {
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [entryType, setEntryType] = useState('EXPENSE'); // INCOME, EXPENSE
     const [category, setCategory] = useState('');
+    const [fuelLiters, setFuelLiters] = useState('');
+    const [fuelRate, setFuelRate] = useState('');
     const [amount, setAmount] = useState('');
     const [description, setDescription] = useState('');
     const [selectedStaffId, setSelectedStaffId] = useState('');
@@ -1208,6 +1210,14 @@ export default function DailyLedgerScreen({ navigation }) {
                 }
             }
 
+            let entryDesc = description ? (staffName ? `${description} (${staffName})` : description) : (staffName ? `${category} - ${staffName}` : '');
+            if (category === 'FUEL' && !description) {
+                const l = parseFloat(fuelLiters);
+                const r = parseFloat(fuelRate);
+                if (l > 0 && r > 0) entryDesc = `${l}L Diesel @ ₹${r}/L`;
+                else if (l > 0) entryDesc = `${l}L Diesel Expense`;
+            }
+
             // General Daily Ledger Entry
             const response = await fetch(`${API_BASE_URL}/workforce/daily-ledger`, {
                 method: 'POST',
@@ -1219,7 +1229,7 @@ export default function DailyLedgerScreen({ navigation }) {
                     transaction_type: entryType,
                     category: category,
                     amount: parseFloat(amount),
-                    description: description ? (staffName ? `${description} (${staffName})` : description) : (staffName ? `${category} - ${staffName}` : ''),
+                    description: entryDesc,
                     date: formatLocalDate(selectedDate),
                     site_id: selectedSite?.id || 1
                 })
@@ -1236,9 +1246,29 @@ export default function DailyLedgerScreen({ navigation }) {
         }
     };
 
+    const handleFuelLitersChange = (lVal) => {
+        setFuelLiters(lVal);
+        const l = parseFloat(lVal);
+        const r = parseFloat(fuelRate);
+        if (!isNaN(l) && !isNaN(r) && l > 0 && r > 0) {
+            setAmount(String(Math.round(l * r)));
+        }
+    };
+
+    const handleFuelRateChange = (rVal) => {
+        setFuelRate(rVal);
+        const l = parseFloat(fuelLiters);
+        const r = parseFloat(rVal);
+        if (!isNaN(l) && !isNaN(r) && l > 0 && r > 0) {
+            setAmount(String(Math.round(l * r)));
+        }
+    };
+
     const resetModal = () => {
         setAmount('');
         setCategory('');
+        setFuelLiters('');
+        setFuelRate('');
         setDescription('');
         setSelectedStaffId('');
         setSelectedClientForTxn(null);
@@ -3171,6 +3201,45 @@ export default function DailyLedgerScreen({ navigation }) {
                                     )}
                                 </TouchableOpacity>
                             </View>
+
+                            {/* Fuel & Diesel Liters & Rate (shown if FUEL) */}
+                            {category === 'FUEL' && (
+                                <View style={{ marginBottom: 14, backgroundColor: '#FFFBEB', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#FDE68A' }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                        <MaterialCommunityIcons name="gas-station" size={16} color="#D97706" />
+                                        <Text style={{ fontSize: 13, fontWeight: '800', color: '#92400E' }}>Diesel Rate × Liters Calculator</Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.modalLabel, { color: '#92400E' }]}>Diesel Liters (Qty)</Text>
+                                            <TextInput 
+                                                style={[styles.modalInput, { backgroundColor: '#FFFFFF', borderColor: '#FCD34D' }]} 
+                                                placeholder="e.g. 5 L" 
+                                                placeholderTextColor="#94A3B8"
+                                                keyboardType="numeric" 
+                                                value={fuelLiters} 
+                                                onChangeText={handleFuelLitersChange} 
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.modalLabel, { color: '#92400E' }]}>Rate / Liter (₹)</Text>
+                                            <TextInput 
+                                                style={[styles.modalInput, { backgroundColor: '#FFFFFF', borderColor: '#FCD34D' }]} 
+                                                placeholder="e.g. ₹ 101" 
+                                                placeholderTextColor="#94A3B8"
+                                                keyboardType="numeric" 
+                                                value={fuelRate} 
+                                                onChangeText={handleFuelRateChange} 
+                                            />
+                                        </View>
+                                    </View>
+                                    {parseFloat(fuelLiters) > 0 && parseFloat(fuelRate) > 0 && (
+                                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#B45309', marginTop: 4 }}>
+                                            Formula: {parseFloat(fuelLiters)} L × ₹{parseFloat(fuelRate)}/L = ₹{(parseFloat(fuelLiters) * parseFloat(fuelRate)).toLocaleString('en-IN')}
+                                        </Text>
+                                    )}
+                                </View>
+                            )}
 
                             {/* Amount */}
                             <View style={styles.formGroup}>

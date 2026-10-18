@@ -73,7 +73,8 @@ def create_trip(
     db.flush()
 
     # If advance freight was received at loading, log into DailyLedger as TRIP_INCOME
-    if advance_rec > 0:
+    # Note: Only log separate advance freight if full bhada was not already provided (prevents duplicate income entries)
+    if advance_rec > 0 and not (new_trip.bhada and float(new_trip.bhada) > 0):
         daily_entry = DailyLedger(
             date=datetime.date.today(),
             site_id=site_id,
@@ -87,17 +88,28 @@ def create_trip(
         db.add(daily_entry)
 
     # Automatic Diesel Expense logging from Log Book
-    diesel_cost = float(new_trip.diesel_cost or 0.0)
     diesel_liters = float(new_trip.diesel_liters or 0.0)
+    diesel_rate = float(new_trip.diesel_rate or 0.0)
+    diesel_cost = float(new_trip.diesel_cost or 0.0)
+
+    # Auto-calculate multiplication if liters and rate are present
+    if diesel_liters > 0 and diesel_rate > 0 and (diesel_cost == 0 or abs(diesel_cost - diesel_rate) < 0.01):
+        diesel_cost = round(diesel_liters * diesel_rate, 2)
+        new_trip.diesel_cost = diesel_cost
+    elif diesel_liters > 0 and diesel_cost > 0 and diesel_rate == 0:
+        diesel_rate = round(diesel_cost / diesel_liters, 2)
+        new_trip.diesel_rate = diesel_rate
+
     if diesel_cost > 0:
         driver_str = f" ({current_user.full_name or current_user.username})" if current_user else ""
+        rate_str = f" @ ₹{diesel_rate:g}/L" if diesel_rate > 0 else ""
         fuel_entry = DailyLedger(
             date=datetime.date.today(),
             site_id=site_id,
             transaction_type="EXPENSE",
             category="FUEL",
             amount=diesel_cost,
-            description=f"Trip #{new_trip.id} Diesel: {diesel_liters:g}L - {new_trip.vehicle_number}{driver_str}",
+            description=f"Trip #{new_trip.id} Diesel: {diesel_liters:g}L{rate_str} - {new_trip.vehicle_number}{driver_str}",
             reference_id=new_trip.id,
             reference_type="TRIP"
         )

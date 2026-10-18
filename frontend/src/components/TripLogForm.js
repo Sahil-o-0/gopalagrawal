@@ -41,6 +41,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const [startMeter, setStartMeter] = useState('');
     const [endMeter, setEndMeter] = useState('');
     const [dieselLiters, setDieselLiters] = useState('');
+    const [dieselRate, setDieselRate] = useState('');
     const [dieselCost, setDieselCost] = useState('');
     const [bhada, setBhada] = useState('');
     const [advanceFreight, setAdvanceFreight] = useState('');
@@ -176,6 +177,33 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
         }
     };
 
+    const handleDieselLitersChange = (lVal) => {
+        setDieselLiters(lVal);
+        const l = parseFloat(lVal);
+        const r = parseFloat(dieselRate);
+        if (!isNaN(l) && !isNaN(r) && l > 0 && r > 0) {
+            setDieselCost(String(Math.round(l * r)));
+        }
+    };
+
+    const handleDieselRateChange = (rVal) => {
+        setDieselRate(rVal);
+        const l = parseFloat(dieselLiters);
+        const r = parseFloat(rVal);
+        if (!isNaN(l) && !isNaN(r) && l > 0 && r > 0) {
+            setDieselCost(String(Math.round(l * r)));
+        }
+    };
+
+    const handleDieselCostChange = (cVal) => {
+        setDieselCost(cVal);
+        const l = parseFloat(dieselLiters);
+        const c = parseFloat(cVal);
+        if (!isNaN(l) && !isNaN(c) && l > 0 && c > 0) {
+            setDieselRate(String(Math.round((c / l) * 100) / 100));
+        }
+    };
+
     // Auto-sync trip bhada into Client Khata and Daily Ledger
     const syncTripFinancials = async (loggedTripId, finalBhada, targetParty, vehNum, rOrigin, rDest) => {
         if (!finalBhada || finalBhada <= 0) return;
@@ -304,7 +332,14 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
             start_meter_reading: sMeter,
             end_meter_reading: eMeter,
             diesel_liters: dieselLiters ? parseFloat(dieselLiters) : 0,
-            diesel_cost: dieselCost ? parseFloat(dieselCost) : 0,
+            diesel_rate: dieselRate ? parseFloat(dieselRate) : 0,
+            diesel_cost: (() => {
+                const l = parseFloat(dieselLiters) || 0;
+                const r = parseFloat(dieselRate) || 0;
+                const c = parseFloat(dieselCost) || 0;
+                if (l > 0 && r > 0) return Math.round(l * r);
+                return c;
+            })(),
             bhada: isManagerOrAdmin && bhada ? parseFloat(bhada) : 0,
             advance_freight_received: isManagerOrAdmin && advanceFreight ? parseFloat(advanceFreight) : 0,
             loading_photo_url: loadingPhoto,
@@ -365,7 +400,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
         setVehicleNumber(assignedVehiclesList[0] || user?.assigned_vehicle || ''); 
         setClientName(''); setShowClientDropdown(false); setIsClientPickerVisible(false); setClientSearchModalText('');
         setOrigin(''); setDestination(''); setMaterialType(''); setWeightTons('');
-        setStartMeter(''); setEndMeter(''); setDieselLiters(''); setDieselCost('');
+        setStartMeter(''); setEndMeter(''); setDieselLiters(''); setDieselRate(''); setDieselCost('');
         setBhada(''); setAdvanceFreight('');
         setRateType('TON'); setRate(''); setTripCount('1'); setLedgerType('INCOME');
         setLoadingPhoto(null); setUnloadingPhoto(null); setOdometerPhoto(null); setReceiptPhoto(null);
@@ -993,38 +1028,71 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 )}
             </View>
 
-            {/* Section 4: Fuel Tracking */}
+            {/* Section 4: Fuel & Diesel Accounting */}
             <View style={styles.sectionCard}>
                 <View style={styles.sectionHeader}>
                     <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
                         <MaterialCommunityIcons name="gas-station-outline" size={18} color="#D97706" />
                     </View>
-                    <Text style={styles.sectionTitle}>Fuel & Expenses (Optional)</Text>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.sectionTitle}>Fuel & Diesel Accounting (Optional)</Text>
+                        <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }}>
+                            Auto-syncs diesel expense to Daily Cashflow
+                        </Text>
+                    </View>
                 </View>
+
+                {/* 2 Inputs in Row: Liters & Rate/Liter */}
                 <View style={styles.rowGrid}>
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>Diesel Liters</Text>
+                        <Text style={styles.inputLabel}>Diesel Liters (Qty)</Text>
                         <TextInput 
                             placeholderTextColor="#94A3B8" 
                             style={styles.textInput} 
-                            placeholder="0 L" 
+                            placeholder="e.g. 5 L" 
                             keyboardType="numeric" 
                             value={dieselLiters} 
-                            onChangeText={setDieselLiters} 
+                            onChangeText={handleDieselLitersChange} 
                         />
                     </View>
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>Diesel Cost (₹)</Text>
+                        <Text style={styles.inputLabel}>Rate / Liter (₹)</Text>
                         <TextInput 
                             placeholderTextColor="#94A3B8" 
                             style={styles.textInput} 
-                            placeholder="₹ 0" 
+                            placeholder="e.g. ₹ 101" 
                             keyboardType="numeric" 
-                            value={dieselCost} 
-                            onChangeText={setDieselCost} 
+                            value={dieselRate} 
+                            onChangeText={handleDieselRateChange} 
                         />
                     </View>
                 </View>
+
+                {/* Total Diesel Amount (Auto-Calculated) */}
+                <View style={{ marginTop: 10 }}>
+                    <Text style={styles.inputLabel}>Total Diesel Amount (₹)</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1.5, borderColor: '#D97706', paddingHorizontal: 10, height: 46 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '900', color: '#D97706', marginRight: 4 }}>₹</Text>
+                        <TextInput 
+                            placeholderTextColor="#94A3B8" 
+                            style={{ flex: 1, fontSize: 16, fontWeight: '800', color: '#0F172A', paddingVertical: 8 }} 
+                            placeholder="0" 
+                            keyboardType="numeric" 
+                            value={dieselCost} 
+                            onChangeText={handleDieselCostChange} 
+                        />
+                    </View>
+                </View>
+
+                {/* Live Formula Banner */}
+                {parseFloat(dieselLiters) > 0 && (parseFloat(dieselRate) > 0 || parseFloat(dieselCost) > 0) ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', borderRadius: 8, padding: 10, marginTop: 10, borderWidth: 1, borderColor: '#FDE68A', gap: 8 }}>
+                        <MaterialCommunityIcons name="calculator" size={16} color="#D97706" />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E', flex: 1 }}>
+                            {parseFloat(dieselLiters)} L × ₹{parseFloat(dieselRate) || (parseFloat(dieselCost) / parseFloat(dieselLiters)).toFixed(2)}/L = ₹{(parseFloat(dieselCost) || (parseFloat(dieselLiters) * parseFloat(dieselRate))).toLocaleString('en-IN')} Diesel Expense
+                        </Text>
+                    </View>
+                ) : null}
             </View>
 
             {/* Section 5: Photo Verification Evidence */}

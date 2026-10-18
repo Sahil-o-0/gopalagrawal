@@ -11,6 +11,7 @@ class TripLogBase(BaseModel):
     start_meter_reading: Optional[float] = 0.0
     end_meter_reading: Optional[float] = 0.0
     diesel_liters: Optional[float] = 0.0
+    diesel_rate: Optional[float] = 0.0
     diesel_cost: Optional[float] = 0.0
     site_id: Optional[int] = 1
     

@@ -13,7 +13,7 @@ import { saveRequestOffline } from '../context/OfflineStorage';
 import { useBackgroundSync } from '../context/useBackgroundSync';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import DraggableCardList from '../components/DraggableCardList';
 
@@ -1065,16 +1065,22 @@ export default function DailyLedgerScreen({ navigation }) {
             if (actionType === 'SAVE_PDF' || actionType === 'WHATSAPP') {
                 const { uri: tempUri } = await Print.printToFileAsync({ html });
                 const fileName = `${title}_${Date.now()}.pdf`;
-                const destUri = `${FileSystem.documentDirectory}${fileName}`;
-                await FileSystem.copyAsync({ from: tempUri, to: destUri });
+                let shareUri = tempUri;
+                try {
+                    const destUri = `${FileSystem.documentDirectory || ''}${fileName}`;
+                    await FileSystem.copyAsync({ from: tempUri, to: destUri });
+                    shareUri = destUri;
+                } catch (copyErr) {
+                    console.warn('Could not copy PDF locally, using tempUri:', copyErr);
+                }
 
                 if (actionType === 'SAVE_PDF') {
-                    await Sharing.shareAsync(destUri, {
+                    await Sharing.shareAsync(shareUri, {
                         mimeType: 'application/pdf',
                         dialogTitle: 'Save / Download PDF Statement'
                     });
                 } else if (actionType === 'WHATSAPP') {
-                    await Sharing.shareAsync(destUri, {
+                    await Sharing.shareAsync(shareUri, {
                         mimeType: 'application/pdf',
                         dialogTitle: 'Share PDF Statement via WhatsApp'
                     });
@@ -1086,7 +1092,7 @@ export default function DailyLedgerScreen({ navigation }) {
             if (actionType === 'SAVE_IMAGE') {
                 const svgContent = generateStatementSvg(exportTarget);
                 const fileName = `${title}_${Date.now()}.svg`;
-                const imageUri = `${FileSystem.documentDirectory}${fileName}`;
+                const imageUri = `${FileSystem.documentDirectory || ''}${fileName}`;
                 await FileSystem.writeAsStringAsync(imageUri, svgContent);
                 await Sharing.shareAsync(imageUri, {
                     mimeType: 'image/svg+xml',

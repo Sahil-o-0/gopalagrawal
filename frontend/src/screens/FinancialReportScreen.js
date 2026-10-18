@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { AuthContext } from '../context/AuthContext';
 import { useSite } from '../context/SiteContext';
 import { API_BASE_URL } from '../config';
@@ -325,9 +325,15 @@ export default function FinancialReportScreen({ navigation }) {
               try {
                 const { uri: tempUri } = await Print.printToFileAsync({ html: htmlContent });
                 const fileName = `Financial_Report_${periodLabel.replace(/\s+/g, '_')}_${Date.now()}.pdf`;
-                const destUri = `${FileSystem.documentDirectory}${fileName}`;
-                await FileSystem.copyAsync({ from: tempUri, to: destUri });
-                await Sharing.shareAsync(destUri, {
+                let shareUri = tempUri;
+                try {
+                  const destUri = `${FileSystem.documentDirectory || ''}${fileName}`;
+                  await FileSystem.copyAsync({ from: tempUri, to: destUri });
+                  shareUri = destUri;
+                } catch (copyErr) {
+                  console.warn('Could not copy PDF locally, using tempUri:', copyErr);
+                }
+                await Sharing.shareAsync(shareUri, {
                   mimeType: 'application/pdf',
                   dialogTitle: `${periodLabel} Financial Report`
                 });

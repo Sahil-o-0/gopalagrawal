@@ -86,6 +86,23 @@ def create_trip(
         )
         db.add(daily_entry)
 
+    # Automatic Diesel Expense logging from Log Book
+    diesel_cost = float(new_trip.diesel_cost or 0.0)
+    diesel_liters = float(new_trip.diesel_liters or 0.0)
+    if diesel_cost > 0:
+        driver_str = f" ({current_user.full_name or current_user.username})" if current_user else ""
+        fuel_entry = DailyLedger(
+            date=datetime.date.today(),
+            site_id=site_id,
+            transaction_type="EXPENSE",
+            category="FUEL",
+            amount=diesel_cost,
+            description=f"Trip #{new_trip.id} Diesel: {diesel_liters:g}L - {new_trip.vehicle_number}{driver_str}",
+            reference_id=new_trip.id,
+            reference_type="TRIP"
+        )
+        db.add(fuel_entry)
+
     db.commit()
     db.refresh(new_trip)
 
@@ -175,6 +192,27 @@ def update_trip_status(
         trip.freight_notes = status_update.freight_notes
     if status_update.weight_tons is not None:
         trip.weight_tons = status_update.weight_tons
+
+    # When validating a trip, ensure diesel expense is logged in DailyLedger if present
+    if trip.diesel_cost and float(trip.diesel_cost) > 0:
+        existing_fuel = db.query(DailyLedger).filter(
+            DailyLedger.reference_id == trip.id,
+            DailyLedger.reference_type == "TRIP",
+            DailyLedger.category == "FUEL"
+        ).first()
+        if not existing_fuel:
+            fuel_entry = DailyLedger(
+                date=trip.created_at.date() if trip.created_at else datetime.date.today(),
+                site_id=trip.site_id or 1,
+                transaction_type="EXPENSE",
+                category="FUEL",
+                amount=float(trip.diesel_cost),
+                description=f"Trip #{trip.id} Diesel: {float(trip.diesel_liters or 0):g}L - {trip.vehicle_number}",
+                reference_id=trip.id,
+                reference_type="TRIP"
+            )
+            db.add(fuel_entry)
+
     db.commit()
     db.refresh(trip)
 

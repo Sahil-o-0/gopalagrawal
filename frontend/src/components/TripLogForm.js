@@ -28,6 +28,9 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     // Form state
     const [vehicleNumber, setVehicleNumber] = useState(assignedVehiclesList[0] || user?.assigned_vehicle || '');
     const [availableVehicles, setAvailableVehicles] = useState([]);
+    const [clientName, setClientName] = useState('');
+    const [clientsList, setClientsList] = useState([]);
+    const [showClientDropdown, setShowClientDropdown] = useState(false);
     const [origin, setOrigin] = useState('');
     const [destination, setDestination] = useState('');
     const [materialType, setMaterialType] = useState('');
@@ -79,8 +82,92 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 console.log("Could not load fleet vehicles", err);
             }
         };
+
+        const fetchClients = async () => {
+            try {
+                const resp = await fetch(`${API_BASE_URL}/clients/`, {
+                    headers: { 'Authorization': `Bearer ${userToken}` }
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    setClientsList(data);
+                }
+            } catch (err) {
+                console.log("Could not load clients list", err);
+            }
+        };
+
         fetchFleetVehicles();
+        if (userToken) fetchClients();
     }, [userToken, staffList, user]);
+
+    // Auto-sync trip bhada into Client Khata and Daily Ledger
+    const syncTripFinancials = async (loggedTripId, finalBhada, targetParty, vehNum, rOrigin, rDest) => {
+        if (!targetParty || !finalBhada || finalBhada <= 0) return;
+        try {
+            const todayStr = new Date().toISOString().split('T')[0];
+            // 1. Find or create client in Client Khata
+            let client = clientsList.find(c => c.name.toLowerCase() === targetParty.trim().toLowerCase());
+            if (!client) {
+                const newClientRes = await fetch(`${API_BASE_URL}/clients/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${userToken}`
+                    },
+                    body: JSON.stringify({
+                        name: targetParty.trim(),
+                        opening_balance: 0.0,
+                        site_id: user?.site_id || 1
+                    })
+                });
+                if (newClientRes.ok) {
+                    client = await newClientRes.json();
+                    setClientsList(prev => [client, ...prev]);
+                }
+            }
+
+            if (client && client.id) {
+                // 2. Add BILLED transaction in Client Khata
+                await fetch(`${API_BASE_URL}/clients/transactions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${userToken}`
+                    },
+                    body: JSON.stringify({
+                        client_id: client.id,
+                        txn_type: 'BILLED',
+                        amount: finalBhada,
+                        date: todayStr,
+                        payment_mode: 'CREDIT',
+                        notes: `Trip #${loggedTripId} (${vehNum}): ${rOrigin || 'Start'} to ${rDest || 'End'}`
+                    })
+                });
+            }
+
+            // 3. Add TRIP_INCOME entry in Daily Ledger
+            await fetch(`${API_BASE_URL}/workforce/daily-ledger`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${userToken}`
+                },
+                body: JSON.stringify({
+                    transaction_type: 'INCOME',
+                    category: 'TRIP_INCOME',
+                    amount: finalBhada,
+                    description: `Trip #${loggedTripId} Bhada - ${vehNum} (Party: ${targetParty.trim()})`,
+                    date: todayStr,
+                    site_id: user?.site_id || 1,
+                    reference_id: loggedTripId,
+                    reference_type: 'TRIP'
+                })
+            });
+        } catch (syncErr) {
+            console.warn("Auto-sync to Ledger & Client Khata notice:", syncErr);
+        }
+    };
 
     // Auto-prefill vehicle when assigned driver changes or is loaded
     useEffect(() => {
@@ -142,7 +229,8 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
             loading_photo_url: loadingPhoto,
             unloading_photo_url: unloadingPhoto,
             odometer_photo_url: odometerPhoto,
-            receipt_photo_url: receiptPhoto
+            receipt_photo_url: receiptPhoto,
+            freight_notes: clientName.trim() || null
         };
 
         if (isManagerOrAdmin && staffId) {
@@ -161,6 +249,11 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 });
 
                 if (response.ok) {
+                    const createdTrip = await response.json();
+                    const finalBhada = parseFloat(bhada) || 0;
+                    if (finalBhada > 0 && clientName.trim()) {
+                        await syncTripFinancials(createdTrip?.id || '', finalBhada, clientName.trim(), vehicleNumber.trim().toUpperCase(), origin.trim(), destination.trim());
+                    }
                     Alert.alert("Success", isManagerOrAdmin ? "Trip logged and automatically approved!" : "Trip log submitted successfully!");
                     clearForm();
                     if (onSuccess) onSuccess();
@@ -186,6 +279,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
 
     const clearForm = () => {
         setVehicleNumber(assignedVehiclesList[0] || user?.assigned_vehicle || ''); 
+        setClientName(''); setShowClientDropdown(false);
         setOrigin(''); setDestination(''); setMaterialType(''); setWeightTons('');
         setStartMeter(''); setEndMeter(''); setDieselLiters(''); setDieselCost('');
         setBhada(''); setAdvanceFreight('');
@@ -429,6 +523,106 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                             onChangeText={setWeightTons} 
                         />
                     </View>
+                </View>
+
+                {/* Billing Party / Client Selection */}
+                <View style={{ marginTop: 12 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <Text style={styles.inputLabel}>Billing Party / Client Name</Text>
+                        {!!clientName.trim() && !clientsList.some(c => c.name.toLowerCase() === clientName.trim().toLowerCase()) && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                <MaterialCommunityIcons name="plus-circle-outline" size={12} color="#2563EB" style={{ marginRight: 3 }} />
+                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>New Party (Auto-Add)</Text>
+                            </View>
+                        )}
+                    </View>
+                    <View style={styles.clientInputRow}>
+                        <MaterialCommunityIcons name="account-tie" size={18} color="#64748B" style={{ marginRight: 8 }} />
+                        <TextInput 
+                            placeholderTextColor="#94A3B8" 
+                            style={styles.clientTextInput} 
+                            placeholder="Select or enter Party Name" 
+                            value={clientName} 
+                            onChangeText={(val) => {
+                                setClientName(val);
+                                setShowClientDropdown(true);
+                            }}
+                            onFocus={() => setShowClientDropdown(true)}
+                        />
+                        {!!clientName ? (
+                            <TouchableOpacity onPress={() => { setClientName(''); setShowClientDropdown(false); }}>
+                                <MaterialCommunityIcons name="close-circle" size={16} color="#94A3B8" />
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
+
+                    {/* Dropdown list of clients */}
+                    {showClientDropdown && (
+                        <View style={styles.clientDropdownContainer}>
+                            <ScrollView nestedScrollEnabled={true} style={{ maxHeight: 150 }} keyboardShouldPersistTaps="handled">
+                                {clientsList
+                                    .filter(c => !clientName.trim() || c.name.toLowerCase().includes(clientName.trim().toLowerCase()))
+                                    .slice(0, 10)
+                                    .map(client => (
+                                        <TouchableOpacity
+                                            key={client.id}
+                                            style={styles.clientDropdownItem}
+                                            onPress={() => {
+                                                setClientName(client.name);
+                                                setShowClientDropdown(false);
+                                            }}
+                                        >
+                                            <MaterialCommunityIcons name="account" size={14} color="#475569" style={{ marginRight: 6 }} />
+                                            <Text style={styles.clientDropdownItemText}>{client.name}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                {!!clientName.trim() && !clientsList.some(c => c.name.toLowerCase() === clientName.trim().toLowerCase()) && (
+                                    <TouchableOpacity
+                                        style={[styles.clientDropdownItem, { backgroundColor: '#F0FDF4' }]}
+                                        onPress={() => setShowClientDropdown(false)}
+                                    >
+                                        <MaterialCommunityIcons name="plus-circle" size={14} color="#16A34A" style={{ marginRight: 6 }} />
+                                        <Text style={[styles.clientDropdownItemText, { color: '#16A34A', fontWeight: '700' }]}>
+                                            Add "{clientName.trim()}" as new client
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+                            </ScrollView>
+                        </View>
+                    )}
+
+                    {/* Quick Select Client Chips */}
+                    {clientsList.length > 0 && (
+                        <View style={{ marginTop: 8 }}>
+                            <Text style={styles.quickSelectHeader}>Recent Parties:</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 4 }}>
+                                {clientsList.slice(0, 8).map(c => {
+                                    const isSelected = clientName.trim().toLowerCase() === c.name.toLowerCase();
+                                    return (
+                                        <TouchableOpacity
+                                            key={c.id}
+                                            onPress={() => {
+                                                setClientName(c.name);
+                                                setShowClientDropdown(false);
+                                            }}
+                                            style={[styles.vehicleChip, isSelected && styles.vehicleChipActive]}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialCommunityIcons 
+                                                name="account-outline" 
+                                                size={12} 
+                                                color={isSelected ? '#FFFFFF' : '#475569'} 
+                                                style={{ marginRight: 4 }} 
+                                            />
+                                            <Text style={[styles.vehicleChipText, isSelected && styles.vehicleChipTextActive]}>
+                                                {c.name}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        </View>
+                    )}
                 </View>
 
                 {/* Freight / Bhada Accounting */}
@@ -890,6 +1084,48 @@ const styles = StyleSheet.create({
         borderBottomColor: '#F1F5F9' 
     },
     staffOptionName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-    staffOptionUsername: { fontSize: 12, color: '#64748B', marginTop: 2 }
+    staffOptionUsername: { fontSize: 12, color: '#64748B', marginTop: 2 },
+
+    clientInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8FAFC',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        paddingHorizontal: 12,
+        height: 44,
+    },
+    clientTextInput: {
+        flex: 1,
+        fontSize: 14,
+        color: '#0F172A',
+        fontWeight: '600',
+    },
+    clientDropdownContainer: {
+        marginTop: 4,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    clientDropdownItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+    },
+    clientDropdownItemText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#1E293B',
+    }
 });
 

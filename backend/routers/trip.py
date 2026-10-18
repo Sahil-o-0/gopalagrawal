@@ -171,6 +171,8 @@ def update_trip_status(
     trip.status = status_update.status
     if status_update.bhada is not None:
         trip.bhada = status_update.bhada
+    if status_update.freight_notes is not None:
+        trip.freight_notes = status_update.freight_notes
     db.commit()
     db.refresh(trip)
 

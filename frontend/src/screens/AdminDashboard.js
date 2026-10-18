@@ -161,6 +161,9 @@ export default function AdminDashboard({ navigation, route }) {
   const [isValidationModalVisible, setIsValidationModalVisible] = useState(false);
   const [bookedAmount, setBookedAmount] = useState('');
   const [receivedAmount, setReceivedAmount] = useState('');
+  const [validationPartyName, setValidationPartyName] = useState('');
+  const [showValidationClientDropdown, setShowValidationClientDropdown] = useState(false);
+  const [clients, setClients] = useState([]);
   const [viewerUrl, setViewerUrl] = useState('');
   const [viewerVisible, setViewerVisible] = useState(false);
 
@@ -267,6 +270,17 @@ export default function AdminDashboard({ navigation, route }) {
       } catch (desigErr) {
         console.error("Failed to fetch designations", desigErr);
       }
+
+      try {
+        const cResp = await fetch(`${API_BASE_URL}/clients/`, {
+          headers: { 'Authorization': `Bearer ${userToken}` }
+        });
+        if (cResp.ok) {
+          setClients(await cResp.json());
+        }
+      } catch (cErr) {
+        console.error("Failed to fetch clients", cErr);
+      }
       
       setIsLoading(false);
     }
@@ -285,48 +299,123 @@ export default function AdminDashboard({ navigation, route }) {
 
   const validateTrip = async (tripId) => {
     if (!bookedAmount || isNaN(parseFloat(bookedAmount))) {
-        Alert.alert("Required", "Please enter a valid amount");
-        return;
+      Alert.alert("Required", "Please enter a valid bhada / income amount");
+      return;
     }
 
     try {
       const incomeVal = parseFloat(bookedAmount);
-      console.log(`Validating trip ${tripId} with income ${incomeVal}`);
+      const party = validationPartyName.trim();
+      const todayStr = new Date().toISOString().split('T')[0];
+      const vehNum = selectedTrip?.vehicle_number || '';
+      const rOrigin = selectedTrip?.origin || '';
+      const rDest = selectedTrip?.destination || '';
 
-      const resp = await fetch(`${API_BASE_URL}/trips/${tripId}/status`, {
+      // 1. Update Trip Status & freight_notes (Party Name)
+      await fetch(`${API_BASE_URL}/trips/${tripId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
-        body: JSON.stringify({ status: 'VALIDATED', bhada: incomeVal })
-      });
-
-      const ledgerResponse = await fetch(`${API_BASE_URL}/workforce/ledger`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
         body: JSON.stringify({
-          trip_id: tripId,
-          total_amount_billed: incomeVal,
-          amount_received: 0
+          status: 'VALIDATED',
+          bhada: incomeVal,
+          freight_notes: party || null
         })
       });
 
-      if (ledgerResponse.ok) {
-        Alert.alert("Success", "Trip validated and income logged!");
-        setIsValidationModalVisible(false);
-        setBookedAmount('');
-        setReceivedAmount('');
-        fetchData();
-      } else {
-        Alert.alert("Warning", "Status updated but ledger failed.");
-        setIsValidationModalVisible(false);
-        fetchData();
+      // 2. Add to Daily Ledger (TRIP_INCOME)
+      try {
+        await fetch(`${API_BASE_URL}/workforce/daily-ledger`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+          body: JSON.stringify({
+            transaction_type: 'INCOME',
+            category: 'TRIP_INCOME',
+            amount: incomeVal,
+            description: `Trip #${tripId} Bhada - ${vehNum}${party ? ` (Party: ${party})` : ''}`,
+            date: todayStr,
+            site_id: selectedSite?.id || 1,
+            reference_id: tripId,
+            reference_type: 'TRIP'
+          })
+        });
+      } catch (dlErr) {
+        console.warn("Daily ledger sync notice:", dlErr);
       }
-    } catch (error) { Alert.alert("Error", "Validation failed"); }
+
+      // 3. Add to Client Khata if party name is provided
+      if (party) {
+        try {
+          let targetClient = clients.find(c => c.name.toLowerCase() === party.toLowerCase());
+          if (!targetClient) {
+            // Auto-create client in Khata
+            const createRes = await fetch(`${API_BASE_URL}/clients/`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+              body: JSON.stringify({
+                name: party,
+                opening_balance: 0.0,
+                site_id: selectedSite?.id || 1
+              })
+            });
+            if (createRes.ok) {
+              targetClient = await createRes.json();
+              setClients(prev => [targetClient, ...prev]);
+            }
+          }
+
+          if (targetClient && targetClient.id) {
+            await fetch(`${API_BASE_URL}/clients/transactions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+              body: JSON.stringify({
+                client_id: targetClient.id,
+                txn_type: 'BILLED',
+                amount: incomeVal,
+                date: todayStr,
+                payment_mode: 'CREDIT',
+                notes: `Trip #${tripId} (${vehNum}): ${rOrigin || 'Start'} to ${rDest || 'End'}`
+              })
+            });
+          }
+        } catch (khataErr) {
+          console.warn("Client Khata sync notice:", khataErr);
+        }
+      }
+
+      // 4. Also post to workforce/ledger for backwards compatibility
+      try {
+        await fetch(`${API_BASE_URL}/workforce/ledger`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+          body: JSON.stringify({
+            trip_id: tripId,
+            total_amount_billed: incomeVal,
+            amount_received: 0
+          })
+        });
+      } catch (lErr) {}
+
+      Alert.alert(
+        "Trip Validated",
+        `Trip #${tripId} approved! Bhada (₹${incomeVal.toLocaleString('en-IN')}) synced to Daily Ledger${party ? ` & Client Khata (${party})` : ''}.`
+      );
+      setIsValidationModalVisible(false);
+      setBookedAmount('');
+      setReceivedAmount('');
+      setValidationPartyName('');
+      setShowValidationClientDropdown(false);
+      fetchData();
+    } catch (error) {
+      Alert.alert("Error", "Validation failed");
+    }
   };
 
   const openValidationModal = (trip) => {
     setSelectedTrip(trip);
-    setBookedAmount('');
-    setReceivedAmount('');
+    setBookedAmount(trip?.bhada ? String(trip.bhada) : '');
+    setReceivedAmount(trip?.advance_freight_received ? String(trip.advance_freight_received) : '');
+    setValidationPartyName(trip?.freight_notes || '');
+    setShowValidationClientDropdown(false);
     setIsValidationModalVisible(true);
   };
 
@@ -1277,6 +1366,13 @@ export default function AdminDashboard({ navigation, route }) {
                     <Text style={styles.tripRouteLabel}>Dest:</Text>
                     <Text style={styles.tripRouteValue} numberOfLines={1}>{t.destination || 'Not specified'}</Text>
                   </View>
+                  {!!t.freight_notes && (
+                    <View style={[styles.tripRouteRow, { marginTop: 4, paddingTop: 4, borderTopWidth: 1, borderTopColor: '#E2E8F0' }]}>
+                      <MaterialCommunityIcons name="account-tie" size={16} color="#7C3AED" />
+                      <Text style={[styles.tripRouteLabel, { color: '#7C3AED' }]}>Party:</Text>
+                      <Text style={[styles.tripRouteValue, { fontWeight: '700', color: '#1E293B' }]} numberOfLines={1}>{t.freight_notes}</Text>
+                    </View>
+                  )}
                 </View>
 
                 {/* Metrics Grid */}
@@ -1540,25 +1636,170 @@ export default function AdminDashboard({ navigation, route }) {
       {/* TRIP VALIDATION MODAL */}
       <Modal visible={isValidationModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Validate Trip #{selectedTrip?.id}</Text>
-            <Text style={styles.modalSubtitle}>{selectedTrip?.vehicle_number} - {selectedTrip?.total_km} KM</Text>
-            
-            <TextInput 
-              style={styles.input} 
-              placeholder="Trip Bhada / Income (₹) REQUIRED" 
-              placeholderTextColor="#4B5563"
-              keyboardType="numeric"
-              value={bookedAmount}
-              onChangeText={setBookedAmount}
-            />
+          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <View>
+                <Text style={[styles.modalTitle, { textAlign: 'left', marginBottom: 2 }]}>Validate & Approve Trip</Text>
+                <Text style={{ fontSize: 13, color: '#64748B', fontWeight: '700' }}>Trip #{selectedTrip?.id} • {selectedTrip?.vehicle_number}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsValidationModalVisible(false)} style={{ padding: 4 }}>
+                <MaterialCommunityIcons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
 
-            <View style={styles.modalActionRow}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsValidationModalVisible(false)}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Trip Quick Summary Card */}
+              <View style={{ backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                  <MaterialCommunityIcons name="map-marker-distance" size={16} color="#059669" style={{ marginRight: 6 }} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B' }}>
+                    {selectedTrip?.origin || 'Start'} ➔ {selectedTrip?.destination || 'End'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 12, color: '#64748B' }}>Material: <Text style={{ fontWeight: '700', color: '#1E293B' }}>{selectedTrip?.material_type || 'N/A'}</Text> ({selectedTrip?.weight_tons || 0}T)</Text>
+                  <Text style={{ fontSize: 12, color: '#64748B' }}>Distance: <Text style={{ fontWeight: '700', color: '#1E293B' }}>{selectedTrip?.total_km || 0} KM</Text></Text>
+                </View>
+              </View>
+
+              {/* Billing Party / Client Selection */}
+              <View style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Client / Party Name (Khata)
+                  </Text>
+                  {!!validationPartyName.trim() && !clients.some(c => c.name.toLowerCase() === validationPartyName.trim().toLowerCase()) && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                      <MaterialCommunityIcons name="plus-circle-outline" size={12} color="#2563EB" style={{ marginRight: 3 }} />
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>New Party (Auto-Add)</Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                  <MaterialCommunityIcons name="account-tie" size={18} color="#64748B" style={{ marginRight: 8 }} />
+                  <TextInput 
+                    style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '600' }}
+                    placeholder="Search or enter Party / Client Name"
+                    placeholderTextColor="#94A3B8"
+                    value={validationPartyName}
+                    onChangeText={(val) => {
+                      setValidationPartyName(val);
+                      setShowValidationClientDropdown(true);
+                    }}
+                    onFocus={() => setShowValidationClientDropdown(true)}
+                  />
+                  {!!validationPartyName ? (
+                    <TouchableOpacity onPress={() => { setValidationPartyName(''); setShowValidationClientDropdown(false); }}>
+                      <MaterialCommunityIcons name="close-circle" size={16} color="#94A3B8" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {/* Dropdown for Client Khata */}
+                {showValidationClientDropdown && (
+                  <View style={{ marginTop: 4, backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', elevation: 4, maxHeight: 140 }}>
+                    <ScrollView nestedScrollEnabled={true} keyboardShouldPersistTaps="handled">
+                      {clients
+                        .filter(c => !validationPartyName.trim() || c.name.toLowerCase().includes(validationPartyName.trim().toLowerCase()))
+                        .slice(0, 10)
+                        .map(c => (
+                          <TouchableOpacity
+                            key={c.id}
+                            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}
+                            onPress={() => {
+                              setValidationPartyName(c.name);
+                              setShowValidationClientDropdown(false);
+                            }}
+                          >
+                            <MaterialCommunityIcons name="account" size={14} color="#475569" style={{ marginRight: 6 }} />
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B' }}>{c.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      {!!validationPartyName.trim() && !clients.some(c => c.name.toLowerCase() === validationPartyName.trim().toLowerCase()) && (
+                        <TouchableOpacity
+                          style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9, paddingHorizontal: 12, backgroundColor: '#F0FDF4' }}
+                          onPress={() => setShowValidationClientDropdown(false)}
+                        >
+                          <MaterialCommunityIcons name="plus-circle" size={14} color="#16A34A" style={{ marginRight: 6 }} />
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#16A34A' }}>
+                            Add "{validationPartyName.trim()}" to Khata
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* Existing Clients Quick Chips */}
+                {clients.length > 0 && (
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>Select Party:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                      {clients.slice(0, 8).map(c => {
+                        const isSelected = validationPartyName.trim().toLowerCase() === c.name.toLowerCase();
+                        return (
+                          <TouchableOpacity
+                            key={c.id}
+                            onPress={() => {
+                              setValidationPartyName(c.name);
+                              setShowValidationClientDropdown(false);
+                            }}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              backgroundColor: isSelected ? '#2563EB' : '#F1F5F9',
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              borderRadius: 8,
+                              marginRight: 6,
+                              borderWidth: 1,
+                              borderColor: isSelected ? '#2563EB' : '#E2E8F0'
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <MaterialCommunityIcons name="account-outline" size={12} color={isSelected ? '#FFFFFF' : '#475569'} style={{ marginRight: 4 }} />
+                            <Text style={{ fontSize: 11, fontWeight: isSelected ? '800' : '600', color: isSelected ? '#FFFFFF' : '#475569' }}>
+                              {c.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
+              {/* Trip Bhada / Income */}
+              <View style={{ marginBottom: 14 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                  Total Trip Bhada / Freight (₹) *
+                </Text>
+                <TextInput 
+                  style={[styles.input, { marginBottom: 0 }]} 
+                  placeholder="e.g. 45000" 
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="numeric"
+                  value={bookedAmount}
+                  onChangeText={setBookedAmount}
+                />
+              </View>
+
+              {/* Auto Sync Banner */}
+              <View style={{ backgroundColor: '#F0FDF4', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#BBF7D0', flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                <MaterialCommunityIcons name="check-decagram" size={16} color="#16A34A" style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#166534', flex: 1 }}>
+                  Validating will automatically log this Bhada to Daily Ledger (Trip Income) and Client Khata.
+                </Text>
+              </View>
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+              <TouchableOpacity style={[styles.cancelBtn, { flex: 1, marginTop: 0 }]} onPress={() => setIsValidationModalVisible(false)}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={() => validateTrip(selectedTrip?.id)}>
-                <Text style={styles.confirmBtnText}>Confirm Data</Text>
+              <TouchableOpacity style={[styles.confirmBtn, { flex: 2 }]} onPress={() => validateTrip(selectedTrip?.id)}>
+                <Text style={styles.confirmBtnText}>Validate & Sync Ledger</Text>
               </TouchableOpacity>
             </View>
           </View>

@@ -2511,41 +2511,71 @@ export default function DailyLedgerScreen({ navigation }) {
             <Modal visible={isClientStatementModalVisible} animationType="slide" transparent={true}>
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { height: '88%' }]}>
-                        <View style={styles.modalHeader}>
+                        {/* Elevated Header Bar */}
+                        <View style={styles.passbookHeaderBar}>
+                            <View style={styles.passbookClientAvatar}>
+                                <Text style={styles.passbookAvatarText}>
+                                    {(selectedClientForStatement?.name || 'C').charAt(0).toUpperCase()}
+                                </Text>
+                            </View>
                             <View style={{ flex: 1, marginRight: 8 }}>
-                                <Text style={styles.modalTitle}>Khata Passbook</Text>
-                                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', marginTop: 2 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Text style={styles.passbookKicker}>KHATA PASSBOOK</Text>
+                                    <View style={styles.passbookKickerBadge}>
+                                        <Text style={styles.passbookKickerBadgeText}>LIVE STATEMENT</Text>
+                                    </View>
+                                </View>
+                                <Text style={styles.passbookClientName} numberOfLines={1}>
                                     {selectedClientForStatement ? selectedClientForStatement.name : ''}
                                 </Text>
-                                {selectedClientForStatement?.phone && (
-                                    <Text style={{ fontSize: 11, color: '#64748B' }}>
-                                        📞 {selectedClientForStatement.phone} {selectedClientForStatement.address ? `• ${selectedClientForStatement.address}` : ''}
-                                    </Text>
-                                )}
+                                <Text style={styles.passbookClientSub} numberOfLines={1}>
+                                    {selectedClientForStatement?.phone ? `📞 ${selectedClientForStatement.phone}` : ''}
+                                    {selectedClientForStatement?.phone && selectedClientForStatement?.address ? '  •  ' : ''}
+                                    {selectedClientForStatement?.address ? `📍 ${selectedClientForStatement.address}` : ''}
+                                    {!selectedClientForStatement?.phone && !selectedClientForStatement?.address ? 'General Client Account' : ''}
+                                </Text>
                             </View>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 {selectedClientForStatement && (
                                     <TouchableOpacity 
-                                        style={styles.passbookPdfBtn}
+                                        style={styles.passbookExportBtn}
                                         onPress={() => {
                                             openExportModal({
                                                 type: 'CLIENT_STATEMENT',
                                                 client: selectedClientForStatement
                                             });
                                         }}
-                                        activeOpacity={0.8}
+                                        activeOpacity={0.7}
                                     >
-                                        <MaterialCommunityIcons name="export-variant" size={16} color="#2563EB" />
-                                        <Text style={[styles.passbookPdfBtnText, { color: '#2563EB' }]}>Export</Text>
+                                        <MaterialCommunityIcons name="export-variant" size={15} color="#2563EB" />
+                                        <Text style={styles.passbookExportBtnText}>Export</Text>
                                     </TouchableOpacity>
                                 )}
-                                <TouchableOpacity onPress={() => setIsClientStatementModalVisible(false)}>
-                                    <MaterialCommunityIcons name="close" size={24} color="#0F172A" />
+                                <TouchableOpacity 
+                                    style={styles.passbookCloseBtn}
+                                    onPress={() => setIsClientStatementModalVisible(false)}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialCommunityIcons name="close" size={20} color="#475569" />
                                 </TouchableOpacity>
                             </View>
                         </View>
 
                         {selectedClientForStatement ? (() => {
+                            const formatPassbookDate = (dStr) => {
+                                if (!dStr) return '';
+                                try {
+                                    const parts = String(dStr).split('-');
+                                    if (parts.length === 3) {
+                                        const yyyy = parts[0];
+                                        const mm = parts[1].padStart(2, '0');
+                                        const dd = parts[2].padStart(2, '0');
+                                        return `${dd}-${mm}-${yyyy}`;
+                                    }
+                                } catch (_) {}
+                                return formatDisplayDate(dStr);
+                            };
+
                             const m = getClientMetrics(selectedClientForStatement.id, selectedClientForStatement.opening_balance);
                             const rawTxns = clientTransactions
                                 .filter(t => String(t.client_id) === String(selectedClientForStatement.id))
@@ -2575,26 +2605,60 @@ export default function DailyLedgerScreen({ navigation }) {
 
                             return (
                                 <View style={{ flex: 1 }}>
-                                    {/* Mini Summary Banner */}
-                                    <View style={styles.passbookSummary}>
-                                        <View>
-                                            <Text style={styles.passbookLabel}>NET BALANCE (LE NA HAI)</Text>
-                                            <Text style={[styles.passbookDue, { color: m.pending > 0 ? '#DC2626' : m.pending < 0 ? '#16A34A' : '#475569' }]}>
-                                                {m.pending > 0 ? `₹${m.pending.toLocaleString()} Due` : m.pending < 0 ? `₹${Math.abs(m.pending).toLocaleString()} Adv` : '₹0 Settled'}
-                                            </Text>
+                                    {/* Financial Balance Hero Card */}
+                                    <View style={styles.passbookHeroCard}>
+                                        <View style={styles.passbookHeroTopRow}>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.passbookHeroLabel}>NET OUTSTANDING BALANCE</Text>
+                                                <Text style={[styles.passbookHeroBalance, { color: m.pending > 0 ? '#DC2626' : m.pending < 0 ? '#16A34A' : '#0F172A' }]}>
+                                                    {m.pending !== 0 ? `₹${Math.abs(m.pending).toLocaleString()}` : '₹0'}
+                                                </Text>
+                                            </View>
+                                            <View style={[styles.passbookStatusPill, { 
+                                                backgroundColor: m.pending > 0 ? '#FEF2F2' : m.pending < 0 ? '#F0FDF4' : '#F1F5F9',
+                                                borderColor: m.pending > 0 ? '#FECACA' : m.pending < 0 ? '#BBF7D0' : '#E2E8F0',
+                                            }]}>
+                                                <MaterialCommunityIcons 
+                                                    name={m.pending > 0 ? "arrow-bottom-left" : m.pending < 0 ? "arrow-top-right" : "check-circle"} 
+                                                    size={14} 
+                                                    color={m.pending > 0 ? '#DC2626' : m.pending < 0 ? '#16A34A' : '#64748B'} 
+                                                />
+                                                <Text style={[styles.passbookStatusPillText, { color: m.pending > 0 ? '#DC2626' : m.pending < 0 ? '#16A34A' : '#475569' }]}>
+                                                    {m.pending > 0 ? 'LE NA HAI (DUE)' : m.pending < 0 ? 'DE NA HAI (ADV)' : 'ALL SETTLED'}
+                                                </Text>
+                                            </View>
                                         </View>
-                                        <View style={{ alignItems: 'flex-end' }}>
-                                            <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '700' }}>Billed: ₹{m.billed.toLocaleString()}</Text>
-                                            <Text style={{ fontSize: 11, color: '#16A34A', fontWeight: '700' }}>Received: ₹{m.received.toLocaleString()}</Text>
-                                            <Text style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>{enrichedTxns.length} entries</Text>
+
+                                        {/* Metric Chips Split */}
+                                        <View style={styles.passbookHeroChipsRow}>
+                                            <View style={styles.passbookHeroChip}>
+                                                <View style={[styles.passbookHeroChipDot, { backgroundColor: '#DC2626' }]} />
+                                                <Text style={styles.passbookHeroChipLabel}>Billed:</Text>
+                                                <Text style={[styles.passbookHeroChipVal, { color: '#DC2626' }]}>₹${m.billed.toLocaleString()}</Text>
+                                            </View>
+                                            <View style={styles.passbookHeroChip}>
+                                                <View style={[styles.passbookHeroChipDot, { backgroundColor: '#16A34A' }]} />
+                                                <Text style={styles.passbookHeroChipLabel}>Received:</Text>
+                                                <Text style={[styles.passbookHeroChipVal, { color: '#16A34A' }]}>₹${m.received.toLocaleString()}</Text>
+                                            </View>
+                                            <View style={styles.passbookHeroChip}>
+                                                <MaterialCommunityIcons name="format-list-numbered" size={13} color="#64748B" />
+                                                <Text style={styles.passbookHeroChipLabel}>${enrichedTxns.length} entries</Text>
+                                            </View>
                                         </View>
+                                    </View>
+
+                                    {/* Section Header */}
+                                    <View style={styles.passbookFeedHeader}>
+                                        <Text style={styles.passbookFeedTitle}>STATEMENT TIMELINE</Text>
+                                        <Text style={styles.passbookFeedSubtitle}>Latest entries first</Text>
                                     </View>
 
                                     <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
                                         {displayTxns.length === 0 && (!selectedClientForStatement.opening_balance || parseFloat(selectedClientForStatement.opening_balance) === 0) ? (
                                             <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                                                 <MaterialCommunityIcons name="book-open-page-variant-outline" size={40} color="#CBD5E1" />
-                                                <Text style={{ textAlign: 'center', color: '#94A3B8', marginTop: 10, fontSize: 13 }}>
+                                                <Text style={{ textAlign: 'center', color: '#94A3B8', marginTop: 10, fontSize: 13, fontWeight: '600' }}>
                                                     No transactions recorded yet for this client.
                                                 </Text>
                                             </View>
@@ -2603,42 +2667,76 @@ export default function DailyLedgerScreen({ navigation }) {
                                                 {displayTxns.map(t => {
                                                     const isDebit = t.isDebit;
                                                     const bal = t.runningBalance;
+                                                    const typeLabel = t.type === 'BILLED' ? 'BILLED' : t.type === 'RECEIVED' ? 'RECEIVED' : t.type;
                                                     return (
-                                                        <View key={t.id} style={styles.passbookRow}>
-                                                            <View style={{ flex: 1, marginRight: 10 }}>
-                                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                                    <Text style={styles.passbookDate}>{t.date}</Text>
-                                                                    <View style={[styles.passbookTypePill, { backgroundColor: isDebit ? '#FEF2F2' : '#F0FDF4' }]}>
-                                                                        <Text style={[styles.passbookTypePillText, { color: isDebit ? '#DC2626' : '#16A34A' }]}>
-                                                                            {t.type}
+                                                        <View key={t.id} style={[styles.passbookTxnCard, { borderLeftColor: isDebit ? '#DC2626' : '#16A34A' }]}>
+                                                            {/* Card Header Row */}
+                                                            <View style={styles.passbookTxnCardHeader}>
+                                                                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, flex: 1, marginRight: 8 }}>
+                                                                    <View style={styles.passbookDateBadge}>
+                                                                        <MaterialCommunityIcons name="calendar-month-outline" size={12} color="#475569" />
+                                                                        <Text style={styles.passbookDateText}>{formatPassbookDate(t.date)}</Text>
+                                                                    </View>
+                                                                    <View style={[styles.passbookTypeBadge, { 
+                                                                        backgroundColor: isDebit ? '#FEF2F2' : '#F0FDF4',
+                                                                        borderColor: isDebit ? '#FECACA' : '#BBF7D0'
+                                                                    }]}>
+                                                                        <Text style={[styles.passbookTypeBadgeText, { color: isDebit ? '#DC2626' : '#16A34A' }]}>
+                                                                            {typeLabel}
                                                                         </Text>
                                                                     </View>
-                                                                    <View style={styles.passbookModePill}>
-                                                                        <Text style={styles.passbookModeText}>{t.payment_mode || 'CASH'}</Text>
-                                                                    </View>
+                                                                    {t.payment_mode ? (
+                                                                        <View style={styles.passbookModeBadge}>
+                                                                            <Text style={styles.passbookModeBadgeText}>{t.payment_mode.toUpperCase()}</Text>
+                                                                        </View>
+                                                                    ) : null}
                                                                 </View>
-                                                                {t.notes ? <Text style={styles.passbookNote}>{t.notes}</Text> : null}
-                                                                <Text style={{ fontSize: 11, fontWeight: '700', color: bal > 0 ? '#DC2626' : bal < 0 ? '#16A34A' : '#64748B', marginTop: 3 }}>
-                                                                    Running Bal: ₹{Math.abs(bal).toLocaleString()} {bal > 0 ? 'Dr (Due)' : bal < 0 ? 'Cr (Adv)' : 'Settled'}
+
+                                                                {/* Amount on Right */}
+                                                                <Text style={[styles.passbookAmtText, { color: isDebit ? '#DC2626' : '#16A34A' }]}>
+                                                                    {isDebit ? '+ ' : '- '}₹${t.amount.toLocaleString()}
                                                                 </Text>
                                                             </View>
 
-                                                            <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
-                                                                <Text style={[styles.passbookAmt, { color: isDebit ? '#DC2626' : '#16A34A' }]}>
-                                                                    {isDebit ? '+ ' : '- '}₹{t.amount.toLocaleString()}
-                                                                </Text>
-                                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                                                            {/* Notes / Details Box */}
+                                                            {t.notes ? (
+                                                                <View style={styles.passbookNotesBox}>
+                                                                    <MaterialCommunityIcons 
+                                                                        name={isDebit ? "truck-fast-outline" : "cash-check"} 
+                                                                        size={15} 
+                                                                        color={isDebit ? "#DC2626" : "#16A34A"} 
+                                                                        style={{ marginTop: 1, marginRight: 6 }} 
+                                                                    />
+                                                                    <Text style={styles.passbookNotesContent}>{t.notes}</Text>
+                                                                </View>
+                                                            ) : null}
+
+                                                            {/* Card Footer Row */}
+                                                            <View style={styles.passbookTxnCardFooter}>
+                                                                <View style={styles.passbookBalPill}>
+                                                                    <MaterialCommunityIcons name="scale-balance" size={13} color="#64748B" style={{ marginRight: 4 }} />
+                                                                    <Text style={styles.passbookBalPillLabel}>Balance:</Text>
+                                                                    <Text style={[styles.passbookBalPillVal, { color: bal > 0 ? '#DC2626' : bal < 0 ? '#16A34A' : '#475569' }]}>
+                                                                        ₹${Math.abs(bal).toLocaleString()} {bal > 0 ? 'Dr (Due)' : bal < 0 ? 'Cr (Adv)' : '(Settled)'}
+                                                                    </Text>
+                                                                </View>
+
+                                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                                                     <TouchableOpacity 
+                                                                        style={styles.passbookActionIconBtn}
                                                                         onPress={() => openEditTxnModal(t, selectedClientForStatement)} 
                                                                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                                        activeOpacity={0.7}
                                                                     >
-                                                                        <MaterialCommunityIcons name="pencil-outline" size={16} color="#2563EB" />
+                                                                        <MaterialCommunityIcons name="pencil-outline" size={15} color="#2563EB" />
                                                                     </TouchableOpacity>
                                                                     <TouchableOpacity 
+                                                                        style={[styles.passbookActionIconBtn, { backgroundColor: '#FEF2F2' }]}
                                                                         onPress={() => handleDeleteClientTxn(t.id)} 
                                                                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                                        activeOpacity={0.7}
                                                                     >
-                                                                        <MaterialCommunityIcons name="trash-can-outline" size={16} color="#DC2626" />
+                                                                        <MaterialCommunityIcons name="trash-can-outline" size={15} color="#DC2626" />
                                                                     </TouchableOpacity>
                                                                 </View>
                                                             </View>
@@ -2647,20 +2745,34 @@ export default function DailyLedgerScreen({ navigation }) {
                                                 })}
 
                                                 {selectedClientForStatement.opening_balance > 0 && (
-                                                    <View style={[styles.passbookRow, { backgroundColor: '#F8FAFC', borderLeftWidth: 3, borderLeftColor: '#DC2626' }]}>
-                                                        <View style={{ flex: 1 }}>
-                                                            <Text style={styles.passbookDate}>Opening Balance</Text>
-                                                            <Text style={styles.passbookNote}>Initial Balance Brought Forward</Text>
+                                                    <View style={[styles.passbookTxnCard, { borderLeftColor: '#F59E0B', backgroundColor: '#FFFDF5' }]}>
+                                                        <View style={styles.passbookTxnCardHeader}>
+                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                                <View style={[styles.passbookDateBadge, { backgroundColor: '#FEF3C7' }]}>
+                                                                    <MaterialCommunityIcons name="history" size={12} color="#D97706" />
+                                                                    <Text style={[styles.passbookDateText, { color: '#B45309' }]}>Opening Balance</Text>
+                                                                </View>
+                                                                <View style={[styles.passbookTypeBadge, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}>
+                                                                    <Text style={[styles.passbookTypeBadgeText, { color: '#B45309' }]}>BROUGHT FORWARD</Text>
+                                                                </View>
+                                                            </View>
+                                                            <Text style={[styles.passbookAmtText, { color: '#D97706' }]}>
+                                                                + ₹${parseFloat(selectedClientForStatement.opening_balance).toLocaleString()}
+                                                            </Text>
                                                         </View>
-                                                        <Text style={[styles.passbookAmt, { color: '#DC2626' }]}>+ ₹{parseFloat(selectedClientForStatement.opening_balance).toLocaleString()}</Text>
+                                                        <View style={[styles.passbookNotesBox, { backgroundColor: '#FEF9C3', borderColor: '#FEF08A' }]}>
+                                                            <MaterialCommunityIcons name="information-outline" size={14} color="#B45309" style={{ marginTop: 1, marginRight: 6 }} />
+                                                            <Text style={[styles.passbookNotesContent, { color: '#92400E' }]}>Initial ledger balance brought forward</Text>
+                                                        </View>
                                                     </View>
                                                 )}
                                             </>
                                         )}
                                     </ScrollView>
 
+                                    {/* Action Button */}
                                     <TouchableOpacity
-                                        style={{ backgroundColor: '#0F172A', borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', marginTop: 10, flexDirection: 'row', gap: 8 }}
+                                        style={styles.passbookAddTxnBtn}
                                         onPress={() => {
                                             setSelectedClientForTxn(selectedClientForStatement);
                                             setEditingClientTxn(null);
@@ -2668,9 +2780,10 @@ export default function DailyLedgerScreen({ navigation }) {
                                             setClientTxnNotes('');
                                             setIsClientTxnModalVisible(true);
                                         }}
+                                        activeOpacity={0.8}
                                     >
-                                        <MaterialCommunityIcons name="plus-circle" size={16} color="#FFFFFF" />
-                                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>Record New Transaction</Text>
+                                        <MaterialCommunityIcons name="plus-circle" size={18} color="#FFFFFF" />
+                                        <Text style={styles.passbookAddTxnBtnText}>Record Transaction (Bill / Jama)</Text>
                                     </TouchableOpacity>
                                 </View>
                             );
@@ -4772,15 +4885,304 @@ const styles = StyleSheet.create({
         color: '#64748B',
         marginTop: 2,
     },
-    passbookModePill: {
-        backgroundColor: '#F1F5F9',
+    /* Khata Passbook Modal Elevated Styling */
+    passbookHeaderBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingBottom: 14,
+        marginBottom: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+    },
+    passbookClientAvatar: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#0F172A',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    passbookAvatarText: {
+        color: '#FFFFFF',
+        fontSize: 18,
+        fontWeight: '900',
+    },
+    passbookKicker: {
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 0.8,
+        color: '#2563EB',
+    },
+    passbookKickerBadge: {
+        backgroundColor: '#EFF6FF',
         paddingHorizontal: 6,
-        paddingVertical: 2,
+        paddingVertical: 1,
         borderRadius: 4,
     },
-    passbookModeText: {
-        fontSize: 10,
+    passbookKickerBadgeText: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: '#2563EB',
+    },
+    passbookClientName: {
+        fontSize: 17,
+        fontWeight: '900',
+        color: '#0F172A',
+        marginTop: 1,
+    },
+    passbookClientSub: {
+        fontSize: 11,
         color: '#64748B',
+        marginTop: 2,
+        fontWeight: '500',
+    },
+    passbookExportBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: '#EFF6FF',
+        borderWidth: 1,
+        borderColor: '#BFDBFE',
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+        borderRadius: 8,
+    },
+    passbookExportBtnText: {
+        fontSize: 12,
+        fontWeight: '800',
+        color: '#2563EB',
+    },
+    passbookCloseBtn: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#F1F5F9',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    passbookHeroCard: {
+        backgroundColor: '#F8FAFC',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        padding: 14,
+        marginBottom: 14,
+    },
+    passbookHeroTopRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: 12,
+    },
+    passbookHeroLabel: {
+        fontSize: 10.5,
+        fontWeight: '800',
+        letterSpacing: 0.6,
+        color: '#64748B',
+        marginBottom: 2,
+    },
+    passbookHeroBalance: {
+        fontSize: 26,
+        fontWeight: '900',
+    },
+    passbookStatusPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 20,
+        borderWidth: 1,
+    },
+    passbookStatusPillText: {
+        fontSize: 11,
+        fontWeight: '800',
+    },
+    passbookHeroChipsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#E2E8F0',
+    },
+    passbookHeroChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    passbookHeroChipDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+    },
+    passbookHeroChipLabel: {
+        fontSize: 10.5,
+        fontWeight: '600',
+        color: '#64748B',
+    },
+    passbookHeroChipVal: {
+        fontSize: 11,
+        fontWeight: '800',
+    },
+    passbookFeedHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+        paddingHorizontal: 2,
+    },
+    passbookFeedTitle: {
+        fontSize: 11,
+        fontWeight: '900',
+        letterSpacing: 0.8,
+        color: '#475569',
+    },
+    passbookFeedSubtitle: {
+        fontSize: 10,
+        color: '#94A3B8',
+        fontWeight: '600',
+    },
+    passbookTxnCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        borderLeftWidth: 4,
+        padding: 12,
+        marginBottom: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04,
+        shadowRadius: 2,
+        elevation: 1,
+    },
+    passbookTxnCardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    passbookDateBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: '#F1F5F9',
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+        borderRadius: 6,
+    },
+    passbookDateText: {
+        fontSize: 11,
         fontWeight: '700',
+        color: '#334155',
+    },
+    passbookTypeBadge: {
+        paddingHorizontal: 7,
+        paddingVertical: 2.5,
+        borderRadius: 6,
+        borderWidth: 1,
+    },
+    passbookTypeBadgeText: {
+        fontSize: 10,
+        fontWeight: '800',
+    },
+    passbookModeBadge: {
+        backgroundColor: '#F8FAFC',
+        paddingHorizontal: 6,
+        paddingVertical: 2.5,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    passbookModeBadgeText: {
+        fontSize: 9.5,
+        fontWeight: '700',
+        color: '#475569',
+    },
+    passbookAmtText: {
+        fontSize: 16,
+        fontWeight: '900',
+    },
+    passbookNotesBox: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        backgroundColor: '#F8FAFC',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#EDF2F7',
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+        marginBottom: 8,
+    },
+    passbookNotesContent: {
+        flex: 1,
+        fontSize: 12,
+        color: '#334155',
+        lineHeight: 17,
+        fontWeight: '600',
+    },
+    passbookTxnCardFooter: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingTop: 6,
+        borderTopWidth: 1,
+        borderTopColor: '#F8FAFC',
+    },
+    passbookBalPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8FAFC',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#EDF2F7',
+    },
+    passbookBalPillLabel: {
+        fontSize: 10.5,
+        color: '#64748B',
+        fontWeight: '600',
+        marginRight: 4,
+    },
+    passbookBalPillVal: {
+        fontSize: 11,
+        fontWeight: '800',
+    },
+    passbookActionIconBtn: {
+        width: 30,
+        height: 30,
+        borderRadius: 8,
+        backgroundColor: '#EFF6FF',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    passbookAddTxnBtn: {
+        backgroundColor: '#0F172A',
+        borderRadius: 12,
+        paddingVertical: 13,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 8,
+        flexDirection: 'row',
+        gap: 8,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    passbookAddTxnBtnText: {
+        color: '#FFFFFF',
+        fontWeight: '800',
+        fontSize: 13.5,
     }
 });

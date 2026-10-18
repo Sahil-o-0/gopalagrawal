@@ -1,7 +1,3 @@
 aadharshilagroup.online, www.aadharshilagroup.online {
     reverse_proxy backend:8000
 }
-
-aadarshila.dummysite.cloud {
-    reverse_proxy backend:8000
-}

@@ -6,6 +6,7 @@ import { AuthContext } from '../context/AuthContext';
 import { saveTripOffline } from '../context/OfflineStorage';
 import { useBackgroundSync } from '../context/useBackgroundSync';
 import { API_BASE_URL } from '../config';
+import { formatLocalDate } from '../utils/dateUtils';
 
 export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess = null }) {
     const { userToken, user } = useContext(AuthContext);
@@ -107,7 +108,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const syncTripFinancials = async (loggedTripId, finalBhada, targetParty, vehNum, rOrigin, rDest) => {
         if (!targetParty || !finalBhada || finalBhada <= 0) return;
         try {
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = formatLocalDate(new Date());
             // 1. Find or create client in Client Khata
             let client = clientsList.find(c => c.name.toLowerCase() === targetParty.trim().toLowerCase());
             if (client && client.id) {

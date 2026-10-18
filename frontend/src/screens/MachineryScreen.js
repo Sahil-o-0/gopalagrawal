@@ -9,6 +9,7 @@ import { useSite } from '../context/SiteContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { API_BASE_URL } from '../config';
+import { formatLocalDate, formatDisplayDate } from '../utils/dateUtils';
 
 export default function MachineryScreen({ navigation }) {
   const { userToken } = useContext(AuthContext);
@@ -66,8 +67,8 @@ export default function MachineryScreen({ navigation }) {
       const params = new URLSearchParams();
       if (selectedSite?.id) params.append('site_id', selectedSite.id);
       if (selectedVehicle !== 'ALL') params.append('vehicle_number', selectedVehicle);
-      if (startDate) params.append('start_date', startDate.toISOString().split('T')[0]);
-      if (endDate) params.append('end_date', endDate.toISOString().split('T')[0]);
+      if (startDate) params.append('start_date', formatLocalDate(startDate));
+      if (endDate) params.append('end_date', formatLocalDate(endDate));
 
       const res = await fetch(`${API_BASE_URL}/trips/machinery-analytics?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${userToken}` }
@@ -208,7 +209,7 @@ export default function MachineryScreen({ navigation }) {
           >
             <MaterialCommunityIcons name="calendar-start" size={14} color={startDate ? "#2563EB" : "#64748B"} />
             <Text style={[styles.datePillText, startDate && styles.datePillTextActive]}>
-              {startDate ? startDate.toISOString().split('T')[0] : 'From Date'}
+              {startDate ? formatDisplayDate(startDate) : 'From Date'}
             </Text>
             {startDate && (
               <TouchableOpacity onPress={() => setStartDate(null)}>
@@ -223,7 +224,7 @@ export default function MachineryScreen({ navigation }) {
           >
             <MaterialCommunityIcons name="calendar-end" size={14} color={endDate ? "#2563EB" : "#64748B"} />
             <Text style={[styles.datePillText, endDate && styles.datePillTextActive]}>
-              {endDate ? endDate.toISOString().split('T')[0] : 'To Date'}
+              {endDate ? formatDisplayDate(endDate) : 'To Date'}
             </Text>
             {endDate && (
               <TouchableOpacity onPress={() => setEndDate(null)}>

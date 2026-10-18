@@ -8,7 +8,14 @@ from models.workforce import VehicleEMI
 from database import SessionLocal
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
-IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+import os
+try:
+    from zoneinfo import ZoneInfo
+    APP_TZ = ZoneInfo(os.getenv("APP_TIMEZONE", os.getenv("TZ", "Asia/Kolkata")))
+except Exception:
+    APP_TZ = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
+IST = APP_TZ
 
 def send_expo_push_notifications(messages: List[dict]) -> dict:
     """

@@ -11,6 +11,7 @@ import ManualAttendanceModal from '../components/ManualAttendanceModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import TripLogForm from '../components/TripLogForm';
 import { API_BASE_URL } from '../config';
+import { formatLocalDate, formatDisplayDate } from '../utils/dateUtils';
 
 export default function ManagerDashboard({ navigation, route }) {
   const { user, userToken, logout } = useContext(AuthContext);
@@ -102,7 +103,7 @@ export default function ManagerDashboard({ navigation, route }) {
            const attData = await attResp.json();
            setAttendance(attData);
            // Check if manager themselves marked attendance today
-           const today = new Date().toISOString().split('T')[0];
+           const today = formatLocalDate(new Date());
            setSelfAttendanceMarked(attData.some(r => r.staff_id === (user?.id || user?.user_id) && r.date === today));
          }
          if (usersResp.ok) {
@@ -193,7 +194,7 @@ export default function ManagerDashboard({ navigation, route }) {
   const markSelfAttendance = async () => {
     try {
       setIsSelfMarking(true);
-      const today = new Date().toISOString().split('T')[0];
+      const today = formatLocalDate(new Date());
       const resp = await fetch(`${API_BASE_URL}/workforce/attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
@@ -656,7 +657,7 @@ export default function ManagerDashboard({ navigation, route }) {
                         display="default"
                         onChange={(event, selectedDate) => {
                             setShowStartPicker(false);
-                            if (selectedDate) setLeaveStart(selectedDate.toISOString().split('T')[0]);
+                            if (selectedDate) setLeaveStart(formatLocalDate(selectedDate));
                         }}
                     />
                  )}
@@ -674,7 +675,7 @@ export default function ManagerDashboard({ navigation, route }) {
                         display="default"
                         onChange={(event, selectedDate) => {
                             setShowEndPicker(false);
-                            if (selectedDate) setLeaveEnd(selectedDate.toISOString().split('T')[0]);
+                            if (selectedDate) setLeaveEnd(formatLocalDate(selectedDate));
                         }}
                     />
                  )}

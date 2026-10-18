@@ -9,9 +9,14 @@ from routers import auth, trip, workforce, site, reports, client
 from services.push_service import send_scheduled_compliance_push_notifications
 
 # Create the database tables
-Base.metadata.create_all(bind=engine)
+import os
+try:
+    from zoneinfo import ZoneInfo
+    APP_TZ = ZoneInfo(os.getenv("APP_TIMEZONE", os.getenv("TZ", "Asia/Kolkata")))
+except Exception:
+    APP_TZ = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
-IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+IST = APP_TZ
 
 async def background_notification_scheduler():
     """

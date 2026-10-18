@@ -10,6 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { AuthContext } from '../context/AuthContext';
 import { useSite } from '../context/SiteContext';
 import { API_BASE_URL } from '../config';
+import { formatLocalDate, formatDisplayDate } from '../utils/dateUtils';
 
 export default function ApprovalCenterScreen({ navigation }) {
   const { user, userToken } = useContext(AuthContext);
@@ -149,8 +150,8 @@ export default function ApprovalCenterScreen({ navigation }) {
             'Authorization': `Bearer ${userToken}`
           },
           body: JSON.stringify({
-            start_date: leaveStartDate.toISOString().split('T')[0],
-            end_date: leaveEndDate.toISOString().split('T')[0],
+            start_date: formatLocalDate(leaveStartDate),
+            end_date: formatLocalDate(leaveEndDate),
             reason: leaveReason.trim(),
             site_id: siteId
           })
@@ -568,7 +569,7 @@ export default function ApprovalCenterScreen({ navigation }) {
                       >
                         <MaterialCommunityIcons name="calendar" size={16} color="#64748B" />
                         <Text style={styles.dateSelectorText}>
-                          {leaveStartDate.toISOString().split('T')[0]}
+                          {formatDisplayDate(leaveStartDate)}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -581,7 +582,7 @@ export default function ApprovalCenterScreen({ navigation }) {
                       >
                         <MaterialCommunityIcons name="calendar" size={16} color="#64748B" />
                         <Text style={styles.dateSelectorText}>
-                          {leaveEndDate.toISOString().split('T')[0]}
+                          {formatDisplayDate(leaveEndDate)}
                         </Text>
                       </TouchableOpacity>
                     </View>

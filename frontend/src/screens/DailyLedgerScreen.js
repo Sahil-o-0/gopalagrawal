@@ -16,6 +16,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import DraggableCardList from '../components/DraggableCardList';
+import { formatLocalDate, formatDisplayDate, parseLocalDate } from '../utils/dateUtils';
 
 export default function DailyLedgerScreen({ navigation }) {
     const { userToken, user } = useContext(AuthContext);
@@ -336,7 +337,7 @@ export default function DailyLedgerScreen({ navigation }) {
             return;
         }
 
-        const dateStr = clientTxnDate.toISOString().split('T')[0];
+        const dateStr = formatLocalDate(clientTxnDate);
 
         if (editingClientTxn) {
             const editPayload = {
@@ -503,7 +504,7 @@ export default function DailyLedgerScreen({ navigation }) {
 
     const formatRowDate = (dateStr) => {
         if (!dateStr) return '';
-        const d = new Date(dateStr);
+        const d = parseLocalDate(dateStr);
         const day = String(d.getDate()).padStart(2, '0');
         const month = d.toLocaleString('en-US', { month: 'short' });
         return `${day} ${month}`;
@@ -511,16 +512,14 @@ export default function DailyLedgerScreen({ navigation }) {
 
     // Calculate aggregated Date-Wise Khatabahi data matching khatabahi.jpeg
     const getReportData = () => {
-        const start = new Date(reportStartDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(reportEndDate);
-        end.setHours(23, 59, 59, 999);
+        const startStr = formatLocalDate(reportStartDate);
+        const endStr = formatLocalDate(reportEndDate);
 
         const txns = clientTransactions.filter(t => {
             if (reportPartyFilter !== 'ALL' && String(t.client_id) !== String(reportPartyFilter)) return false;
             if (!t.date) return false;
-            const d = new Date(t.date);
-            return d >= start && d <= end;
+            const dStr = typeof t.date === 'string' ? t.date.split('T')[0] : formatLocalDate(t.date);
+            return dStr >= startStr && dStr <= endStr;
         });
 
         let totalIn = 0;  // RECEIVED / ADVANCE
@@ -1085,7 +1084,8 @@ export default function DailyLedgerScreen({ navigation }) {
         try {
             let url = `${API_BASE_URL}/workforce/daily-ledger?`;
             if (filterMode === 'DAY') {
-                url += `date=${selectedDate.toISOString().split('T')[0]}`;
+                url += `date=${formatLocalDate(selectedDate)}`;
+            url += `&timezone=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata')}`;
             } else {
                 url += `month=${selectedDate.getMonth() + 1}&year=${selectedDate.getFullYear()}`;
             }
@@ -1192,7 +1192,7 @@ export default function DailyLedgerScreen({ navigation }) {
                         amount: category === 'ADVANCE' ? -Math.abs(parseFloat(amount)) : -Math.abs(parseFloat(amount)),
                         transaction_type: tType,
                         description: description ? `${description} (${staffName})` : `${category.replace(/_/g, ' ')} to ${staffName}`,
-                        date: selectedDate.toISOString().split('T')[0]
+                        date: formatLocalDate(selectedDate)
                     })
                 });
 
@@ -1217,7 +1217,7 @@ export default function DailyLedgerScreen({ navigation }) {
                     category: category,
                     amount: parseFloat(amount),
                     description: description ? (staffName ? `${description} (${staffName})` : description) : (staffName ? `${category} - ${staffName}` : ''),
-                    date: selectedDate.toISOString().split('T')[0],
+                    date: formatLocalDate(selectedDate),
                     site_id: selectedSite?.id || 1
                 })
             });

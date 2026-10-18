@@ -13,6 +13,7 @@ import ManualAttendanceModal from '../components/ManualAttendanceModal';
 import TripLogForm from '../components/TripLogForm';
 import DraggableCardList from '../components/DraggableCardList';
 import { API_BASE_URL } from '../config';
+import { formatLocalDate, formatDisplayDate, parseLocalDate } from '../utils/dateUtils';
 
 export default function AdminDashboard({ navigation, route }) {
   const { user, userToken, logout } = useContext(AuthContext);
@@ -306,7 +307,7 @@ export default function AdminDashboard({ navigation, route }) {
     try {
       const incomeVal = parseFloat(bookedAmount);
       const party = validationPartyName.trim();
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = formatLocalDate(new Date());
       const vehNum = selectedTrip?.vehicle_number || '';
       const rOrigin = selectedTrip?.origin || '';
       const rDest = selectedTrip?.destination || '';
@@ -460,7 +461,7 @@ export default function AdminDashboard({ navigation, route }) {
           relative_phone_number: newRelativePhone,
           opening_balance: parseFloat(newOpeningBalance) || 0.0,
           salary: parseFloat(newSalary) || 0.0,
-          starting_date: newStartingDate.toISOString().split('T')[0],
+          starting_date: formatLocalDate(newStartingDate),
           employment_type: newEmploymentType,
           is_active: newIsActive,
           assigned_vehicle: newAssignedVehicle.trim() || null,
@@ -581,7 +582,7 @@ export default function AdminDashboard({ navigation, route }) {
     try {
       const resp = await fetch(`${API_BASE_URL}/workforce/emi`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
-        body: JSON.stringify({ vehicle_number: emiVehicle, emi_amount: parseFloat(emiAmount), emi_due_date: emiDate.toISOString().split('T')[0] })
+        body: JSON.stringify({ vehicle_number: emiVehicle, emi_amount: parseFloat(emiAmount), emi_due_date: formatLocalDate(emiDate) })
       });
       if (resp.ok) { setEmiVehicle(''); setEmiAmount(''); fetchData(); setIsEmiModalVisible(false); }
     } catch (e) { Alert.alert("Error scheduling EMI"); }
@@ -614,7 +615,7 @@ export default function AdminDashboard({ navigation, route }) {
     try {
       const resp = await fetch(`${API_BASE_URL}/workforce/emi/${editingEmi.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
-        body: JSON.stringify({ vehicle_number: editEmiVehicle, emi_amount: parseFloat(editEmiAmount), emi_due_date: editEmiDate.toISOString().split('T')[0] })
+        body: JSON.stringify({ vehicle_number: editEmiVehicle, emi_amount: parseFloat(editEmiAmount), emi_due_date: formatLocalDate(editEmiDate) })
       });
       if (resp.ok) { setIsEmiEditModalVisible(false); fetchData(); }
     } catch (e) { Alert.alert("Error updating EMI"); }
@@ -1295,7 +1296,7 @@ export default function AdminDashboard({ navigation, route }) {
                 value={tripStartDateDt} mode="date" display="default"
                 onChange={(event, date) => {
                     setShowStartPicker(false);
-                    if (date) { setTripStartDateDt(date); setTripStartDate(date.toISOString().split('T')[0]); }
+                    if (date) { setTripStartDateDt(date); setTripStartDate(formatLocalDate(date)); }
                 }}
             />
         )}
@@ -1304,7 +1305,7 @@ export default function AdminDashboard({ navigation, route }) {
                 value={tripEndDateDt} mode="date" display="default"
                 onChange={(event, date) => {
                     setShowEndPicker(false);
-                    if (date) { setTripEndDateDt(date); setTripEndDate(date.toISOString().split('T')[0]); }
+                    if (date) { setTripEndDateDt(date); setTripEndDate(formatLocalDate(date)); }
                 }}
             />
         )}
@@ -2224,7 +2225,7 @@ export default function AdminDashboard({ navigation, route }) {
                 {/* Starting Date */}
                 <Text style={styles.inputLabel}>Starting Date</Text>
                 <TouchableOpacity style={[styles.input, { justifyContent: 'center', height: 48 }]} onPress={() => setShowStartingDatePicker(true)}>
-                  <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 14 }}>{newStartingDate.toISOString().split('T')[0]}</Text>
+                  <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 14 }}>{formatDisplayDate(newStartingDate)}</Text>
                 </TouchableOpacity>
                 {showStartingDatePicker && (
                   <DateTimePicker

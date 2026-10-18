@@ -10,6 +10,7 @@ import * as Location from 'expo-location';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import TripLogForm from '../components/TripLogForm';
 import { API_BASE_URL } from '../config';
+import { formatLocalDate, formatDisplayDate } from '../utils/dateUtils';
 
 export default function StaffDashboard({ navigation, route }) {
   const { user, userToken, logout } = useContext(AuthContext);
@@ -341,7 +342,7 @@ export default function StaffDashboard({ navigation, route }) {
                         display="default"
                         onChange={(event, selectedDate) => {
                             setShowStartPicker(false);
-                            if (selectedDate) setLeaveStart(selectedDate.toISOString().split('T')[0]);
+                            if (selectedDate) setLeaveStart(formatLocalDate(selectedDate));
                         }}
                     />
                  )}
@@ -359,7 +360,7 @@ export default function StaffDashboard({ navigation, route }) {
                         display="default"
                         onChange={(event, selectedDate) => {
                             setShowEndPicker(false);
-                            if (selectedDate) setLeaveEnd(selectedDate.toISOString().split('T')[0]);
+                            if (selectedDate) setLeaveEnd(formatLocalDate(selectedDate));
                         }}
                     />
                  )}

@@ -15,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import DraggableFormSections from '../components/DraggableFormSections';
 import DraggableCardList from '../components/DraggableCardList';
 import { API_BASE_URL } from '../config';
+import { formatLocalDate, formatDisplayDate as fmtDisplayDate } from '../utils/dateUtils';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -207,7 +208,7 @@ export default function ComplianceVaultScreen({ navigation }) {
   const formatDisplayDate = (d) => {
     if (!d) return 'Pick Date';
     if (typeof d === 'string') return d.split('T')[0];
-    if (d instanceof Date && !isNaN(d)) return d.toISOString().split('T')[0];
+    if (d instanceof Date && !isNaN(d)) return formatLocalDate(d);
     return 'Pick Date';
   };
 
@@ -299,17 +300,17 @@ export default function ComplianceVaultScreen({ navigation }) {
       vehicle_number: vehicleNumber.trim().toUpperCase(),
       financier: financier.trim() || null,
       emi_amount: parseFloat(emiAmount) || 0.0,
-      emi_due_date: emiDueDate ? emiDueDate.toISOString().split('T')[0] : null,
-      insurance_expiry: insuranceExpiry ? insuranceExpiry.toISOString().split('T')[0] : null,
+      emi_due_date: emiDueDate ? formatLocalDate(emiDueDate) : null,
+      insurance_expiry: insuranceExpiry ? formatLocalDate(insuranceExpiry) : null,
       insurance_premium: parseFloat(insurancePremium) || 0.0,
-      fitness_expiry: fitnessExpiry ? fitnessExpiry.toISOString().split('T')[0] : null,
+      fitness_expiry: fitnessExpiry ? formatLocalDate(fitnessExpiry) : null,
       fitness_fee: parseFloat(fitnessFee) || 0.0,
-      road_tax_expiry: roadTaxExpiry ? roadTaxExpiry.toISOString().split('T')[0] : null,
+      road_tax_expiry: roadTaxExpiry ? formatLocalDate(roadTaxExpiry) : null,
       road_tax_amount: parseFloat(roadTaxAmount) || 0.0,
-      pucc_expiry: puccExpiry ? puccExpiry.toISOString().split('T')[0] : null,
+      pucc_expiry: puccExpiry ? formatLocalDate(puccExpiry) : null,
       pucc_fee: parseFloat(puccFee) || 0.0,
-      registration_date: registrationDate ? registrationDate.toISOString().split('T')[0] : null,
-      permit_valid_upto: permitValidUpto ? permitValidUpto.toISOString().split('T')[0] : null,
+      registration_date: registrationDate ? formatLocalDate(registrationDate) : null,
+      permit_valid_upto: permitValidUpto ? formatLocalDate(permitValidUpto) : null,
       permit_fee: parseFloat(permitFee) || 0.0,
       notes: notes.trim() || null,
       document_url: documentUrl,

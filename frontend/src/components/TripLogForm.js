@@ -44,6 +44,10 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const [dieselCost, setDieselCost] = useState('');
     const [bhada, setBhada] = useState('');
     const [advanceFreight, setAdvanceFreight] = useState('');
+    const [rateType, setRateType] = useState('TON'); // 'TON' | 'TRIP'
+    const [rate, setRate] = useState('');
+    const [tripCount, setTripCount] = useState('1');
+    const [ledgerType, setLedgerType] = useState('INCOME'); // 'INCOME' | 'EXPENSE'
     
     // Photo state
     const [loadingPhoto, setLoadingPhoto] = useState(null);
@@ -104,33 +108,88 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
         if (userToken) fetchClients();
     }, [userToken, staffList, user]);
 
+    const handleRateTypeChange = (newType) => {
+        setRateType(newType);
+        const r = parseFloat(rate);
+        if (!isNaN(r) && r > 0) {
+            if (newType === 'TON') {
+                const q = parseFloat(weightTons) || 0;
+                if (q > 0) setBhada(String(Math.round(r * q)));
+            } else {
+                const count = parseFloat(tripCount) || 1;
+                setBhada(String(Math.round(r * count)));
+            }
+        }
+    };
+
+    const handleRateChange = (rVal) => {
+        setRate(rVal);
+        const r = parseFloat(rVal);
+        if (rateType === 'TON') {
+            const q = parseFloat(weightTons);
+            if (!isNaN(r) && !isNaN(q) && q > 0) {
+                setBhada(String(Math.round(r * q)));
+            }
+        } else {
+            const count = parseFloat(tripCount) || 1;
+            if (!isNaN(r) && count > 0) {
+                setBhada(String(Math.round(r * count)));
+            }
+        }
+    };
+
+    const handleWeightChange = (wVal) => {
+        setWeightTons(wVal);
+        if (rateType === 'TON') {
+            const q = parseFloat(wVal);
+            const r = parseFloat(rate);
+            if (!isNaN(r) && !isNaN(q) && r > 0) {
+                setBhada(String(Math.round(r * q)));
+            }
+        }
+    };
+
+    const handleTripCountChange = (countVal) => {
+        setTripCount(countVal);
+        if (rateType === 'TRIP') {
+            const count = parseFloat(countVal) || 0;
+            const r = parseFloat(rate);
+            if (!isNaN(r) && count > 0) {
+                setBhada(String(Math.round(r * count)));
+            }
+        }
+    };
+
+    const handleBhadaChange = (bVal) => {
+        setBhada(bVal);
+        const b = parseFloat(bVal);
+        if (rateType === 'TON') {
+            const q = parseFloat(weightTons);
+            if (!isNaN(b) && !isNaN(q) && q > 0) {
+                setRate(String(Math.round((b / q) * 100) / 100));
+            }
+        } else {
+            const count = parseFloat(tripCount) || 1;
+            if (!isNaN(b) && count > 0) {
+                setRate(String(Math.round((b / count) * 100) / 100));
+            }
+        }
+    };
+
     // Auto-sync trip bhada into Client Khata and Daily Ledger
     const syncTripFinancials = async (loggedTripId, finalBhada, targetParty, vehNum, rOrigin, rDest) => {
-        if (!targetParty || !finalBhada || finalBhada <= 0) return;
+        if (!finalBhada || finalBhada <= 0) return;
         try {
             const todayStr = formatLocalDate(new Date());
-            // 1. Find or create client in Client Khata
-            let client = clientsList.find(c => c.name.toLowerCase() === targetParty.trim().toLowerCase());
-            if (client && client.id) {
-                // 2. Add BILLED transaction in Client Khata
-                await fetch(`${API_BASE_URL}/clients/transactions`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${userToken}`
-                    },
-                    body: JSON.stringify({
-                        client_id: client.id,
-                        txn_type: 'BILLED',
-                        amount: finalBhada,
-                        date: todayStr,
-                        payment_mode: 'CREDIT',
-                        notes: `Trip #${loggedTripId} (${vehNum}): ${rOrigin || 'Start'} to ${rDest || 'End'}`
-                    })
-                });
-            }
+            const isIncome = ledgerType === 'INCOME';
+            const rateVal = parseFloat(rate) || 0;
+            const qtyVal = parseFloat(weightTons) || 0;
+            const tripCountVal = parseFloat(tripCount) || 1;
+            const calcSummary = rateType === 'TON' 
+                ? `${qtyVal}T @ ₹${rateVal}/T` 
+                : `${tripCountVal} Trips @ ₹${rateVal}/Trip`;
 
-            // 3. Add TRIP_INCOME entry in Daily Ledger
+            // 1. Add to Daily Ledger
             await fetch(`${API_BASE_URL}/workforce/daily-ledger`, {
                 method: 'POST',
                 headers: {
@@ -138,16 +197,54 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     'Authorization': `Bearer ${userToken}`
                 },
                 body: JSON.stringify({
-                    transaction_type: 'INCOME',
-                    category: 'TRIP_INCOME',
+                    transaction_type: isIncome ? 'INCOME' : 'EXPENSE',
+                    category: isIncome ? 'TRIP_INCOME' : 'TRIP_EXPENSE',
                     amount: finalBhada,
-                    description: `Trip #${loggedTripId} Bhada - ${vehNum} (Party: ${targetParty.trim()})`,
+                    description: `Trip #${loggedTripId} ${isIncome ? 'Bhada' : 'Expense'} (${calcSummary}) - ${vehNum}${targetParty ? ` (Party: ${targetParty.trim()})` : ''}`,
                     date: todayStr,
                     site_id: user?.site_id || 1,
                     reference_id: loggedTripId,
                     reference_type: 'TRIP'
                 })
             });
+
+            // 2. Add to Client Khata if targetParty is provided
+            if (targetParty && targetParty.trim()) {
+                let client = clientsList.find(c => c.name.toLowerCase() === targetParty.trim().toLowerCase());
+                if (client && client.id) {
+                    await fetch(`${API_BASE_URL}/clients/transactions`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${userToken}`
+                        },
+                        body: JSON.stringify({
+                            client_id: client.id,
+                            txn_type: isIncome ? 'BILLED' : 'RECEIVED',
+                            amount: finalBhada,
+                            date: todayStr,
+                            payment_mode: 'CREDIT',
+                            notes: `Trip #${loggedTripId} ${isIncome ? 'Bhada' : 'Expense'} (${vehNum}): ${rOrigin || 'Start'} to ${rDest || 'End'} [${calcSummary}]`
+                        })
+                    });
+                }
+            }
+
+            // 3. Backwards compatibility with workforce/ledger
+            try {
+                await fetch(`${API_BASE_URL}/workforce/ledger`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${userToken}`
+                    },
+                    body: JSON.stringify({
+                        trip_id: loggedTripId,
+                        total_amount_billed: finalBhada,
+                        amount_received: advanceFreight ? (parseFloat(advanceFreight) || 0) : 0
+                    })
+                });
+            } catch (lErr) {}
         } catch (syncErr) {
             console.warn("Auto-sync to Ledger & Client Khata notice:", syncErr);
         }
@@ -235,10 +332,13 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 if (response.ok) {
                     const createdTrip = await response.json();
                     const finalBhada = parseFloat(bhada) || 0;
-                    if (finalBhada > 0 && clientName.trim()) {
+                    if (isManagerOrAdmin && finalBhada > 0) {
                         await syncTripFinancials(createdTrip?.id || '', finalBhada, clientName.trim(), vehicleNumber.trim().toUpperCase(), origin.trim(), destination.trim());
                     }
-                    Alert.alert("Success", isManagerOrAdmin ? "Trip logged and automatically approved!" : "Trip log submitted! Sent to Manager/Admin for approval & Bhada entry.");
+                    Alert.alert("Success", isManagerOrAdmin 
+                        ? `Trip #${createdTrip?.id || ''} logged & approved! ${ledgerType === 'INCOME' ? 'Income' : 'Expense'} (₹${finalBhada.toLocaleString('en-IN')}) synced to Daily Ledger${clientName.trim() ? ` & Client Khata (${clientName.trim()})` : ''}.` 
+                        : "Trip log submitted! Sent to Manager/Admin for approval & Bhada entry."
+                    );
                     clearForm();
                     if (onSuccess) onSuccess();
                 } else {
@@ -267,6 +367,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
         setOrigin(''); setDestination(''); setMaterialType(''); setWeightTons('');
         setStartMeter(''); setEndMeter(''); setDieselLiters(''); setDieselCost('');
         setBhada(''); setAdvanceFreight('');
+        setRateType('TON'); setRate(''); setTripCount('1'); setLedgerType('INCOME');
         setLoadingPhoto(null); setUnloadingPhoto(null); setOdometerPhoto(null); setReceiptPhoto(null);
         setStaffId('');
     };
@@ -504,7 +605,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                             placeholder="e.g. 25.4" 
                             keyboardType="numeric" 
                             value={weightTons} 
-                            onChangeText={setWeightTons} 
+                            onChangeText={handleWeightChange} 
                         />
                     </View>
                 </View>
@@ -580,43 +681,307 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     )}
                 </View>
 
-                {/* Freight / Bhada Accounting */}
-                <View style={[styles.rowGrid, { marginTop: 12 }]}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>Total Bhada / Freight (₹)</Text>
-                        <TextInput 
-                            placeholderTextColor="#94A3B8" 
-                            style={styles.textInput} 
-                            placeholder="e.g. 45000" 
-                            keyboardType="numeric" 
-                            value={bhada} 
-                            onChangeText={setBhada} 
-                        />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>Advance Received (₹)</Text>
-                        <TextInput 
-                            placeholderTextColor="#94A3B8" 
-                            style={styles.textInput} 
-                            placeholder="e.g. 15000" 
-                            keyboardType="numeric" 
-                            value={advanceFreight} 
-                            onChangeText={setAdvanceFreight} 
-                        />
+                {/* Ledger Entry Category: Income vs Expense */}
+                <View style={{ marginTop: 14 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                        Ledger Entry Type *
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <TouchableOpacity
+                            onPress={() => setLedgerType('INCOME')}
+                            style={{
+                                flex: 1,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                paddingVertical: 10,
+                                paddingHorizontal: 8,
+                                borderRadius: 8,
+                                borderWidth: 2,
+                                borderColor: ledgerType === 'INCOME' ? '#059669' : '#E2E8F0',
+                                backgroundColor: ledgerType === 'INCOME' ? '#ECFDF5' : '#FFFFFF'
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialCommunityIcons 
+                                name={ledgerType === 'INCOME' ? "radiobox-marked" : "radiobox-blank"} 
+                                size={16} 
+                                color={ledgerType === 'INCOME' ? '#059669' : '#94A3B8'} 
+                                style={{ marginRight: 6 }} 
+                            />
+                            <MaterialCommunityIcons name="arrow-bottom-left" size={16} color={ledgerType === 'INCOME' ? '#059669' : '#64748B'} style={{ marginRight: 4 }} />
+                            <Text style={{ fontSize: 13, fontWeight: '800', color: ledgerType === 'INCOME' ? '#059669' : '#64748B' }}>
+                                Income (+)
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={() => setLedgerType('EXPENSE')}
+                            style={{
+                                flex: 1,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                paddingVertical: 10,
+                                paddingHorizontal: 8,
+                                borderRadius: 8,
+                                borderWidth: 2,
+                                borderColor: ledgerType === 'EXPENSE' ? '#DC2626' : '#E2E8F0',
+                                backgroundColor: ledgerType === 'EXPENSE' ? '#FEF2F2' : '#FFFFFF'
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialCommunityIcons 
+                                name={ledgerType === 'EXPENSE' ? "radiobox-marked" : "radiobox-blank"} 
+                                size={16} 
+                                color={ledgerType === 'EXPENSE' ? '#DC2626' : '#94A3B8'} 
+                                style={{ marginRight: 6 }} 
+                            />
+                            <MaterialCommunityIcons name="arrow-top-right" size={16} color={ledgerType === 'EXPENSE' ? '#DC2626' : '#64748B'} style={{ marginRight: 4 }} />
+                            <Text style={{ fontSize: 13, fontWeight: '800', color: ledgerType === 'EXPENSE' ? '#DC2626' : '#64748B' }}>
+                                Expense (-)
+                            </Text>
+                        </TouchableOpacity>
                     </View>
                 </View>
 
-                {!!bhada && (
-                    <View style={{ marginTop: 10, padding: 10, backgroundColor: '#F1F5F9', borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <MaterialCommunityIcons name="calculator-variant" size={16} color="#64748B" style={{ marginRight: 6 }} />
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569' }}>Pending Freight Balance</Text>
-                        </View>
-                        <Text style={{ fontSize: 14, fontWeight: '800', color: (parseFloat(bhada) || 0) - (parseFloat(advanceFreight) || 0) > 0 ? '#DC2626' : '#16A34A' }}>
-                            ₹{Math.max(0, (parseFloat(bhada) || 0) - (parseFloat(advanceFreight) || 0)).toLocaleString('en-IN')}
+                {/* Freight Calculation Basis Box */}
+                <View style={{ backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#CBD5E1', marginTop: 14 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                            Freight Calculation Basis
                         </Text>
                     </View>
-                )}
+
+                    {/* Rate Mode Selector: Ton Wise vs Trip Wise */}
+                    <View style={{ flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 8, padding: 3, marginBottom: 10 }}>
+                        <TouchableOpacity
+                            onPress={() => handleRateTypeChange('TON')}
+                            style={{
+                                flex: 1,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                paddingVertical: 7,
+                                borderRadius: 6,
+                                backgroundColor: rateType === 'TON' ? '#FFFFFF' : 'transparent',
+                                elevation: rateType === 'TON' ? 1 : 0,
+                                shadowColor: '#000',
+                                shadowOpacity: rateType === 'TON' ? 0.08 : 0,
+                                shadowOffset: { width: 0, height: 1 }
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialCommunityIcons 
+                                name="scale" 
+                                size={14} 
+                                color={rateType === 'TON' ? '#2563EB' : '#64748B'} 
+                                style={{ marginRight: 4 }} 
+                            />
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: rateType === 'TON' ? '#2563EB' : '#64748B' }}>
+                                Ton Wise (₹/Ton)
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={() => handleRateTypeChange('TRIP')}
+                            style={{
+                                flex: 1,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                paddingVertical: 7,
+                                borderRadius: 6,
+                                backgroundColor: rateType === 'TRIP' ? '#FFFFFF' : 'transparent',
+                                elevation: rateType === 'TRIP' ? 1 : 0,
+                                shadowColor: '#000',
+                                shadowOpacity: rateType === 'TRIP' ? 0.08 : 0,
+                                shadowOffset: { width: 0, height: 1 }
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialCommunityIcons 
+                                name="truck-fast" 
+                                size={14} 
+                                color={rateType === 'TRIP' ? '#2563EB' : '#64748B'} 
+                                style={{ marginRight: 4 }} 
+                            />
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: rateType === 'TRIP' ? '#2563EB' : '#64748B' }}>
+                                Trip Wise (₹/Trip)
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Dynamic Inputs: Ton Wise vs Trip Wise */}
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                        {rateType === 'TON' ? (
+                            <>
+                                {/* Quantity / Weight */}
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                                        Quantity (Tons) *
+                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                                        <TextInput 
+                                            style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                                            placeholder="e.g. 25.4"
+                                            placeholderTextColor="#94A3B8"
+                                            keyboardType="numeric"
+                                            value={weightTons}
+                                            onChangeText={handleWeightChange}
+                                        />
+                                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Tons</Text>
+                                    </View>
+                                </View>
+
+                                {/* Rate per Ton */}
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                                        Rate (₹ / Ton) *
+                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                                        <Text style={{ fontSize: 13, fontWeight: '800', color: '#2563EB', marginRight: 4 }}>₹</Text>
+                                        <TextInput 
+                                            style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                                            placeholder="e.g. 1500"
+                                            placeholderTextColor="#94A3B8"
+                                            keyboardType="numeric"
+                                            value={rate}
+                                            onChangeText={handleRateChange}
+                                        />
+                                    </View>
+                                </View>
+                            </>
+                        ) : (
+                            <>
+                                {/* Number of Trips */}
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                                        Number of Trips *
+                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                                        <TextInput 
+                                            style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                                            placeholder="e.g. 1"
+                                            placeholderTextColor="#94A3B8"
+                                            keyboardType="numeric"
+                                            value={tripCount}
+                                            onChangeText={handleTripCountChange}
+                                        />
+                                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Trips</Text>
+                                    </View>
+                                </View>
+
+                                {/* Rate per Trip */}
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                                        Rate (₹ / Trip) *
+                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                                        <Text style={{ fontSize: 13, fontWeight: '800', color: '#2563EB', marginRight: 4 }}>₹</Text>
+                                        <TextInput 
+                                            style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                                            placeholder="e.g. 15000"
+                                            placeholderTextColor="#94A3B8"
+                                            keyboardType="numeric"
+                                            value={rate}
+                                            onChangeText={handleRateChange}
+                                        />
+                                    </View>
+                                </View>
+                            </>
+                        )}
+                    </View>
+
+                    {/* Calculated Total Amount / Bhada */}
+                    <View style={{ marginTop: 2 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B' }}>
+                                Total {ledgerType === 'INCOME' ? 'Bhada / Income' : 'Expense'} Amount (₹) *
+                            </Text>
+                            {!!rate && (rateType === 'TON' ? !!weightTons : !!tripCount) && (
+                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#059669' }}>
+                                    Auto-Calculated ({rateType === 'TON' ? 'Rate × Qty' : 'Rate × Trips'})
+                                </Text>
+                            )}
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1.5, borderColor: ledgerType === 'INCOME' ? '#059669' : '#DC2626', paddingHorizontal: 10, height: 46 }}>
+                            <Text style={{ fontSize: 16, fontWeight: '900', color: ledgerType === 'INCOME' ? '#059669' : '#DC2626', marginRight: 4 }}>₹</Text>
+                            <TextInput 
+                                style={{ flex: 1, fontSize: 16, color: '#0F172A', fontWeight: '800' }}
+                                placeholder="e.g. 38100"
+                                placeholderTextColor="#94A3B8"
+                                keyboardType="numeric"
+                                value={bhada}
+                                onChangeText={handleBhadaChange}
+                            />
+                        </View>
+                    </View>
+
+                    {/* Formula Breakdown Banner */}
+                    {!!rate && (rateType === 'TON' ? !!weightTons : !!tripCount) && (
+                        <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}>
+                            <MaterialCommunityIcons name="calculator" size={14} color="#2563EB" style={{ marginRight: 6 }} />
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E40AF' }}>
+                                {rateType === 'TON' 
+                                    ? `₹${rate} / Ton × ${weightTons} Tons = ₹${Number(bhada || 0).toLocaleString('en-IN')}`
+                                    : `₹${rate} / Trip × ${tripCount} Trips = ₹${Number(bhada || 0).toLocaleString('en-IN')}`
+                                }
+                            </Text>
+                        </View>
+                    )}
+
+                    {/* Advance Received Field */}
+                    <View style={{ marginTop: 10 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>Advance Received (₹) (Optional)</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '800', color: '#64748B', marginRight: 4 }}>₹</Text>
+                            <TextInput 
+                                placeholderTextColor="#94A3B8" 
+                                style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                                placeholder="e.g. 15000" 
+                                keyboardType="numeric" 
+                                value={advanceFreight} 
+                                onChangeText={setAdvanceFreight} 
+                            />
+                        </View>
+                    </View>
+
+                    {/* Pending Freight Balance */}
+                    {!!bhada && (
+                        <View style={{ marginTop: 10, padding: 10, backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <MaterialCommunityIcons name="calculator-variant" size={16} color="#64748B" style={{ marginRight: 6 }} />
+                                <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569' }}>Pending Balance</Text>
+                            </View>
+                            <Text style={{ fontSize: 14, fontWeight: '800', color: (parseFloat(bhada) || 0) - (parseFloat(advanceFreight) || 0) > 0 ? '#DC2626' : '#16A34A' }}>
+                                ₹{Math.max(0, (parseFloat(bhada) || 0) - (parseFloat(advanceFreight) || 0)).toLocaleString('en-IN')}
+                            </Text>
+                        </View>
+                    )}
+                </View>
+
+                {/* Auto Sync Banner */}
+                <View style={{ 
+                    backgroundColor: ledgerType === 'INCOME' ? '#F0FDF4' : '#FEF2F2', 
+                    borderRadius: 10, 
+                    padding: 10, 
+                    borderWidth: 1, 
+                    borderColor: ledgerType === 'INCOME' ? '#BBF7D0' : '#FECACA', 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    marginTop: 10 
+                }}>
+                    <MaterialCommunityIcons 
+                        name={ledgerType === 'INCOME' ? "check-decagram" : "alert-circle-outline"} 
+                        size={16} 
+                        color={ledgerType === 'INCOME' ? "#16A34A" : "#DC2626"} 
+                        style={{ marginRight: 8 }} 
+                    />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: ledgerType === 'INCOME' ? '#166534' : '#991B1B', flex: 1 }}>
+                        Logging will automatically record this as {ledgerType === 'INCOME' ? 'Trip Income (+)' : 'Trip Expense (-)'} in Daily Ledger{clientName.trim() ? ` and update Client Khata (${clientName.trim()}).` : '.'}
+                    </Text>
+                </View>
                     </>
                 ) : (
                     <View style={{ marginTop: 14, backgroundColor: '#EFF6FF', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#BFDBFE', flexDirection: 'row', alignItems: 'center' }}>

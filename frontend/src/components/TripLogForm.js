@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, Image, Modal, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, Image, Modal, Platform , Keyboard } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { AuthContext } from '../context/AuthContext';
@@ -31,6 +31,8 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const [clientName, setClientName] = useState('');
     const [clientsList, setClientsList] = useState([]);
     const [showClientDropdown, setShowClientDropdown] = useState(false);
+    const [isClientPickerVisible, setIsClientPickerVisible] = useState(false);
+    const [clientSearchModalText, setClientSearchModalText] = useState('');
     const [origin, setOrigin] = useState('');
     const [destination, setDestination] = useState('');
     const [materialType, setMaterialType] = useState('');
@@ -279,7 +281,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
 
     const clearForm = () => {
         setVehicleNumber(assignedVehiclesList[0] || user?.assigned_vehicle || ''); 
-        setClientName(''); setShowClientDropdown(false);
+        setClientName(''); setShowClientDropdown(false); setIsClientPickerVisible(false); setClientSearchModalText('');
         setOrigin(''); setDestination(''); setMaterialType(''); setWeightTons('');
         setStartMeter(''); setEndMeter(''); setDieselLiters(''); setDieselCost('');
         setBhada(''); setAdvanceFreight('');
@@ -526,22 +528,29 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 </View>
 
                 {/* Billing Party / Client Selection */}
-                <View style={{ marginTop: 12 }}>
+                <View style={{ marginTop: 14 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                         <Text style={styles.inputLabel}>Billing Party / Client Name</Text>
-                        {!!clientName.trim() && !clientsList.some(c => c.name.toLowerCase() === clientName.trim().toLowerCase()) && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                <MaterialCommunityIcons name="plus-circle-outline" size={12} color="#2563EB" style={{ marginRight: 3 }} />
-                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>New Party (Auto-Add)</Text>
-                            </View>
+                        {!!clientName.trim() && (
+                            clientsList.some(c => c.name.toLowerCase() === clientName.trim().toLowerCase()) ? (
+                                <View style={styles.clientExistingBadge}>
+                                    <MaterialCommunityIcons name="check-circle" size={12} color="#059669" style={{ marginRight: 3 }} />
+                                    <Text style={styles.clientExistingBadgeText}>Khata Client</Text>
+                                </View>
+                            ) : (
+                                <View style={styles.clientNewBadge}>
+                                    <MaterialCommunityIcons name="plus-circle" size={12} color="#2563EB" style={{ marginRight: 3 }} />
+                                    <Text style={styles.clientNewBadgeText}>New (Auto-Add)</Text>
+                                </View>
+                            )
                         )}
                     </View>
                     <View style={styles.clientInputRow}>
-                        <MaterialCommunityIcons name="account-tie" size={18} color="#64748B" style={{ marginRight: 8 }} />
+                        <MaterialCommunityIcons name="account-tie" size={20} color="#2563EB" style={{ marginRight: 8 }} />
                         <TextInput 
                             placeholderTextColor="#94A3B8" 
                             style={styles.clientTextInput} 
-                            placeholder="Select or enter Party Name" 
+                            placeholder="Type Party Name or Browse" 
                             value={clientName} 
                             onChangeText={(val) => {
                                 setClientName(val);
@@ -550,44 +559,62 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                             onFocus={() => setShowClientDropdown(true)}
                         />
                         {!!clientName ? (
-                            <TouchableOpacity onPress={() => { setClientName(''); setShowClientDropdown(false); }}>
-                                <MaterialCommunityIcons name="close-circle" size={16} color="#94A3B8" />
+                            <TouchableOpacity onPress={() => { setClientName(''); setShowClientDropdown(false); }} style={{ padding: 4, marginRight: 6 }}>
+                                <MaterialCommunityIcons name="close-circle" size={18} color="#94A3B8" />
                             </TouchableOpacity>
                         ) : null}
+                        <TouchableOpacity 
+                            style={styles.browseClientsBtn}
+                            onPress={() => {
+                                setClientSearchModalText('');
+                                setIsClientPickerVisible(true);
+                                setShowClientDropdown(false);
+                            }}
+                            activeOpacity={0.8}
+                        >
+                            <MaterialCommunityIcons name="book-search-outline" size={16} color="#2563EB" style={{ marginRight: 4 }} />
+                            <Text style={styles.browseClientsBtnText}>Browse</Text>
+                        </TouchableOpacity>
                     </View>
 
-                    {/* Dropdown list of clients */}
-                    {showClientDropdown && (
-                        <View style={styles.clientDropdownContainer}>
-                            <ScrollView nestedScrollEnabled={true} style={{ maxHeight: 150 }} keyboardShouldPersistTaps="handled">
-                                {clientsList
-                                    .filter(c => !clientName.trim() || c.name.toLowerCase().includes(clientName.trim().toLowerCase()))
-                                    .slice(0, 10)
-                                    .map(client => (
-                                        <TouchableOpacity
-                                            key={client.id}
-                                            style={styles.clientDropdownItem}
-                                            onPress={() => {
-                                                setClientName(client.name);
-                                                setShowClientDropdown(false);
-                                            }}
-                                        >
-                                            <MaterialCommunityIcons name="account" size={14} color="#475569" style={{ marginRight: 6 }} />
-                                            <Text style={styles.clientDropdownItemText}>{client.name}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                {!!clientName.trim() && !clientsList.some(c => c.name.toLowerCase() === clientName.trim().toLowerCase()) && (
+                    {/* Inline Auto-complete Suggestions (Plain View - Direct Render) */}
+                    {showClientDropdown && clientName.trim().length > 0 && (
+                        <View style={styles.suggestionsContainer}>
+                            {clientsList
+                                .filter(c => c.name.toLowerCase().includes(clientName.trim().toLowerCase()))
+                                .slice(0, 4)
+                                .map(client => (
                                     <TouchableOpacity
-                                        style={[styles.clientDropdownItem, { backgroundColor: '#F0FDF4' }]}
-                                        onPress={() => setShowClientDropdown(false)}
+                                        key={client.id}
+                                        style={styles.suggestionRow}
+                                        onPress={() => {
+                                            setClientName(client.name);
+                                            setShowClientDropdown(false);
+                                            Keyboard.dismiss();
+                                        }}
                                     >
-                                        <MaterialCommunityIcons name="plus-circle" size={14} color="#16A34A" style={{ marginRight: 6 }} />
-                                        <Text style={[styles.clientDropdownItemText, { color: '#16A34A', fontWeight: '700' }]}>
-                                            Add "{clientName.trim()}" as new client
-                                        </Text>
+                                        <MaterialCommunityIcons name="account" size={16} color="#475569" style={{ marginRight: 8 }} />
+                                        <Text style={styles.suggestionText}>{client.name}</Text>
+                                        {client.pending_balance ? (
+                                            <Text style={styles.suggestionBal}>Bal: ₹{Number(client.pending_balance).toLocaleString('en-IN')}</Text>
+                                        ) : null}
                                     </TouchableOpacity>
-                                )}
-                            </ScrollView>
+                                ))}
+
+                            {!clientsList.some(c => c.name.toLowerCase() === clientName.trim().toLowerCase()) && (
+                                <TouchableOpacity
+                                    style={styles.newPartySuggestionRow}
+                                    onPress={() => {
+                                        setShowClientDropdown(false);
+                                        Keyboard.dismiss();
+                                    }}
+                                >
+                                    <MaterialCommunityIcons name="plus-circle-outline" size={16} color="#16A34A" style={{ marginRight: 8 }} />
+                                    <Text style={styles.newPartySuggestionText}>
+                                        Use "{clientName.trim()}" (Auto-add to Khata)
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
                         </View>
                     )}
 
@@ -604,6 +631,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                                             onPress={() => {
                                                 setClientName(c.name);
                                                 setShowClientDropdown(false);
+                                                Keyboard.dismiss();
                                             }}
                                             style={[styles.vehicleChip, isSelected && styles.vehicleChipActive]}
                                             activeOpacity={0.7}
@@ -814,6 +842,92 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     </View>
                 </TouchableOpacity>
             </Modal>
+                    {/* Dedicated Searchable Client Picker Modal */}
+            <Modal visible={isClientPickerVisible} transparent animationType="fade" onRequestClose={() => setIsClientPickerVisible(false)}>
+                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsClientPickerVisible(false)}>
+                    <View style={[styles.modalContent, { maxHeight: '80%' }]} onStartShouldSetResponder={() => true}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <View>
+                                <Text style={styles.modalTitle}>Select Client / Party</Text>
+                                <Text style={{ fontSize: 12, color: '#64748B' }}>Choose from Client Khata or type new</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setIsClientPickerVisible(false)} style={{ padding: 4 }}>
+                                <MaterialCommunityIcons name="close" size={22} color="#64748B" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.modalSearchRow}>
+                            <MaterialCommunityIcons name="magnify" size={18} color="#64748B" style={{ marginRight: 8 }} />
+                            <TextInput
+                                placeholderTextColor="#94A3B8"
+                                style={styles.modalSearchInput}
+                                placeholder="Search party name or phone..."
+                                value={clientSearchModalText}
+                                onChangeText={setClientSearchModalText}
+                                autoFocus={true}
+                            />
+                            {!!clientSearchModalText && (
+                                <TouchableOpacity onPress={() => setClientSearchModalText('')}>
+                                    <MaterialCommunityIcons name="close-circle" size={16} color="#94A3B8" />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                        {/* If typed something not in list, show add new party option */}
+                        {!!clientSearchModalText.trim() && !clientsList.some(c => c.name.toLowerCase() === clientSearchModalText.trim().toLowerCase()) && (
+                            <TouchableOpacity
+                                style={styles.modalAddNewPartyCard}
+                                onPress={() => {
+                                    setClientName(clientSearchModalText.trim());
+                                    setIsClientPickerVisible(false);
+                                }}
+                            >
+                                <MaterialCommunityIcons name="plus-circle" size={20} color="#2563EB" style={{ marginRight: 10 }} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#2563EB' }}>
+                                        Add "{clientSearchModalText.trim()}"
+                                    </Text>
+                                    <Text style={{ fontSize: 11, color: '#64748B' }}>
+                                        New Party • Auto-adds to Client Khata upon save
+                                    </Text>
+                                </View>
+                                <MaterialCommunityIcons name="chevron-right" size={18} color="#2563EB" />
+                            </TouchableOpacity>
+                        )}
+
+                        <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+                            {clientsList
+                                .filter(c => !clientSearchModalText.trim() || c.name.toLowerCase().includes(clientSearchModalText.trim().toLowerCase()) || (c.phone && c.phone.includes(clientSearchModalText.trim())))
+                                .map(client => {
+                                    const isSelected = clientName.trim().toLowerCase() === client.name.toLowerCase();
+                                    return (
+                                        <TouchableOpacity
+                                            key={client.id}
+                                            style={[styles.modalClientItem, isSelected && styles.modalClientItemSelected]}
+                                            onPress={() => {
+                                                setClientName(client.name);
+                                                setIsClientPickerVisible(false);
+                                            }}
+                                        >
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={[styles.modalClientName, isSelected && { color: '#2563EB', fontWeight: '800' }]}>
+                                                    {client.name}
+                                                </Text>
+                                                {client.phone ? (
+                                                    <Text style={styles.modalClientSub}>📞 {client.phone}</Text>
+                                                ) : null}
+                                            </View>
+                                            {isSelected && (
+                                                <MaterialCommunityIcons name="check-circle" size={18} color="#2563EB" />
+                                            )}
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                        </ScrollView>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
         </ScrollView>
     );
 }
@@ -1126,6 +1240,128 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '600',
         color: '#1E293B',
-    }
+    },
+    clientExistingBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#ECFDF5',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: '#A7F3D0',
+    },
+    clientExistingBadgeText: { fontSize: 10, fontWeight: '700', color: '#059669' },
+    clientNewBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#EFF6FF',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: '#BFDBFE',
+    },
+    clientNewBadgeText: { fontSize: 10, fontWeight: '700', color: '#2563EB' },
+    browseClientsBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#EFF6FF',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#BFDBFE',
+    },
+    browseClientsBtnText: { fontSize: 12, fontWeight: '700', color: '#2563EB' },
+    suggestionsContainer: {
+        marginTop: 4,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#CBD5E1',
+        overflow: 'hidden',
+    },
+    suggestionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+    },
+    suggestionText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#1E293B',
+        flex: 1,
+    },
+    suggestionBal: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#64748B',
+    },
+    newPartySuggestionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        backgroundColor: '#F0FDF4',
+    },
+    newPartySuggestionText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#16A34A',
+    },
+    modalSearchRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8FAFC',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#CBD5E1',
+        paddingHorizontal: 12,
+        height: 42,
+        marginBottom: 10,
+    },
+    modalSearchInput: {
+        flex: 1,
+        fontSize: 14,
+        color: '#0F172A',
+        fontWeight: '600',
+    },
+    modalAddNewPartyCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#EFF6FF',
+        padding: 12,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#BFDBFE',
+        marginBottom: 10,
+    },
+    modalClientItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+    },
+    modalClientItemSelected: {
+        backgroundColor: '#EFF6FF',
+        borderRadius: 8,
+    },
+    modalClientName: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#1E293B',
+    },
+    modalClientSub: {
+        fontSize: 12,
+        color: '#64748B',
+        marginTop: 2,
+    },
 });
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, TextInput, Image, ScrollView, Modal, Platform, StatusBar, RefreshControl, Switch, Linking } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, TextInput, Image, ScrollView, Modal, Platform, StatusBar, RefreshControl, Switch, Linking , Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -1696,38 +1696,43 @@ export default function AdminDashboard({ navigation, route }) {
                   ) : null}
                 </View>
 
-                {/* Dropdown for Client Khata */}
-                {showValidationClientDropdown && (
-                  <View style={{ marginTop: 4, backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', elevation: 4, maxHeight: 140 }}>
-                    <ScrollView nestedScrollEnabled={true} keyboardShouldPersistTaps="handled">
-                      {clients
-                        .filter(c => !validationPartyName.trim() || c.name.toLowerCase().includes(validationPartyName.trim().toLowerCase()))
-                        .slice(0, 10)
-                        .map(c => (
-                          <TouchableOpacity
-                            key={c.id}
-                            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}
-                            onPress={() => {
-                              setValidationPartyName(c.name);
-                              setShowValidationClientDropdown(false);
-                            }}
-                          >
-                            <MaterialCommunityIcons name="account" size={14} color="#475569" style={{ marginRight: 6 }} />
-                            <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B' }}>{c.name}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      {!!validationPartyName.trim() && !clients.some(c => c.name.toLowerCase() === validationPartyName.trim().toLowerCase()) && (
+                {/* Inline Suggestions (Direct View - No Glitch) */}
+                {showValidationClientDropdown && validationPartyName.trim().length > 0 && (
+                  <View style={{ marginTop: 4, backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', overflow: 'hidden' }}>
+                    {clients
+                      .filter(c => c.name.toLowerCase().includes(validationPartyName.trim().toLowerCase()))
+                      .slice(0, 4)
+                      .map(c => (
                         <TouchableOpacity
-                          style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9, paddingHorizontal: 12, backgroundColor: '#F0FDF4' }}
-                          onPress={() => setShowValidationClientDropdown(false)}
+                          key={c.id}
+                          style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}
+                          onPress={() => {
+                            setValidationPartyName(c.name);
+                            setShowValidationClientDropdown(false);
+                            Keyboard.dismiss();
+                          }}
                         >
-                          <MaterialCommunityIcons name="plus-circle" size={14} color="#16A34A" style={{ marginRight: 6 }} />
-                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#16A34A' }}>
-                            Add "{validationPartyName.trim()}" to Khata
-                          </Text>
+                          <MaterialCommunityIcons name="account" size={15} color="#475569" style={{ marginRight: 8 }} />
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B', flex: 1 }}>{c.name}</Text>
+                          {c.pending_balance ? (
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>Bal: ₹{Number(c.pending_balance).toLocaleString('en-IN')}</Text>
+                          ) : null}
                         </TouchableOpacity>
-                      )}
-                    </ScrollView>
+                      ))}
+                    {!clients.some(c => c.name.toLowerCase() === validationPartyName.trim().toLowerCase()) && (
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F0FDF4' }}
+                        onPress={() => {
+                          setShowValidationClientDropdown(false);
+                          Keyboard.dismiss();
+                        }}
+                      >
+                        <MaterialCommunityIcons name="plus-circle-outline" size={15} color="#16A34A" style={{ marginRight: 8 }} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#16A34A' }}>
+                          Use "{validationPartyName.trim()}" (Auto-add to Khata)
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
 
@@ -1744,6 +1749,7 @@ export default function AdminDashboard({ navigation, route }) {
                             onPress={() => {
                               setValidationPartyName(c.name);
                               setShowValidationClientDropdown(false);
+                              Keyboard.dismiss();
                             }}
                             style={{
                               flexDirection: 'row',

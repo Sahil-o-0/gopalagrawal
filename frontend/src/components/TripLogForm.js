@@ -109,15 +109,27 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
         if (userToken) fetchClients();
     }, [userToken, staffList, user]);
 
+    const parseNumberSafe = (val) => {
+        if (!val) return 0;
+        const sanitized = val.toString().trim();
+        if (sanitized.includes(',') && !sanitized.includes('.')) {
+            const parts = sanitized.split(',');
+            if (parts.length === 2 && parts[1].length <= 3) {
+                return parseFloat(parts[0] + '.' + parts[1]) || 0;
+            }
+        }
+        return parseFloat(sanitized.replace(/,/g, '')) || 0;
+    };
+
     const handleRateTypeChange = (newType) => {
         setRateType(newType);
-        const r = parseFloat(rate);
-        if (!isNaN(r) && r > 0) {
+        const r = parseNumberSafe(rate);
+        if (r > 0) {
             if (newType === 'TON') {
-                const q = parseFloat(weightTons) || 0;
+                const q = parseNumberSafe(weightTons);
                 if (q > 0) setBhada(String(Math.round(r * q)));
             } else {
-                const count = parseFloat(tripCount) || 1;
+                const count = parseNumberSafe(tripCount) || 1;
                 setBhada(String(Math.round(r * count)));
             }
         }
@@ -125,15 +137,15 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
 
     const handleRateChange = (rVal) => {
         setRate(rVal);
-        const r = parseFloat(rVal);
+        const r = parseNumberSafe(rVal);
         if (rateType === 'TON') {
-            const q = parseFloat(weightTons);
-            if (!isNaN(r) && !isNaN(q) && q > 0) {
+            const q = parseNumberSafe(weightTons);
+            if (r > 0 && q > 0) {
                 setBhada(String(Math.round(r * q)));
             }
         } else {
-            const count = parseFloat(tripCount) || 1;
-            if (!isNaN(r) && count > 0) {
+            const count = parseNumberSafe(tripCount) || 1;
+            if (r > 0 && count > 0) {
                 setBhada(String(Math.round(r * count)));
             }
         }
@@ -142,9 +154,9 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const handleWeightChange = (wVal) => {
         setWeightTons(wVal);
         if (rateType === 'TON') {
-            const q = parseFloat(wVal);
-            const r = parseFloat(rate);
-            if (!isNaN(r) && !isNaN(q) && r > 0) {
+            const q = parseNumberSafe(wVal);
+            const r = parseNumberSafe(rate);
+            if (r > 0 && q > 0) {
                 setBhada(String(Math.round(r * q)));
             }
         }
@@ -153,9 +165,9 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const handleTripCountChange = (countVal) => {
         setTripCount(countVal);
         if (rateType === 'TRIP') {
-            const count = parseFloat(countVal) || 0;
-            const r = parseFloat(rate);
-            if (!isNaN(r) && count > 0) {
+            const count = parseNumberSafe(countVal) || 0;
+            const r = parseNumberSafe(rate);
+            if (r > 0 && count > 0) {
                 setBhada(String(Math.round(r * count)));
             }
         }
@@ -730,7 +742,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 paddingVertical: 10,
-                                paddingHorizontal: 8,
+                                paddingHorizontal: 6,
                                 borderRadius: 8,
                                 borderWidth: 2,
                                 borderColor: ledgerType === 'INCOME' ? '#059669' : '#E2E8F0',
@@ -740,12 +752,17 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                         >
                             <MaterialCommunityIcons 
                                 name={ledgerType === 'INCOME' ? "radiobox-marked" : "radiobox-blank"} 
-                                size={16} 
+                                size={15} 
                                 color={ledgerType === 'INCOME' ? '#059669' : '#94A3B8'} 
-                                style={{ marginRight: 6 }} 
+                                style={{ marginRight: 4 }} 
                             />
-                            <MaterialCommunityIcons name="arrow-bottom-left" size={16} color={ledgerType === 'INCOME' ? '#059669' : '#64748B'} style={{ marginRight: 4 }} />
-                            <Text style={{ fontSize: 13, fontWeight: '800', color: ledgerType === 'INCOME' ? '#059669' : '#64748B' }}>
+                            <MaterialCommunityIcons name="arrow-bottom-left" size={14} color={ledgerType === 'INCOME' ? '#059669' : '#64748B'} style={{ marginRight: 3 }} />
+                            <Text 
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.8}
+                                style={{ fontSize: 13, fontWeight: '800', color: ledgerType === 'INCOME' ? '#059669' : '#64748B' }}
+                            >
                                 Income (+)
                             </Text>
                         </TouchableOpacity>
@@ -758,7 +775,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 paddingVertical: 10,
-                                paddingHorizontal: 8,
+                                paddingHorizontal: 6,
                                 borderRadius: 8,
                                 borderWidth: 2,
                                 borderColor: ledgerType === 'EXPENSE' ? '#DC2626' : '#E2E8F0',
@@ -768,12 +785,17 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                         >
                             <MaterialCommunityIcons 
                                 name={ledgerType === 'EXPENSE' ? "radiobox-marked" : "radiobox-blank"} 
-                                size={16} 
+                                size={15} 
                                 color={ledgerType === 'EXPENSE' ? '#DC2626' : '#94A3B8'} 
-                                style={{ marginRight: 6 }} 
+                                style={{ marginRight: 4 }} 
                             />
-                            <MaterialCommunityIcons name="arrow-top-right" size={16} color={ledgerType === 'EXPENSE' ? '#DC2626' : '#64748B'} style={{ marginRight: 4 }} />
-                            <Text style={{ fontSize: 13, fontWeight: '800', color: ledgerType === 'EXPENSE' ? '#DC2626' : '#64748B' }}>
+                            <MaterialCommunityIcons name="arrow-top-right" size={14} color={ledgerType === 'EXPENSE' ? '#DC2626' : '#64748B'} style={{ marginRight: 3 }} />
+                            <Text 
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.8}
+                                style={{ fontSize: 13, fontWeight: '800', color: ledgerType === 'EXPENSE' ? '#DC2626' : '#64748B' }}
+                            >
                                 Expense (-)
                             </Text>
                         </TouchableOpacity>
@@ -789,7 +811,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     </View>
 
                     {/* Rate Mode Selector: Ton Wise vs Trip Wise */}
-                    <View style={{ flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 8, padding: 3, marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 8, padding: 3, marginBottom: 12 }}>
                         <TouchableOpacity
                             onPress={() => handleRateTypeChange('TON')}
                             style={{
@@ -797,7 +819,8 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                                 flexDirection: 'row',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                paddingVertical: 7,
+                                paddingVertical: 8,
+                                paddingHorizontal: 6,
                                 borderRadius: 6,
                                 backgroundColor: rateType === 'TON' ? '#FFFFFF' : 'transparent',
                                 elevation: rateType === 'TON' ? 1 : 0,
@@ -813,7 +836,12 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                                 color={rateType === 'TON' ? '#2563EB' : '#64748B'} 
                                 style={{ marginRight: 4 }} 
                             />
-                            <Text style={{ fontSize: 12, fontWeight: '800', color: rateType === 'TON' ? '#2563EB' : '#64748B' }}>
+                            <Text 
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.8}
+                                style={{ fontSize: 12, fontWeight: '800', color: rateType === 'TON' ? '#2563EB' : '#64748B' }}
+                            >
                                 Ton Wise (₹/Ton)
                             </Text>
                         </TouchableOpacity>
@@ -825,7 +853,8 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                                 flexDirection: 'row',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                paddingVertical: 7,
+                                paddingVertical: 8,
+                                paddingHorizontal: 6,
                                 borderRadius: 6,
                                 backgroundColor: rateType === 'TRIP' ? '#FFFFFF' : 'transparent',
                                 elevation: rateType === 'TRIP' ? 1 : 0,
@@ -841,7 +870,12 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                                 color={rateType === 'TRIP' ? '#2563EB' : '#64748B'} 
                                 style={{ marginRight: 4 }} 
                             />
-                            <Text style={{ fontSize: 12, fontWeight: '800', color: rateType === 'TRIP' ? '#2563EB' : '#64748B' }}>
+                            <Text 
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.8}
+                                style={{ fontSize: 12, fontWeight: '800', color: rateType === 'TRIP' ? '#2563EB' : '#64748B' }}
+                            >
                                 Trip Wise (₹/Trip)
                             </Text>
                         </TouchableOpacity>
@@ -930,14 +964,16 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
 
                     {/* Calculated Total Amount / Bhada */}
                     <View style={{ marginTop: 2 }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B' }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', flexShrink: 1 }}>
                                 Total {ledgerType === 'INCOME' ? 'Bhada / Income' : 'Expense'} Amount (₹) *
                             </Text>
                             {!!rate && (rateType === 'TON' ? !!weightTons : !!tripCount) && (
-                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#059669' }}>
-                                    Auto-Calculated ({rateType === 'TON' ? 'Rate × Qty' : 'Rate × Trips'})
-                                </Text>
+                                <View style={{ backgroundColor: '#ECFDF5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#A7F3D0' }}>
+                                    <Text style={{ fontSize: 9, fontWeight: '800', color: '#059669' }}>
+                                        AUTO-CALCULATED
+                                    </Text>
+                                </View>
                             )}
                         </View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1.5, borderColor: ledgerType === 'INCOME' ? '#059669' : '#DC2626', paddingHorizontal: 10, height: 46 }}>
@@ -1288,7 +1324,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
-    contentContainer: { padding: 16, paddingBottom: 80, flexGrow: 1 },
+    contentContainer: { padding: 12, paddingBottom: 100, flexGrow: 1 },
     
     autoAssignedBadge: {
         flexDirection: 'row',
@@ -1392,8 +1428,8 @@ const styles = StyleSheet.create({
     sectionCard: { 
         backgroundColor: '#FFFFFF', 
         borderRadius: 16, 
-        padding: 16, 
-        marginBottom: 14, 
+        padding: 12, 
+        marginBottom: 12, 
         borderWidth: 1, 
         borderColor: '#E2E8F0',
         shadowColor: '#000', 

@@ -2714,7 +2714,7 @@ export default function AdminDashboard({ navigation, route }) {
 
       <Modal visible={isTripModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { height: '88%', width: '92%', padding: 0, overflow: 'hidden', borderRadius: 20 }]}>
+          <View style={[styles.modalContent, { height: '94%', width: '96%', maxWidth: 520, padding: 0, overflow: 'hidden', borderRadius: 16 }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', backgroundColor: '#FFFFFF' }}>
               <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A' }}>Log New Trip</Text>
               <TouchableOpacity onPress={() => setIsTripModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>

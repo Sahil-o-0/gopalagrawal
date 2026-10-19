@@ -197,97 +197,57 @@ export default function AdminDashboard({ navigation, route }) {
 
   const fetchData = async () => {
     setIsLoading(true);
+    const headers = { 'Authorization': `Bearer ${userToken}` };
+    const siteParam = selectedSite?.id ? `?site_id=${selectedSite.id}` : '';
+
     try {
-      const headers = { 'Authorization': `Bearer ${userToken}` };
-      const params = new URLSearchParams();
-      if (tripStartDate) params.append('start_date', tripStartDate);
-      if (tripEndDate) params.append('end_date', tripEndDate);
-      if (vehicleSearch) params.append('vehicle_number', vehicleSearch);
-      if (selectedSite?.id) params.append('site_id', selectedSite.id);
-      
       if (activeTab === 'trips') {
-        try {
-          const [tripRes, userRes] = await Promise.allSettled([
-            fetch(`${API_BASE_URL}/trips/?${params.toString()}`, { headers }),
-            fetch(`${API_BASE_URL}/auth/users`, { headers })
-          ]);
-          if (tripRes.status === 'fulfilled' && tripRes.value.ok) setTrips(await tripRes.value.json());
-          if (userRes.status === 'fulfilled' && userRes.value.ok) {
-            const allUsers = await userRes.value.json();
-            setUsers(allUsers);
-          }
-        } catch (tripErr) { console.error("Trips fetch error", tripErr); }
+        const params = new URLSearchParams();
+        if (tripStartDate) params.append('start_date', tripStartDate);
+        if (tripEndDate) params.append('end_date', tripEndDate);
+        if (vehicleSearch) params.append('vehicle_number', vehicleSearch);
+        if (selectedSite?.id) params.append('site_id', selectedSite.id);
+
+        const [tripRes, userRes, clientRes] = await Promise.allSettled([
+          fetch(`${API_BASE_URL}/trips/?${params.toString()}`, { headers }),
+          fetch(`${API_BASE_URL}/auth/users`, { headers }),
+          fetch(`${API_BASE_URL}/clients/`, { headers })
+        ]);
+
+        if (tripRes.status === 'fulfilled' && tripRes.value.ok) setTrips(await tripRes.value.json());
+        if (userRes.status === 'fulfilled' && userRes.value.ok) setUsers(await userRes.value.json());
+        if (clientRes.status === 'fulfilled' && clientRes.value.ok) setClients(await clientRes.value.json());
+
       } else if (activeTab === 'users') {
-        try {
-          const resp = await fetch(`${API_BASE_URL}/auth/users`, { headers });
-          if (resp.ok) setUsers(await resp.json());
-        } catch (userErr) { console.error("Users fetch error", userErr); }
+        const [uRes, slRes] = await Promise.allSettled([
+          fetch(`${API_BASE_URL}/auth/users`, { headers }),
+          fetch(`${API_BASE_URL}/workforce/staff-ledger${siteParam}`, { headers })
+        ]);
+        if (uRes.status === 'fulfilled' && uRes.value.ok) setUsers(await uRes.value.json());
+        if (slRes.status === 'fulfilled' && slRes.value.ok) setDailyLedgerEntries(await slRes.value.json());
+
       } else if (activeTab === 'hr') {
-        try {
-          const [lRes, aRes, atRes, uRes] = await Promise.allSettled([
-            fetch(`${API_BASE_URL}/workforce/leaves${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`, { headers }),
-            fetch(`${API_BASE_URL}/workforce/advances${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`, { headers }),
-            fetch(`${API_BASE_URL}/workforce/attendance${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`, { headers }),
-            fetch(`${API_BASE_URL}/auth/users`, { headers })
-          ]);
-          if (lRes.status === 'fulfilled' && lRes.value.ok) setLeaves(await lRes.value.json());
-          if (aRes.status === 'fulfilled' && aRes.value.ok) setAdvances(await aRes.value.json());
-          if (atRes.status === 'fulfilled' && atRes.value.ok) setAttendance(await atRes.value.json());
-          if (uRes.status === 'fulfilled' && uRes.value.ok) {
-             const allUsers = await uRes.value.json();
-             setUsers(allUsers.filter(u => u.role !== 'ADMIN'));
-          }
-        } catch (hrErr) { console.error("HR fetch error", hrErr); }
+        const [lRes, aRes, atRes, uRes] = await Promise.allSettled([
+          fetch(`${API_BASE_URL}/workforce/leaves${siteParam}`, { headers }),
+          fetch(`${API_BASE_URL}/workforce/advances${siteParam}`, { headers }),
+          fetch(`${API_BASE_URL}/workforce/attendance${siteParam}`, { headers }),
+          fetch(`${API_BASE_URL}/auth/users`, { headers })
+        ]);
+        if (lRes.status === 'fulfilled' && lRes.value.ok) setLeaves(await lRes.value.json());
+        if (aRes.status === 'fulfilled' && aRes.value.ok) setAdvances(await aRes.value.json());
+        if (atRes.status === 'fulfilled' && atRes.value.ok) setAttendance(await atRes.value.json());
+        if (uRes.status === 'fulfilled' && uRes.value.ok) {
+          const allUsers = await uRes.value.json();
+          setUsers(allUsers.filter(u => u.role !== 'ADMIN'));
+        }
+
       } else if (activeTab === 'emi') {
-        try {
-          const resp = await fetch(`${API_BASE_URL}/workforce/emi${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`, { headers });
-          if (resp.ok) setEmis(await resp.json());
-        } catch (emiErr) { console.error("EMI fetch error", emiErr); }
+        const resp = await fetch(`${API_BASE_URL}/workforce/emi${siteParam}`, { headers });
+        if (resp.ok) setEmis(await resp.json());
       }
     } catch (e) { 
-      console.error("fetchData top-level error", e);
+      console.error("fetchData error", e);
     } finally {
-      try {
-        const staffLedgerResp = await fetch(`${API_BASE_URL}/workforce/staff-ledger${selectedSite?.id ? `?site_id=${selectedSite.id}` : ''}`, {
-          headers: { 'Authorization': `Bearer ${userToken}` }
-        });
-        if (staffLedgerResp.ok) {
-          setDailyLedgerEntries(await staffLedgerResp.json());
-        }
-      } catch (ledgerErr) { console.error("Staff ledger fetch error", ledgerErr); }
-
-      try {
-        const bizResp = await fetch(`${API_BASE_URL}/workforce/daily-ledger?month=${new Date().getMonth()+1}&year=${new Date().getFullYear()}${selectedSite?.id ? `&site_id=${selectedSite.id}` : ''}`, {
-          headers: { 'Authorization': `Bearer ${userToken}` }
-        });
-        if (bizResp.ok) {
-          const bizData = await bizResp.json();
-          setBusinessIncomeEntries(bizData);
-        }
-      } catch (bizErr) { console.error("Biz daily ledger fetch error", bizErr); }
-
-      try {
-        const desigResp = await fetch(`${API_BASE_URL}/auth/designations/`, {
-          headers: { 'Authorization': `Bearer ${userToken}` }
-        });
-        if (desigResp.ok) {
-          setDesignationsList(await desigResp.json());
-        }
-      } catch (desigErr) {
-        console.error("Failed to fetch designations", desigErr);
-      }
-
-      try {
-        const cResp = await fetch(`${API_BASE_URL}/clients/`, {
-          headers: { 'Authorization': `Bearer ${userToken}` }
-        });
-        if (cResp.ok) {
-          setClients(await cResp.json());
-        }
-      } catch (cErr) {
-        console.error("Failed to fetch clients", cErr);
-      }
-      
       setIsLoading(false);
     }
   };

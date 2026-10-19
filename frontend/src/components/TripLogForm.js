@@ -57,22 +57,22 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const [odometerPhoto, setOdometerPhoto] = useState(null);
     const [receiptPhoto, setReceiptPhoto] = useState(null);
 
-    // Fetch fleet vehicles for quick select
+    // Fetch fleet vehicles and clients in parallel
     useEffect(() => {
-        const fetchFleetVehicles = async () => {
-            try {
-                const resp = await fetch(`${API_BASE_URL}/workforce/emi`, {
-                    headers: { 'Authorization': `Bearer ${userToken}` }
-                });
-                if (resp.ok) {
-                    const emiList = await resp.json();
+        if (!userToken) return;
+
+        Promise.allSettled([
+            fetch(`${API_BASE_URL}/workforce/emi`, {
+                headers: { 'Authorization': `Bearer ${userToken}` }
+            })
+                .then(r => r.ok ? r.json() : [])
+                .then(emiList => {
                     const vehSet = new Set();
                     emiList.forEach(e => {
                         if (e.vehicle_number && e.vehicle_number.trim()) {
                             vehSet.add(e.vehicle_number.trim().toUpperCase());
                         }
                     });
-                    // Also include staff assigned vehicles
                     staffList.forEach(s => {
                         if (s.assigned_vehicle && s.assigned_vehicle.trim()) {
                             s.assigned_vehicle.split(',').forEach(v => {
@@ -86,28 +86,16 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                         });
                     }
                     setAvailableVehicles(Array.from(vehSet));
-                }
-            } catch (err) {
-                console.log("Could not load fleet vehicles", err);
-            }
-        };
+                })
+                .catch(err => console.log("Could not load fleet vehicles", err)),
 
-        const fetchClients = async () => {
-            try {
-                const resp = await fetch(`${API_BASE_URL}/clients/`, {
-                    headers: { 'Authorization': `Bearer ${userToken}` }
-                });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    setClientsList(data);
-                }
-            } catch (err) {
-                console.log("Could not load clients list", err);
-            }
-        };
-
-        fetchFleetVehicles();
-        if (userToken) fetchClients();
+            fetch(`${API_BASE_URL}/clients/`, {
+                headers: { 'Authorization': `Bearer ${userToken}` }
+            })
+                .then(r => r.ok ? r.json() : [])
+                .then(data => setClientsList(data))
+                .catch(err => console.log("Could not load clients list", err))
+        ]);
     }, [userToken, staffList, user]);
 
     const parseNumberSafe = (val) => {
@@ -495,36 +483,33 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 {isManagerOrAdmin && (
                     <View style={styles.formGroup}>
                         <Text style={styles.inputLabel}>Vehicle Source *</Text>
-                        <View style={styles.sourceToggleRow}>
+                        <View style={{ gap: 8 }}>
                             <TouchableOpacity 
-                                style={[styles.sourceToggleBtn, vehicleSource === 'OWN' && styles.sourceToggleBtnActive]}
+                                style={[styles.sourceCard, vehicleSource === 'OWN' && styles.sourceCardActive]}
                                 onPress={() => setVehicleSource('OWN')}
                                 activeOpacity={0.7}
                             >
                                 <MaterialCommunityIcons 
                                     name={vehicleSource === 'OWN' ? "radiobox-marked" : "radiobox-blank"} 
-                                    size={16} 
+                                    size={18} 
                                     color={vehicleSource === 'OWN' ? '#2563EB' : '#94A3B8'} 
-                                    style={{ marginRight: 6 }} 
+                                    style={{ marginRight: 10 }} 
                                 />
-                                <MaterialCommunityIcons 
-                                    name="truck-outline" 
-                                    size={16} 
-                                    color={vehicleSource === 'OWN' ? '#2563EB' : '#64748B'} 
-                                    style={{ marginRight: 6 }} 
-                                />
-                                <Text 
-                                    numberOfLines={1}
-                                    adjustsFontSizeToFit
-                                    minimumFontScale={0.8}
-                                    style={[styles.sourceToggleText, vehicleSource === 'OWN' && styles.sourceToggleTextActive]}
-                                >
-                                    Own Vehicle
-                                </Text>
+                                <View style={[styles.sourceIconBox, { backgroundColor: vehicleSource === 'OWN' ? '#EFF6FF' : '#F1F5F9' }]}>
+                                    <MaterialCommunityIcons name="truck-outline" size={18} color={vehicleSource === 'OWN' ? '#2563EB' : '#64748B'} />
+                                </View>
+                                <View style={{ flex: 1, marginLeft: 10 }}>
+                                    <Text style={[styles.sourceCardTitle, vehicleSource === 'OWN' && styles.sourceCardTitleActive]}>
+                                        Own Fleet Vehicle
+                                    </Text>
+                                    <Text style={styles.sourceCardSub}>
+                                        Company vehicle with driver & meter readings
+                                    </Text>
+                                </View>
                             </TouchableOpacity>
 
                             <TouchableOpacity 
-                                style={[styles.sourceToggleBtn, vehicleSource === 'OTHER' && styles.sourceToggleBtnActiveOther]}
+                                style={[styles.sourceCard, vehicleSource === 'OTHER' && styles.sourceCardActiveOther]}
                                 onPress={() => {
                                     setVehicleSource('OTHER');
                                     setStaffId('');
@@ -533,24 +518,21 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                             >
                                 <MaterialCommunityIcons 
                                     name={vehicleSource === 'OTHER' ? "radiobox-marked" : "radiobox-blank"} 
-                                    size={16} 
+                                    size={18} 
                                     color={vehicleSource === 'OTHER' ? '#D97706' : '#94A3B8'} 
-                                    style={{ marginRight: 6 }} 
+                                    style={{ marginRight: 10 }} 
                                 />
-                                <MaterialCommunityIcons 
-                                    name="account-switch-outline" 
-                                    size={16} 
-                                    color={vehicleSource === 'OTHER' ? '#D97706' : '#64748B'} 
-                                    style={{ marginRight: 6 }} 
-                                />
-                                <Text 
-                                    numberOfLines={1}
-                                    adjustsFontSizeToFit
-                                    minimumFontScale={0.8}
-                                    style={[styles.sourceToggleText, vehicleSource === 'OTHER' && styles.sourceToggleTextActiveOther]}
-                                >
-                                    Sent by Someone Else
-                                </Text>
+                                <View style={[styles.sourceIconBox, { backgroundColor: vehicleSource === 'OTHER' ? '#FEF3C7' : '#F1F5F9' }]}>
+                                    <MaterialCommunityIcons name="account-arrow-right" size={18} color={vehicleSource === 'OTHER' ? '#D97706' : '#64748B'} />
+                                </View>
+                                <View style={{ flex: 1, marginLeft: 10 }}>
+                                    <Text style={[styles.sourceCardTitle, vehicleSource === 'OTHER' && styles.sourceCardTitleActiveOther]}>
+                                        Sent by Someone Else
+                                    </Text>
+                                    <Text style={styles.sourceCardSub}>
+                                        Market / third-party vehicle (Bhada only)
+                                    </Text>
+                                </View>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -1449,43 +1431,48 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     contentContainer: { padding: 12, paddingBottom: 100, flexGrow: 1 },
     
-    sourceToggleRow: {
-        flexDirection: 'row',
-        gap: 10,
-        marginBottom: 6,
-    },
-    sourceToggleBtn: {
-        flex: 1,
+    sourceCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
         paddingVertical: 10,
-        paddingHorizontal: 8,
+        paddingHorizontal: 12,
         borderRadius: 10,
-        borderWidth: 2,
+        borderWidth: 1.5,
         borderColor: '#E2E8F0',
         backgroundColor: '#FFFFFF',
     },
-    sourceToggleBtnActive: {
+    sourceCardActive: {
         borderColor: '#2563EB',
-        backgroundColor: '#EFF6FF',
+        backgroundColor: '#F8FAFC',
     },
-    sourceToggleBtnActiveOther: {
+    sourceCardActiveOther: {
         borderColor: '#D97706',
         backgroundColor: '#FFFBEB',
     },
-    sourceToggleText: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: '#64748B',
+    sourceIconBox: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    sourceToggleTextActive: {
-        color: '#2563EB',
+    sourceCardTitle: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#334155',
+    },
+    sourceCardTitleActive: {
+        color: '#1D4ED8',
         fontWeight: '800',
     },
-    sourceToggleTextActiveOther: {
+    sourceCardTitleActiveOther: {
         color: '#B45309',
         fontWeight: '800',
+    },
+    sourceCardSub: {
+        fontSize: 11,
+        color: '#64748B',
+        marginTop: 1,
     },
     externalBanner: {
         flexDirection: 'row',

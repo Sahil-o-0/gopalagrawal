@@ -27,6 +27,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
         .filter(Boolean);
 
     // Form state
+    const [vehicleSource, setVehicleSource] = useState('OWN'); // 'OWN' | 'OTHER' (Sent by Someone Else)
     const [vehicleNumber, setVehicleNumber] = useState(assignedVehiclesList[0] || user?.assigned_vehicle || '');
     const [availableVehicles, setAvailableVehicles] = useState([]);
     const [clientName, setClientName] = useState('');
@@ -321,47 +322,73 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
         : 0;
 
     const handleSubmit = async () => {
-        if (!vehicleNumber.trim() || !origin.trim() || !destination.trim() || !materialType.trim() || !weightTons) {
-            Alert.alert("Missing Fields", "Please fill in all mandatory fields: Vehicle, Route (Origin & Destination), Material & Weight.");
-            return;
+        const isExternalTrip = isManagerOrAdmin && vehicleSource === 'OTHER';
+
+        if (isExternalTrip) {
+            // Sent by someone else: No driver or vehicle number needed
+            const parsedBhada = parseFloat(bhada) || 0;
+            const parsedRate = parseFloat(rate) || 0;
+            if (parsedBhada <= 0 && parsedRate <= 0) {
+                Alert.alert("Missing Bhada", "Please enter Bhada amount or Rate & Quantity for this trip.");
+                return;
+            }
+        } else {
+            // Own vehicle validation
+            if (!vehicleNumber.trim() || !origin.trim() || !destination.trim() || !materialType.trim() || !weightTons) {
+                Alert.alert("Missing Fields", "Please fill in all mandatory fields: Vehicle, Route (Origin & Destination), Material & Weight.");
+                return;
+            }
+
+            const sMeter = startMeter ? parseFloat(startMeter) : 0;
+            const eMeter = endMeter ? parseFloat(endMeter) : 0;
+
+            if (sMeter > 0 && eMeter > 0 && eMeter < sMeter) {
+                Alert.alert("Invalid Odometer", "End meter reading cannot be less than Start meter reading.");
+                return;
+            }
         }
 
-        const sMeter = startMeter ? parseFloat(startMeter) : 0;
-        const eMeter = endMeter ? parseFloat(endMeter) : 0;
+        const effVehicleNumber = isExternalTrip 
+            ? 'OTHER VEHICLE' 
+            : vehicleNumber.trim().toUpperCase();
 
-        if (sMeter > 0 && eMeter > 0 && eMeter < sMeter) {
-            Alert.alert("Invalid Odometer", "End meter reading cannot be less than Start meter reading.");
-            return;
-        }
+        const effOrigin = origin.trim() || (isExternalTrip ? 'Site' : '');
+        const effDestination = destination.trim() || (isExternalTrip ? (clientName.trim() || 'Client Site') : '');
+        const effMaterial = materialType.trim() || (isExternalTrip ? 'General Cargo' : '');
+        const effWeight = parseFloat(weightTons) || (rateType === 'TRIP' ? (parseFloat(tripCount) || 1.0) : 1.0);
+        const sMeter = (!isExternalTrip && startMeter) ? parseFloat(startMeter) : 0;
+        const eMeter = (!isExternalTrip && endMeter) ? parseFloat(endMeter) : 0;
 
         setIsLoading(true);
         const body = {
-            vehicle_number: vehicleNumber.trim().toUpperCase(),
-            origin: origin.trim(),
-            destination: destination.trim(),
-            material_type: materialType.trim(),
-            weight_tons: parseFloat(weightTons),
+            vehicle_number: effVehicleNumber,
+            origin: effOrigin,
+            destination: effDestination,
+            material_type: effMaterial,
+            weight_tons: effWeight,
             start_meter_reading: sMeter,
             end_meter_reading: eMeter,
-            diesel_liters: dieselLiters ? parseFloat(dieselLiters) : 0,
-            diesel_rate: dieselRate ? parseFloat(dieselRate) : 0,
-            diesel_cost: (() => {
+            diesel_liters: (!isExternalTrip && dieselLiters) ? parseFloat(dieselLiters) : 0,
+            diesel_rate: (!isExternalTrip && dieselRate) ? parseFloat(dieselRate) : 0,
+            diesel_cost: (!isExternalTrip) ? (() => {
                 const l = parseFloat(dieselLiters) || 0;
                 const r = parseFloat(dieselRate) || 0;
                 const c = parseFloat(dieselCost) || 0;
                 if (l > 0 && r > 0) return Math.round(l * r);
                 return c;
-            })(),
+            })() : 0,
             bhada: isManagerOrAdmin && bhada ? parseFloat(bhada) : 0,
             advance_freight_received: isManagerOrAdmin && advanceFreight ? parseFloat(advanceFreight) : 0,
             loading_photo_url: loadingPhoto,
             unloading_photo_url: unloadingPhoto,
-            odometer_photo_url: odometerPhoto,
+            odometer_photo_url: isExternalTrip ? null : odometerPhoto,
             receipt_photo_url: receiptPhoto,
-            freight_notes: isManagerOrAdmin && clientName.trim() ? clientName.trim() : null
+            freight_notes: clientName.trim() 
+                ? (isExternalTrip ? `${clientName.trim()} (Sent by Someone Else)` : clientName.trim()) 
+                : (isExternalTrip ? 'Sent by Someone Else' : null)
         };
 
-        if (isManagerOrAdmin && staffId) {
+        if (isManagerOrAdmin && staffId && !isExternalTrip) {
             body.staff_id = parseInt(staffId);
         }
 
@@ -380,7 +407,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     const createdTrip = await response.json();
                     const finalBhada = parseFloat(bhada) || 0;
                     if (isManagerOrAdmin && finalBhada > 0) {
-                        await syncTripFinancials(createdTrip?.id || '', finalBhada, clientName.trim(), vehicleNumber.trim().toUpperCase(), origin.trim(), destination.trim());
+                        await syncTripFinancials(createdTrip?.id || '', finalBhada, clientName.trim(), effVehicleNumber, effOrigin, effDestination);
                     }
                     Alert.alert("Success", isManagerOrAdmin 
                         ? `Trip #${createdTrip?.id || ''} logged & approved! ${ledgerType === 'INCOME' ? 'Income' : 'Expense'} (₹${finalBhada.toLocaleString('en-IN')}) synced to Daily Ledger${clientName.trim() ? ` & Client Khata (${clientName.trim()})` : ''}.` 
@@ -409,6 +436,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     };
 
     const clearForm = () => {
+        setVehicleSource('OWN');
         setVehicleNumber(assignedVehiclesList[0] || user?.assigned_vehicle || ''); 
         setClientName(''); setShowClientDropdown(false); setIsClientPickerVisible(false); setClientSearchModalText('');
         setOrigin(''); setDestination(''); setMaterialType(''); setWeightTons('');
@@ -458,147 +486,232 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     <View style={[styles.iconCircle, { backgroundColor: '#EFF6FF' }]}>
                         <MaterialCommunityIcons name="truck-fast-outline" size={18} color="#2563EB" />
                     </View>
-                    <Text style={styles.sectionTitle}>Vehicle & Assignment</Text>
+                    <Text style={styles.sectionTitle}>
+                        {isManagerOrAdmin && vehicleSource === 'OTHER' ? "Vehicle Source" : "Vehicle & Assignment"}
+                    </Text>
                 </View>
 
+                {/* Option for Admin / Manager: Own Vehicle vs Sent by Someone Else */}
                 {isManagerOrAdmin && (
                     <View style={styles.formGroup}>
-                        <Text style={styles.inputLabel}>Assign Driver / Staff</Text>
-                        <TouchableOpacity style={styles.pickerTrigger} onPress={() => setIsStaffPickerVisible(true)} activeOpacity={0.7}>
-                            <Text style={staffId ? styles.pickerTriggerVal : styles.pickerTriggerPlaceholder}>
-                                {staffList.find(u => u.id.toString() === staffId)?.full_name || staffList.find(u => u.id.toString() === staffId)?.username || "Select Driver (Optional)"}
-                            </Text>
-                            <MaterialCommunityIcons name="chevron-down" size={18} color="#64748B" />
-                        </TouchableOpacity>
+                        <Text style={styles.inputLabel}>Vehicle Source *</Text>
+                        <View style={styles.sourceToggleRow}>
+                            <TouchableOpacity 
+                                style={[styles.sourceToggleBtn, vehicleSource === 'OWN' && styles.sourceToggleBtnActive]}
+                                onPress={() => setVehicleSource('OWN')}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialCommunityIcons 
+                                    name={vehicleSource === 'OWN' ? "radiobox-marked" : "radiobox-blank"} 
+                                    size={16} 
+                                    color={vehicleSource === 'OWN' ? '#2563EB' : '#94A3B8'} 
+                                    style={{ marginRight: 6 }} 
+                                />
+                                <MaterialCommunityIcons 
+                                    name="truck-outline" 
+                                    size={16} 
+                                    color={vehicleSource === 'OWN' ? '#2563EB' : '#64748B'} 
+                                    style={{ marginRight: 6 }} 
+                                />
+                                <Text 
+                                    numberOfLines={1}
+                                    adjustsFontSizeToFit
+                                    minimumFontScale={0.8}
+                                    style={[styles.sourceToggleText, vehicleSource === 'OWN' && styles.sourceToggleTextActive]}
+                                >
+                                    Own Vehicle
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity 
+                                style={[styles.sourceToggleBtn, vehicleSource === 'OTHER' && styles.sourceToggleBtnActiveOther]}
+                                onPress={() => {
+                                    setVehicleSource('OTHER');
+                                    setStaffId('');
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialCommunityIcons 
+                                    name={vehicleSource === 'OTHER' ? "radiobox-marked" : "radiobox-blank"} 
+                                    size={16} 
+                                    color={vehicleSource === 'OTHER' ? '#D97706' : '#94A3B8'} 
+                                    style={{ marginRight: 6 }} 
+                                />
+                                <MaterialCommunityIcons 
+                                    name="account-switch-outline" 
+                                    size={16} 
+                                    color={vehicleSource === 'OTHER' ? '#D97706' : '#64748B'} 
+                                    style={{ marginRight: 6 }} 
+                                />
+                                <Text 
+                                    numberOfLines={1}
+                                    adjustsFontSizeToFit
+                                    minimumFontScale={0.8}
+                                    style={[styles.sourceToggleText, vehicleSource === 'OTHER' && styles.sourceToggleTextActiveOther]}
+                                >
+                                    Sent by Someone Else
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 )}
 
-                <View style={styles.formGroup}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <Text style={styles.inputLabel}>Vehicle Number *</Text>
-                        {assignedVehiclesList.includes(vehicleNumber.trim().toUpperCase()) ? (
-                            <View style={styles.autoAssignedBadge}>
-                                <MaterialCommunityIcons name="check-decagram" size={12} color="#059669" />
-                                <Text style={styles.autoAssignedBadgeText}>Assigned Vehicle</Text>
+                {vehicleSource === 'OWN' ? (
+                    <>
+                        {isManagerOrAdmin && (
+                            <View style={styles.formGroup}>
+                                <Text style={styles.inputLabel}>Assign Driver / Staff</Text>
+                                <TouchableOpacity style={styles.pickerTrigger} onPress={() => setIsStaffPickerVisible(true)} activeOpacity={0.7}>
+                                    <Text style={staffId ? styles.pickerTriggerVal : styles.pickerTriggerPlaceholder}>
+                                        {staffList.find(u => u.id.toString() === staffId)?.full_name || staffList.find(u => u.id.toString() === staffId)?.username || "Select Driver (Optional)"}
+                                    </Text>
+                                    <MaterialCommunityIcons name="chevron-down" size={18} color="#64748B" />
+                                </TouchableOpacity>
                             </View>
-                        ) : null}
-                    </View>
-                    <TextInput 
-                        placeholderTextColor="#94A3B8" 
-                        style={styles.textInput} 
-                        placeholder="e.g. MH-12-FE-4920" 
-                        value={vehicleNumber} 
-                        onChangeText={setVehicleNumber}
-                        autoCapitalize="characters"
-                    />
+                        )}
 
-                    {/* Assigned Vehicles for Driver / Staff */}
-                    {assignedVehiclesList.length > 0 && (
-                        <View style={{ marginTop: 8 }}>
-                            <Text style={[styles.quickSelectHeader, { color: '#059669' }]}>
-                                {isManagerOrAdmin && staffId ? "Driver's Assigned Vehicles:" : "Your Assigned Vehicles:"}
+                        <View style={styles.formGroup}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                <Text style={styles.inputLabel}>Vehicle Number *</Text>
+                                {assignedVehiclesList.includes(vehicleNumber.trim().toUpperCase()) ? (
+                                    <View style={styles.autoAssignedBadge}>
+                                        <MaterialCommunityIcons name="check-decagram" size={12} color="#059669" />
+                                        <Text style={styles.autoAssignedBadgeText}>Assigned Vehicle</Text>
+                                    </View>
+                                ) : null}
+                            </View>
+                            <TextInput 
+                                placeholderTextColor="#94A3B8" 
+                                style={styles.textInput} 
+                                placeholder="e.g. MH-12-FE-4920" 
+                                value={vehicleNumber} 
+                                onChangeText={setVehicleNumber}
+                                autoCapitalize="characters"
+                            />
+
+                            {/* Assigned Vehicles for Driver / Staff */}
+                            {assignedVehiclesList.length > 0 && (
+                                <View style={{ marginTop: 8 }}>
+                                    <Text style={[styles.quickSelectHeader, { color: '#059669' }]}>
+                                        {isManagerOrAdmin && staffId ? "Driver's Assigned Vehicles:" : "Your Assigned Vehicles:"}
+                                    </Text>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 4 }}>
+                                        {assignedVehiclesList.map(veh => {
+                                            const isSelected = vehicleNumber.trim().toUpperCase() === veh.toUpperCase();
+                                            return (
+                                                <TouchableOpacity
+                                                    key={veh}
+                                                    onPress={() => setVehicleNumber(veh)}
+                                                    style={[styles.assignedVehChip, isSelected && styles.assignedVehChipActive]}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <MaterialCommunityIcons 
+                                                        name="steering" 
+                                                        size={13} 
+                                                        color={isSelected ? '#FFFFFF' : '#059669'} 
+                                                        style={{ marginRight: 4 }} 
+                                                    />
+                                                    <Text style={[styles.assignedVehChipText, isSelected && styles.assignedVehChipTextActive]}>
+                                                        {veh}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                    </ScrollView>
+                                </View>
+                            )}
+
+                            {/* Fleet Vehicle Quick-Select Chips */}
+                            {availableVehicles.length > 0 && (
+                                <View style={{ marginTop: 8 }}>
+                                    <Text style={styles.quickSelectHeader}>All Fleet Vehicles:</Text>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 4 }}>
+                                        {availableVehicles.map(veh => {
+                                            const isSelected = vehicleNumber.trim().toUpperCase() === veh.toUpperCase();
+                                            return (
+                                                <TouchableOpacity
+                                                    key={veh}
+                                                    onPress={() => setVehicleNumber(veh)}
+                                                    style={[styles.vehicleChip, isSelected && styles.vehicleChipActive]}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <MaterialCommunityIcons 
+                                                        name="truck" 
+                                                        size={12} 
+                                                        color={isSelected ? '#FFFFFF' : '#475569'} 
+                                                        style={{ marginRight: 4 }} 
+                                                    />
+                                                    <Text style={[styles.vehicleChipText, isSelected && styles.vehicleChipTextActive]}>
+                                                        {veh}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                    </ScrollView>
+                                </View>
+                            )}
+                        </View>
+                    </>
+                ) : (
+                    <View style={styles.externalBanner}>
+                        <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7', width: 36, height: 36 }]}>
+                            <MaterialCommunityIcons name="account-arrow-right-outline" size={20} color="#D97706" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.externalBannerTitle}>External / Someone Else's Vehicle</Text>
+                            <Text style={styles.externalBannerSub}>
+                                No driver or vehicle number needed. Enter Route, Party Name, Rate, Quantity & Bhada below.
                             </Text>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 4 }}>
-                                {assignedVehiclesList.map(veh => {
-                                    const isSelected = vehicleNumber.trim().toUpperCase() === veh.toUpperCase();
-                                    return (
-                                        <TouchableOpacity
-                                            key={veh}
-                                            onPress={() => setVehicleNumber(veh)}
-                                            style={[styles.assignedVehChip, isSelected && styles.assignedVehChipActive]}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialCommunityIcons 
-                                                name="steering" 
-                                                size={13} 
-                                                color={isSelected ? '#FFFFFF' : '#059669'} 
-                                                style={{ marginRight: 4 }} 
-                                            />
-                                            <Text style={[styles.assignedVehChipText, isSelected && styles.assignedVehChipTextActive]}>
-                                                {veh}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </ScrollView>
                         </View>
-                    )}
-
-                    {/* Fleet Vehicle Quick-Select Chips */}
-                    {availableVehicles.length > 0 && (
-                        <View style={{ marginTop: 8 }}>
-                            <Text style={styles.quickSelectHeader}>All Fleet Vehicles:</Text>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 4 }}>
-                                {availableVehicles.map(veh => {
-                                    const isSelected = vehicleNumber.trim().toUpperCase() === veh.toUpperCase();
-                                    return (
-                                        <TouchableOpacity
-                                            key={veh}
-                                            onPress={() => setVehicleNumber(veh)}
-                                            style={[styles.vehicleChip, isSelected && styles.vehicleChipActive]}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialCommunityIcons 
-                                                name="truck" 
-                                                size={12} 
-                                                color={isSelected ? '#FFFFFF' : '#475569'} 
-                                                style={{ marginRight: 4 }} 
-                                            />
-                                            <Text style={[styles.vehicleChipText, isSelected && styles.vehicleChipTextActive]}>
-                                                {veh}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </ScrollView>
-                        </View>
-                    )}
-                </View>
+                    </View>
+                )}
             </View>
 
-            {/* Section 2: Odometer & Distance */}
-            <View style={styles.sectionCard}>
-                <View style={styles.sectionHeader}>
-                    <View style={[styles.iconCircle, { backgroundColor: '#F1F5F9' }]}>
-                        <MaterialCommunityIcons name="speedometer" size={18} color="#0F172A" />
+            {/* Section 2: Odometer & Distance (Own Vehicle Only) */}
+            {vehicleSource === 'OWN' && (
+                <View style={styles.sectionCard}>
+                    <View style={styles.sectionHeader}>
+                        <View style={[styles.iconCircle, { backgroundColor: '#F1F5F9' }]}>
+                            <MaterialCommunityIcons name="speedometer" size={18} color="#0F172A" />
+                        </View>
+                        <Text style={styles.sectionTitle}>Odometer Readings (Optional)</Text>
                     </View>
-                    <Text style={styles.sectionTitle}>Odometer Readings (Optional)</Text>
-                </View>
 
-                <View style={styles.odoRow}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>Start Meter (KM) (Optional)</Text>
-                        <TextInput 
-                            placeholderTextColor="#94A3B8" 
-                            style={styles.odoInput} 
-                            placeholder="00000" 
-                            keyboardType="numeric" 
-                            value={startMeter} 
-                            onChangeText={setStartMeter} 
-                        />
+                    <View style={styles.odoRow}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.inputLabel}>Start Meter (KM) (Optional)</Text>
+                            <TextInput 
+                                placeholderTextColor="#94A3B8" 
+                                style={styles.odoInput} 
+                                placeholder="00000" 
+                                keyboardType="numeric" 
+                                value={startMeter} 
+                                onChangeText={setStartMeter} 
+                            />
+                        </View>
+                        <View style={styles.odoDivider} />
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.inputLabel}>End Meter (KM) (Optional)</Text>
+                            <TextInput 
+                                placeholderTextColor="#94A3B8" 
+                                style={styles.odoInput} 
+                                placeholder="00000" 
+                                keyboardType="numeric" 
+                                value={endMeter} 
+                                onChangeText={setEndMeter} 
+                            />
+                        </View>
                     </View>
-                    <View style={styles.odoDivider} />
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>End Meter (KM) (Optional)</Text>
-                        <TextInput 
-                            placeholderTextColor="#94A3B8" 
-                            style={styles.odoInput} 
-                            placeholder="00000" 
-                            keyboardType="numeric" 
-                            value={endMeter} 
-                            onChangeText={setEndMeter} 
-                        />
-                    </View>
-                </View>
 
-                {/* Live Distance Pill */}
-                <View style={styles.distanceBanner}>
-                    <Text style={styles.distanceBannerLabel}>TOTAL TRIP DISTANCE</Text>
-                    <Text style={[styles.distanceBannerVal, calculatedKm < 0 && { color: '#EF4444' }]}>
-                        {calculatedKm > 0 ? `${calculatedKm} KM` : (startMeter || endMeter ? '0 KM' : 'Not Provided')}
-                    </Text>
+                    {/* Live Distance Pill */}
+                    <View style={styles.distanceBanner}>
+                        <Text style={styles.distanceBannerLabel}>TOTAL TRIP DISTANCE</Text>
+                        <Text style={[styles.distanceBannerVal, calculatedKm < 0 && { color: '#EF4444' }]}>
+                            {calculatedKm > 0 ? `${calculatedKm} KM` : (startMeter || endMeter ? '0 KM' : 'Not Provided')}
+                        </Text>
+                    </View>
                 </View>
-            </View>
+            )}
 
             {/* Section 3: Route & Cargo Details */}
             <View style={styles.sectionCard}>
@@ -606,7 +719,9 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                     <View style={[styles.iconCircle, { backgroundColor: '#ECFDF5' }]}>
                         <MaterialCommunityIcons name="map-marker-distance" size={18} color="#059669" />
                     </View>
-                    <Text style={styles.sectionTitle}>Route & Cargo</Text>
+                    <Text style={styles.sectionTitle}>
+                        {isManagerOrAdmin && vehicleSource === 'OTHER' ? "Route, Cargo & Bhada" : "Route & Cargo"}
+                    </Text>
                 </View>
 
                 <View style={styles.routeContainer}>
@@ -615,7 +730,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                         <TextInput 
                             placeholderTextColor="#94A3B8" 
                             style={styles.routeInput} 
-                            placeholder="Origin / Loading Location *" 
+                            placeholder={vehicleSource === 'OTHER' ? "Origin / Loading Location (Optional)" : "Origin / Loading Location *"} 
                             value={origin} 
                             onChangeText={setOrigin} 
                         />
@@ -626,7 +741,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                         <TextInput 
                             placeholderTextColor="#94A3B8" 
                             style={styles.routeInput} 
-                            placeholder="Destination / Unloading Location *" 
+                            placeholder={vehicleSource === 'OTHER' ? "Destination / Unloading Location (Optional)" : "Destination / Unloading Location *"} 
                             value={destination} 
                             onChangeText={setDestination} 
                         />
@@ -634,27 +749,33 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 </View>
 
                 <View style={styles.rowGrid}>
-                    <View style={{ flex: 2 }}>
-                        <Text style={styles.inputLabel}>Material Type *</Text>
+                    <View style={{ flex: isManagerOrAdmin && rateType === 'TRIP' ? 1 : 2 }}>
+                        <Text style={styles.inputLabel}>
+                            Material Type {vehicleSource === 'OTHER' ? '(Optional)' : '*'}
+                        </Text>
                         <TextInput 
                             placeholderTextColor="#94A3B8" 
                             style={styles.textInput} 
-                            placeholder="e.g. Coal, Iron Ore" 
+                            placeholder={vehicleSource === 'OTHER' ? "Material Type (e.g. Coal)" : "e.g. Coal, Iron Ore"} 
                             value={materialType} 
                             onChangeText={setMaterialType} 
                         />
                     </View>
-                    <View style={{ flex: 1.2 }}>
-                        <Text style={styles.inputLabel}>Weight (Tons) *</Text>
-                        <TextInput 
-                            placeholderTextColor="#94A3B8" 
-                            style={styles.textInput} 
-                            placeholder="e.g. 25.4" 
-                            keyboardType="numeric" 
-                            value={weightTons} 
-                            onChangeText={handleWeightChange} 
-                        />
-                    </View>
+                    {(!isManagerOrAdmin || rateType === 'TON') && (
+                        <View style={{ flex: 1.2 }}>
+                            <Text style={styles.inputLabel}>
+                                Weight (Tons) {vehicleSource === 'OTHER' ? '(Optional)' : '*'}
+                            </Text>
+                            <TextInput 
+                                placeholderTextColor="#94A3B8" 
+                                style={styles.textInput} 
+                                placeholder="e.g. 25.4" 
+                                keyboardType="numeric" 
+                                value={weightTons} 
+                                onChangeText={handleWeightChange} 
+                            />
+                        </View>
+                    )}
                 </View>
 
                 {/* Manager / Admin Only: Billing Party & Bhada Entry */}
@@ -1064,72 +1185,74 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                 )}
             </View>
 
-            {/* Section 4: Fuel & Diesel Accounting */}
-            <View style={styles.sectionCard}>
-                <View style={styles.sectionHeader}>
-                    <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
-                        <MaterialCommunityIcons name="gas-station-outline" size={18} color="#D97706" />
+            {/* Section 4: Fuel & Diesel Accounting (Own Vehicle Only) */}
+            {vehicleSource === 'OWN' && (
+                <View style={styles.sectionCard}>
+                    <View style={styles.sectionHeader}>
+                        <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
+                            <MaterialCommunityIcons name="gas-station-outline" size={18} color="#D97706" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.sectionTitle}>Fuel & Diesel Accounting (Optional)</Text>
+                            <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }}>
+                                Auto-syncs diesel expense to Daily Cashflow
+                            </Text>
+                        </View>
                     </View>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.sectionTitle}>Fuel & Diesel Accounting (Optional)</Text>
-                        <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }}>
-                            Auto-syncs diesel expense to Daily Cashflow
-                        </Text>
-                    </View>
-                </View>
 
-                {/* 2 Inputs in Row: Liters & Rate/Liter */}
-                <View style={styles.rowGrid}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>Diesel Liters (Qty)</Text>
-                        <TextInput 
-                            placeholderTextColor="#94A3B8" 
-                            style={styles.textInput} 
-                            placeholder="e.g. 5 L" 
-                            keyboardType="numeric" 
-                            value={dieselLiters} 
-                            onChangeText={handleDieselLitersChange} 
-                        />
+                    {/* 2 Inputs in Row: Liters & Rate/Liter */}
+                    <View style={styles.rowGrid}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.inputLabel}>Diesel Liters (Qty)</Text>
+                            <TextInput 
+                                placeholderTextColor="#94A3B8" 
+                                style={styles.textInput} 
+                                placeholder="e.g. 5 L" 
+                                keyboardType="numeric" 
+                                value={dieselLiters} 
+                                onChangeText={handleDieselLitersChange} 
+                            />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.inputLabel}>Rate / Liter (₹)</Text>
+                            <TextInput 
+                                placeholderTextColor="#94A3B8" 
+                                style={styles.textInput} 
+                                placeholder="e.g. ₹ 101" 
+                                keyboardType="numeric" 
+                                value={dieselRate} 
+                                onChangeText={handleDieselRateChange} 
+                            />
+                        </View>
                     </View>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>Rate / Liter (₹)</Text>
-                        <TextInput 
-                            placeholderTextColor="#94A3B8" 
-                            style={styles.textInput} 
-                            placeholder="e.g. ₹ 101" 
-                            keyboardType="numeric" 
-                            value={dieselRate} 
-                            onChangeText={handleDieselRateChange} 
-                        />
-                    </View>
-                </View>
 
-                {/* Total Diesel Amount (Auto-Calculated) */}
-                <View style={{ marginTop: 10 }}>
-                    <Text style={styles.inputLabel}>Total Diesel Amount (₹)</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1.5, borderColor: '#D97706', paddingHorizontal: 10, height: 46 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '900', color: '#D97706', marginRight: 4 }}>₹</Text>
-                        <TextInput 
-                            placeholderTextColor="#94A3B8" 
-                            style={{ flex: 1, fontSize: 16, fontWeight: '800', color: '#0F172A', paddingVertical: 8 }} 
-                            placeholder="0" 
-                            keyboardType="numeric" 
-                            value={dieselCost} 
-                            onChangeText={handleDieselCostChange} 
-                        />
+                    {/* Total Diesel Amount (Auto-Calculated) */}
+                    <View style={{ marginTop: 10 }}>
+                        <Text style={styles.inputLabel}>Total Diesel Amount (₹)</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1.5, borderColor: '#D97706', paddingHorizontal: 10, height: 46 }}>
+                            <Text style={{ fontSize: 16, fontWeight: '900', color: '#D97706', marginRight: 4 }}>₹</Text>
+                            <TextInput 
+                                placeholderTextColor="#94A3B8" 
+                                style={{ flex: 1, fontSize: 16, fontWeight: '800', color: '#0F172A', paddingVertical: 8 }} 
+                                placeholder="0" 
+                                keyboardType="numeric" 
+                                value={dieselCost} 
+                                onChangeText={handleDieselCostChange} 
+                            />
+                        </View>
                     </View>
-                </View>
 
-                {/* Live Formula Banner */}
-                {parseFloat(dieselLiters) > 0 && (parseFloat(dieselRate) > 0 || parseFloat(dieselCost) > 0) ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', borderRadius: 8, padding: 10, marginTop: 10, borderWidth: 1, borderColor: '#FDE68A', gap: 8 }}>
-                        <MaterialCommunityIcons name="calculator" size={16} color="#D97706" />
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E', flex: 1 }}>
-                            {parseFloat(dieselLiters)} L × ₹{parseFloat(dieselRate) || (parseFloat(dieselCost) / parseFloat(dieselLiters)).toFixed(2)}/L = ₹{(parseFloat(dieselCost) || (parseFloat(dieselLiters) * parseFloat(dieselRate))).toLocaleString('en-IN')} Diesel Expense
-                        </Text>
-                    </View>
-                ) : null}
-            </View>
+                    {/* Live Formula Banner */}
+                    {parseFloat(dieselLiters) > 0 && (parseFloat(dieselRate) > 0 || parseFloat(dieselCost) > 0) ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', borderRadius: 8, padding: 10, marginTop: 10, borderWidth: 1, borderColor: '#FDE68A', gap: 8 }}>
+                            <MaterialCommunityIcons name="calculator" size={16} color="#D97706" />
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E', flex: 1 }}>
+                                {parseFloat(dieselLiters)} L × ₹{parseFloat(dieselRate) || (parseFloat(dieselCost) / parseFloat(dieselLiters)).toFixed(2)}/L = ₹{(parseFloat(dieselCost) || (parseFloat(dieselLiters) * parseFloat(dieselRate))).toLocaleString('en-IN')} Diesel Expense
+                            </Text>
+                        </View>
+                    ) : null}
+                </View>
+            )}
 
             {/* Section 5: Photo Verification Evidence */}
             <View style={styles.sectionCard}>
@@ -1326,6 +1449,67 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     contentContainer: { padding: 12, paddingBottom: 100, flexGrow: 1 },
     
+    sourceToggleRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginBottom: 6,
+    },
+    sourceToggleBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 8,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: '#E2E8F0',
+        backgroundColor: '#FFFFFF',
+    },
+    sourceToggleBtnActive: {
+        borderColor: '#2563EB',
+        backgroundColor: '#EFF6FF',
+    },
+    sourceToggleBtnActiveOther: {
+        borderColor: '#D97706',
+        backgroundColor: '#FFFBEB',
+    },
+    sourceToggleText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#64748B',
+    },
+    sourceToggleTextActive: {
+        color: '#2563EB',
+        fontWeight: '800',
+    },
+    sourceToggleTextActiveOther: {
+        color: '#B45309',
+        fontWeight: '800',
+    },
+    externalBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFBEB',
+        borderRadius: 10,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: '#FDE68A',
+        gap: 10,
+        marginTop: 4,
+    },
+    externalBannerTitle: {
+        fontSize: 13,
+        fontWeight: '800',
+        color: '#92400E',
+    },
+    externalBannerSub: {
+        fontSize: 12,
+        color: '#B45309',
+        marginTop: 2,
+        lineHeight: 16,
+    },
+
     autoAssignedBadge: {
         flexDirection: 'row',
         alignItems: 'center',

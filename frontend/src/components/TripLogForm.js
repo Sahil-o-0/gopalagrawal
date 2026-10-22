@@ -8,7 +8,13 @@ import { useBackgroundSync } from '../context/useBackgroundSync';
 import { API_BASE_URL } from '../config';
 import { formatLocalDate } from '../utils/dateUtils';
 
-export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess = null }) {
+export default function TripLogForm({ 
+    isAdmin = false, 
+    staffList = [], 
+    onSuccess = null,
+    initialClientName = '',
+    initialClientId = null
+}) {
     const { userToken, user } = useContext(AuthContext);
     const { isOnline, pendingCount, syncPendingData } = useBackgroundSync();
     const [isLoading, setIsLoading] = useState(false);
@@ -30,7 +36,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const [vehicleSource, setVehicleSource] = useState('OWN'); // 'OWN' | 'OTHER' (Sent by Someone Else)
     const [vehicleNumber, setVehicleNumber] = useState(assignedVehiclesList[0] || user?.assigned_vehicle || '');
     const [availableVehicles, setAvailableVehicles] = useState([]);
-    const [clientName, setClientName] = useState('');
+    const [clientName, setClientName] = useState(initialClientName || '');
     const [clientsList, setClientsList] = useState([]);
     const [showClientDropdown, setShowClientDropdown] = useState(false);
     const [isClientPickerVisible, setIsClientPickerVisible] = useState(false);
@@ -56,6 +62,13 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const [unloadingPhoto, setUnloadingPhoto] = useState(null);
     const [odometerPhoto, setOdometerPhoto] = useState(null);
     const [receiptPhoto, setReceiptPhoto] = useState(null);
+
+    // Synchronize initialClientName when changed
+    useEffect(() => {
+        if (initialClientName) {
+            setClientName(initialClientName);
+        }
+    }, [initialClientName]);
 
     // Fetch fleet vehicles and clients in parallel
     useEffect(() => {
@@ -239,8 +252,15 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
 
             // 2. Add to Client Khata if targetParty is provided
             if (targetParty && targetParty.trim()) {
-                let client = clientsList.find(c => c.name.toLowerCase() === targetParty.trim().toLowerCase());
-                if (client && client.id) {
+                let client = null;
+                if (initialClientId) {
+                    client = clientsList.find(c => c.id === initialClientId);
+                }
+                if (!client) {
+                    client = clientsList.find(c => c.name.toLowerCase() === targetParty.trim().toLowerCase());
+                }
+                const targetClientId = client?.id || initialClientId;
+                if (targetClientId) {
                     await fetch(`${API_BASE_URL}/clients/transactions`, {
                         method: 'POST',
                         headers: {
@@ -248,7 +268,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
                             'Authorization': `Bearer ${userToken}`
                         },
                         body: JSON.stringify({
-                            client_id: client.id,
+                            client_id: targetClientId,
                             txn_type: isIncome ? 'BILLED' : 'RECEIVED',
                             amount: finalBhada,
                             date: todayStr,
@@ -426,7 +446,7 @@ export default function TripLogForm({ isAdmin = false, staffList = [], onSuccess
     const clearForm = () => {
         setVehicleSource('OWN');
         setVehicleNumber(assignedVehiclesList[0] || user?.assigned_vehicle || ''); 
-        setClientName(''); setShowClientDropdown(false); setIsClientPickerVisible(false); setClientSearchModalText('');
+        setClientName(initialClientName || ''); setShowClientDropdown(false); setIsClientPickerVisible(false); setClientSearchModalText('');
         setOrigin(''); setDestination(''); setMaterialType(''); setWeightTons('');
         setStartMeter(''); setEndMeter(''); setDieselLiters(''); setDieselRate(''); setDieselCost('');
         setBhada(''); setAdvanceFreight('');

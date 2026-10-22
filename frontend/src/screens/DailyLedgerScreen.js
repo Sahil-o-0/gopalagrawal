@@ -17,6 +17,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import DraggableCardList from '../components/DraggableCardList';
 import { formatLocalDate, formatDisplayDate, parseLocalDate } from '../utils/dateUtils';
+import TripLogForm from '../components/TripLogForm';
 
 export default function DailyLedgerScreen({ navigation }) {
     const { userToken, user } = useContext(AuthContext);
@@ -36,6 +37,17 @@ export default function DailyLedgerScreen({ navigation }) {
 
     const clientScrollViewRef = useRef(null);
     const clientScrollYRef = useRef(0);
+
+    // Client Khata -> Log New Trip Modal State
+    const [isTripModalVisible, setIsTripModalVisible] = useState(false);
+    const [tripModalClient, setTripModalClient] = useState(null);
+
+    const openTripModalForClient = (client) => {
+        setTripModalClient(client || null);
+        setIsClientStatementModalVisible(false);
+        setIsClientTxnModalVisible(false);
+        setIsTripModalVisible(true);
+    };
 
     // Add Client Modal State
     const [isAddClientModalVisible, setIsAddClientModalVisible] = useState(false);
@@ -1901,6 +1913,15 @@ export default function DailyLedgerScreen({ navigation }) {
                                             </TouchableOpacity>
 
                                             <TouchableOpacity 
+                                                style={styles.clientTripBtn}
+                                                onPress={() => openTripModalForClient(c)}
+                                                activeOpacity={0.8}
+                                            >
+                                                <MaterialCommunityIcons name="truck-fast" size={14} color="#059669" />
+                                                <Text style={styles.clientTripBtnText}>+ Trip</Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity 
                                                 style={styles.clientEntryBtn}
                                                 onPress={() => {
                                                     setSelectedClientForTxn(c);
@@ -2416,6 +2437,24 @@ export default function DailyLedgerScreen({ navigation }) {
                         </View>
 
                         <ScrollView showsVerticalScrollIndicator={false}>
+                            {/* Quick Shortcut to Log Trip for Client */}
+                            <TouchableOpacity 
+                                style={styles.txnModalTripBanner}
+                                onPress={() => openTripModalForClient(selectedClientForTxn)}
+                                activeOpacity={0.8}
+                            >
+                                <View style={styles.txnModalTripBannerIconBox}>
+                                    <MaterialCommunityIcons name="truck-delivery-outline" size={18} color="#059669" />
+                                </View>
+                                <View style={{ flex: 1, marginLeft: 10 }}>
+                                    <Text style={styles.txnModalTripBannerTitle}>
+                                        Dispatching for {selectedClientForTxn?.name || 'this client'}?
+                                    </Text>
+                                    <Text style={styles.txnModalTripBannerSub}>Tap to Log New Trip & auto-sync Bhada</Text>
+                                </View>
+                                <MaterialCommunityIcons name="chevron-right" size={20} color="#059669" />
+                            </TouchableOpacity>
+
                             {/* Client Dropdown Selector (if not editing) */}
                             {!editingClientTxn && (
                                 <View style={styles.formGroup}>
@@ -2858,21 +2897,32 @@ export default function DailyLedgerScreen({ navigation }) {
                                         )}
                                     </ScrollView>
 
-                                    {/* Action Button */}
-                                    <TouchableOpacity
-                                        style={styles.passbookAddTxnBtn}
-                                        onPress={() => {
-                                            setSelectedClientForTxn(selectedClientForStatement);
-                                            setEditingClientTxn(null);
-                                            setClientTxnAmount('');
-                                            setClientTxnNotes('');
-                                            setIsClientTxnModalVisible(true);
-                                        }}
-                                        activeOpacity={0.8}
-                                    >
-                                        <MaterialCommunityIcons name="plus-circle" size={18} color="#FFFFFF" />
-                                        <Text style={styles.passbookAddTxnBtnText}>Record Transaction (Bill / Jama)</Text>
-                                    </TouchableOpacity>
+                                    {/* Action Buttons: Log Trip & Record Txn */}
+                                    <View style={styles.passbookActionFooterRow}>
+                                        <TouchableOpacity
+                                            style={styles.passbookLogTripBtn}
+                                            onPress={() => openTripModalForClient(selectedClientForStatement)}
+                                            activeOpacity={0.8}
+                                        >
+                                            <MaterialCommunityIcons name="truck-fast" size={17} color="#FFFFFF" />
+                                            <Text style={styles.passbookLogTripBtnText}>+ Log Trip</Text>
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={styles.passbookAddTxnBtn}
+                                            onPress={() => {
+                                                setSelectedClientForTxn(selectedClientForStatement);
+                                                setEditingClientTxn(null);
+                                                setClientTxnAmount('');
+                                                setClientTxnNotes('');
+                                                setIsClientTxnModalVisible(true);
+                                            }}
+                                            activeOpacity={0.8}
+                                        >
+                                            <MaterialCommunityIcons name="plus-circle" size={17} color="#FFFFFF" />
+                                            <Text style={styles.passbookAddTxnBtnText}>Record Txn</Text>
+                                        </TouchableOpacity>
+                                    </View>
                                 </View>
                             );
                         })() : null}
@@ -3488,6 +3538,61 @@ export default function DailyLedgerScreen({ navigation }) {
                             <Text style={styles.saveBtnText}>Save & Credit Daily Ledger</Text>
                         </TouchableOpacity>
                     </View>
+                </View>
+            </Modal>
+
+            {/* Client Khata - Log New Trip Modal */}
+            <Modal 
+                visible={isTripModalVisible} 
+                animationType="slide" 
+                transparent={false}
+                onRequestClose={() => setIsTripModalVisible(false)}
+            >
+                <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: insets.top }}>
+                    <View style={styles.tripModalHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 8 }}>
+                            <TouchableOpacity 
+                                onPress={() => setIsTripModalVisible(false)} 
+                                style={styles.tripModalBackBtn}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialCommunityIcons name="arrow-left" size={22} color="#0F172A" />
+                            </TouchableOpacity>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.tripModalHeaderTitle} numberOfLines={1}>
+                                    Log New Trip
+                                </Text>
+                                {tripModalClient?.name ? (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                        <MaterialCommunityIcons name="account-check" size={13} color="#2563EB" />
+                                        <Text style={styles.tripModalHeaderClient} numberOfLines={1}>
+                                            Client Khata: {tripModalClient.name}
+                                        </Text>
+                                    </View>
+                                ) : null}
+                            </View>
+                        </View>
+                        <TouchableOpacity 
+                            onPress={() => setIsTripModalVisible(false)} 
+                            style={styles.tripModalCloseBtn}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialCommunityIcons name="close" size={20} color="#64748B" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <TripLogForm 
+                        isAdmin={true}
+                        staffList={staffList}
+                        initialClientName={tripModalClient?.name || ''}
+                        initialClientId={tripModalClient?.id || null}
+                        onSuccess={() => {
+                            setIsTripModalVisible(false);
+                            fetchLedger();
+                            loadClientKhata();
+                            fetchFreightLedger();
+                        }}
+                    />
                 </View>
             </Modal>
         </View>
@@ -4197,37 +4302,62 @@ const styles = StyleSheet.create({
     },
     clientActionRow: {
         flexDirection: 'row',
-        gap: 10
+        alignItems: 'center',
+        gap: 6,
+        flexWrap: 'wrap'
     },
     clientPassbookBtn: {
         flex: 1,
+        minWidth: 70,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 6,
+        gap: 4,
         backgroundColor: '#EFF6FF',
-        paddingVertical: 10,
+        paddingVertical: 9,
+        paddingHorizontal: 4,
         borderRadius: 10,
         borderWidth: 1,
         borderColor: '#DBEAFE'
     },
     clientPassbookBtnText: {
-        fontSize: 12,
+        fontSize: 11.5,
         fontWeight: '700',
         color: '#2563EB'
     },
-    clientEntryBtn: {
+    clientTripBtn: {
         flex: 1,
+        minWidth: 65,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 6,
+        gap: 4,
+        backgroundColor: '#ECFDF5',
+        paddingVertical: 9,
+        paddingHorizontal: 4,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#A7F3D0'
+    },
+    clientTripBtnText: {
+        fontSize: 11.5,
+        fontWeight: '700',
+        color: '#059669'
+    },
+    clientEntryBtn: {
+        flex: 1,
+        minWidth: 65,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
         backgroundColor: '#0F172A',
-        paddingVertical: 10,
+        paddingVertical: 9,
+        paddingHorizontal: 4,
         borderRadius: 10
     },
     clientEntryBtnText: {
-        fontSize: 12,
+        fontSize: 11.5,
         fontWeight: '700',
         color: '#FFFFFF'
     },
@@ -4514,16 +4644,16 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 4,
+        gap: 3,
         backgroundColor: '#FEF2F2',
         borderWidth: 1,
         borderColor: '#FECACA',
-        paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingHorizontal: 8,
+        paddingVertical: 9,
         borderRadius: 10,
     },
     clientPdfBtnText: {
-        fontSize: 12,
+        fontSize: 11.5,
         fontWeight: '800',
         color: '#DC2626',
     },
@@ -5294,15 +5424,41 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    passbookAddTxnBtn: {
-        backgroundColor: '#0F172A',
+    passbookActionFooterRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginTop: 10,
+    },
+    passbookLogTripBtn: {
+        flex: 1,
+        backgroundColor: '#059669',
         borderRadius: 12,
-        paddingVertical: 13,
+        paddingVertical: 12,
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 8,
         flexDirection: 'row',
-        gap: 8,
+        gap: 6,
+        shadowColor: '#059669',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    passbookLogTripBtnText: {
+        color: '#FFFFFF',
+        fontWeight: '800',
+        fontSize: 13,
+    },
+    passbookAddTxnBtn: {
+        flex: 1,
+        backgroundColor: '#0F172A',
+        borderRadius: 12,
+        paddingVertical: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row',
+        gap: 6,
         shadowColor: '#0F172A',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.15,
@@ -5312,6 +5468,70 @@ const styles = StyleSheet.create({
     passbookAddTxnBtnText: {
         color: '#FFFFFF',
         fontWeight: '800',
-        fontSize: 13.5,
+        fontSize: 13,
+    },
+
+    /* Client Txn Modal - Trip Banner */
+    txnModalTripBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#ECFDF5',
+        borderWidth: 1.5,
+        borderColor: '#A7F3D0',
+        borderRadius: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        marginBottom: 14,
+    },
+    txnModalTripBannerIconBox: {
+        width: 34,
+        height: 34,
+        borderRadius: 9,
+        backgroundColor: '#D1FAE5',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    txnModalTripBannerTitle: {
+        fontSize: 13,
+        fontWeight: '800',
+        color: '#065F46',
+    },
+    txnModalTripBannerSub: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: '#047857',
+        marginTop: 1,
+    },
+
+    /* Client Khata - Log New Trip Modal Header */
+    tripModalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        backgroundColor: '#FFFFFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#E2E8F0',
+    },
+    tripModalBackBtn: {
+        padding: 6,
+        marginLeft: -6,
+        borderRadius: 8,
+    },
+    tripModalHeaderTitle: {
+        fontSize: 16,
+        fontWeight: '900',
+        color: '#0F172A',
+    },
+    tripModalHeaderClient: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#2563EB',
+    },
+    tripModalCloseBtn: {
+        padding: 6,
+        borderRadius: 8,
+        backgroundColor: '#F1F5F9',
     }
 });

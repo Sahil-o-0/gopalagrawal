@@ -150,7 +150,7 @@ export default function LoginScreen() {
   };
 
   const insets = useSafeAreaInsets();
-  const topPadding = Math.max(insets.top, Platform.OS === 'android' ? 36 : 20);
+  const topPadding = Math.max(insets.top, Platform.OS === "android" ? 20 : 16);
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
@@ -398,7 +398,7 @@ export default function LoginScreen() {
               style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}
               activeOpacity={0.7}
             >
-              <Text style={styles.centerVersionTag}>App Version: v6.6</Text>
+              <Text style={styles.centerVersionTag}>App Version: v6.7</Text>
               <MaterialCommunityIcons name="refresh" size={12} color="#94A3B8" />
             </TouchableOpacity>
           </View>
@@ -458,18 +458,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  scrollContent: {
-    flexGrow: 1,
-    padding: 24,
-    justifyContent: 'center',
-  },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 48 },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 20,
   },
   iconContainer: {
-    width: 88,
-    height: 88,
+    width: 72,
+    height: 72,
     backgroundColor: '#023c69',
     borderRadius: 24,
     justifyContent: 'center',
@@ -483,12 +479,12 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   logoImage: {
-    width: 88,
-    height: 88,
+    width: 72,
+    height: 72,
     borderRadius: 24,
   },
   brandTitle: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: '800', // Manrope ExtraBold
     color: '#091426',
     letterSpacing: -0.5,
@@ -503,7 +499,7 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    padding: 32,
+    padding: 20,
     borderWidth: 1,
     borderColor: 'rgba(197, 198, 205, 0.2)',
     // Editorial shadow
@@ -514,7 +510,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   cardHeader: {
-    marginBottom: 32,
+    marginBottom: 20,
   },
   welcomeTitle: {
     fontSize: 20,

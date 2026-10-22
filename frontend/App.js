@@ -15,6 +15,59 @@ Text.defaultProps.maxFontSizeMultiplier = 1.15;
 if (TextInput.defaultProps == null) TextInput.defaultProps = {};
 TextInput.defaultProps.maxFontSizeMultiplier = 1.15;
 
+// React 19 / Modern RN JSX Runtime interceptor for universal font capping
+try {
+  const JsxRuntime = require('react/jsx-runtime');
+  const origJsx = JsxRuntime.jsx;
+  const origJsxs = JsxRuntime.jsxs;
+
+  const wrapJsx = (orig) => {
+    if (!orig) return orig;
+    return function (type, config, maybeKey) {
+      if (
+        config &&
+        (type === Text ||
+          type === TextInput ||
+          type?.displayName === 'Text' ||
+          type?.displayName === 'TextInput' ||
+          type?.name === 'Text' ||
+          type?.name === 'TextInput')
+      ) {
+        if (config.maxFontSizeMultiplier === undefined) {
+          config = { ...config, maxFontSizeMultiplier: 1.15 };
+        }
+      }
+      return orig(type, config, maybeKey);
+    };
+  };
+
+  if (origJsx) JsxRuntime.jsx = wrapJsx(origJsx);
+  if (origJsxs) JsxRuntime.jsxs = wrapJsx(origJsxs);
+
+  const JsxDevRuntime = require('react/jsx-dev-runtime');
+  if (JsxDevRuntime && JsxDevRuntime.jsxDEV) {
+    const origJsxDev = JsxDevRuntime.jsxDEV;
+    JsxDevRuntime.jsxDEV = function (type, props, key, isStaticChildren, source, self) {
+      if (
+        props &&
+        (type === Text ||
+          type === TextInput ||
+          type?.displayName === 'Text' ||
+          type?.displayName === 'TextInput' ||
+          type?.name === 'Text' ||
+          type?.name === 'TextInput')
+      ) {
+        if (props.maxFontSizeMultiplier === undefined) {
+          props = { ...props, maxFontSizeMultiplier: 1.15 };
+        }
+      }
+      return origJsxDev(type, props, key, isStaticChildren, source, self);
+    };
+  }
+} catch (e) {
+  // Ignore in environments where jsx-runtime isn't configurable
+}
+
 export default function App() {
   useEffect(() => {
     async function checkForOTAUpdate() {

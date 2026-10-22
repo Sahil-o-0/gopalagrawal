@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect } from 'react';
+﻿import React, { createContext, useState, useEffect } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config';
@@ -90,7 +90,14 @@ export const AuthProvider = ({ children }) => {
         }).catch(() => {});
         return { success: true, requireOtp: false };
       } else if (!response.ok) {
-        const msg = data?.detail || `Server error (${response.status}). Please try again.`;
+        let msg = `Server error (${response.status}). Please try again.`;
+        if (typeof data?.detail === 'string') {
+          msg = data.detail;
+        } else if (Array.isArray(data?.detail)) {
+          msg = data.detail.map(d => d.msg || JSON.stringify(d)).join('\n');
+        } else if (data?.message) {
+          msg = String(data.message);
+        }
         Alert.alert('Login Failed', msg);
         return { success: false, error: msg };
       } else {

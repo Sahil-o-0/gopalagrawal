@@ -1671,6 +1671,8 @@ const styles = StyleSheet.create({
     odoDivider: { width: 1, height: 36, backgroundColor: '#E2E8F0', marginTop: 16 },
 
     distanceBanner: {
+        flexWrap: 'wrap',
+        gap: 6,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -1692,7 +1694,8 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#E2E8F0',
         paddingHorizontal: 12,
-        height: 44,
+        minHeight: 46,
+        paddingVertical: 4,
         gap: 10
     },
     routeDot: { width: 8, height: 8, borderRadius: 4 },
@@ -1769,7 +1772,8 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#E2E8F0',
         paddingHorizontal: 12,
-        height: 44,
+        minHeight: 46,
+        paddingVertical: 4,
     },
     clientTextInput: {
         flex: 1,

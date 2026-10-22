@@ -30,8 +30,8 @@ export default function DraggableDashboardGrid({
   const gridWidth = windowWidth - (PADDING_HORIZONTAL * 2);
   const itemWidth = Math.floor((gridWidth - GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS);
   
-  // Compact ergonomic card height
-  const itemHeight = Math.max(96, Math.floor(itemWidth * 0.74));
+  // Ergonomic card height with ample space for multi-line titles and large fonts
+  const itemHeight = Math.max(106, Math.floor(itemWidth * 0.78));
 
   const [orderedItems, setOrderedItems] = useState([]);
   const [activeDragId, setActiveDragId] = useState(null);
@@ -545,11 +545,11 @@ export default function DraggableDashboardGrid({
                 <View style={styles.cardBody}>
                   <Text
                     style={[styles.cardTitle, { color: item.accent || '#1E293B' }]}
-                    numberOfLines={1}
+                    numberOfLines={2}
                   >
                     {item.title}
                   </Text>
-                  <Text style={styles.cardSubtitle} numberOfLines={1}>
+                  <Text style={styles.cardSubtitle} numberOfLines={2}>
                     {item.subtitle}
                   </Text>
                 </View>
@@ -659,16 +659,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardTitle: {
-    fontSize: 12.5,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: -0.2,
-    lineHeight: 16,
   },
   cardSubtitle: {
     fontSize: 9.5,
     color: '#64748B',
-    marginTop: 1,
-    lineHeight: 12,
+    marginTop: 2,
   },
   bottomAccentBar: {
     height: 2.5,

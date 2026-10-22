@@ -225,7 +225,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#091426',
-    maxWidth: 130,
+    maxWidth: 165,
+    flexShrink: 1,
   },
 
   // Card Trigger (Default)

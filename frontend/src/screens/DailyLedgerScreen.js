@@ -3647,7 +3647,9 @@ const styles = StyleSheet.create({
         fontSize: 11, 
         fontWeight: '800', 
         textTransform: 'uppercase', 
-        letterSpacing: 0.5 
+        letterSpacing: 0.5,
+        flex: 1,
+        marginRight: 4
     },
     summaryValue: { 
         fontSize: 20, 

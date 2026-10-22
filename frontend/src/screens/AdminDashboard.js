@@ -1221,11 +1221,13 @@ export default function AdminDashboard({ navigation, route }) {
                    {u.profile_photo_url && typeof u.profile_photo_url === 'string' && u.profile_photo_url.trim().length > 0 ? (
                      <Image 
                        source={{ uri: u.profile_photo_url }} 
-                       style={{ width: 48, height: 48, borderRadius: 24, marginRight: 12, backgroundColor: '#E2E8F0', borderWidth: 1.5, borderColor: '#CBD5E1', marginTop: 2 }} 
+                       style={{ minWidth: 44,
+    flexShrink: 0, height: 48, borderRadius: 24, marginRight: 12, backgroundColor: '#E2E8F0', borderWidth: 1.5, borderColor: '#CBD5E1', marginTop: 2 }} 
                        resizeMode="cover"
                      />
                    ) : (
-                     <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: u.role === 'MANAGER' ? '#DBEAFE' : '#D1FAE5', justifyContent: 'center', alignItems: 'center', marginRight: 12, borderWidth: 1.5, borderColor: u.role === 'MANAGER' ? '#BFDBFE' : '#A7F3D0', marginTop: 2 }}>
+                     <View style={{ minWidth: 44,
+    flexShrink: 0, height: 48, borderRadius: 24, backgroundColor: u.role === 'MANAGER' ? '#DBEAFE' : '#D1FAE5', justifyContent: 'center', alignItems: 'center', marginRight: 12, borderWidth: 1.5, borderColor: u.role === 'MANAGER' ? '#BFDBFE' : '#A7F3D0', marginTop: 2 }}>
                        <Text style={{ fontSize: 18 }}>{u.role === 'MANAGER' ? '👔' : '👤'}</Text>
                      </View>
                    )}
@@ -2733,7 +2735,7 @@ const styles = StyleSheet.create({
   emiHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20 },
   emiHeaderLabel: { fontSize: 10, fontWeight: '800', color: '#6B7280', letterSpacing: 2, textTransform: 'uppercase' },
   emiHeaderTitle: { fontSize: 24, fontWeight: '900', color: '#111827' },
-  emiAddBtn: { backgroundColor: '#111827', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
+  emiAddBtn: { backgroundColor: '#111827', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 6 },
   emiAddBtnText: { color: 'white', fontWeight: 'bold' },
   emiMetricsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
   emiMetricCard: { flex: 1, backgroundColor: 'white', padding: 16, borderRadius: 12, borderLeftWidth: 4, elevation: 2 },
@@ -3012,7 +3014,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#64748B',
     textTransform: 'uppercase',
-    width: 48,
+    minWidth: 44,
+    flexShrink: 0,
   },
   tripRouteValue: {
     fontSize: 13,

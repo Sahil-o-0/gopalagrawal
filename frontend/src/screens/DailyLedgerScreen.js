@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, ScrollView, ActivityIndicator, Modal, StatusBar, Platform, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, ScrollView, ActivityIndicator, Modal, StatusBar, Platform, RefreshControl, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -81,6 +81,13 @@ export default function DailyLedgerScreen({ navigation }) {
     const [txnAssignedDriverId, setTxnAssignedDriverId] = useState('');
     const [txnCreateDispatch, setTxnCreateDispatch] = useState(true);
     const [availableVehicles, setAvailableVehicles] = useState([]);
+    // Direct Sale inside Purchase form
+    const [txnIsDirectSale, setTxnIsDirectSale] = useState(true);
+    const [selectedBuyerClient, setSelectedBuyerClient] = useState(null);
+    const [isBuyerPickerVisible, setIsBuyerPickerVisible] = useState(false);
+    const [buyerSearchText, setBuyerSearchText] = useState('');
+    const [txnSaleRate, setTxnSaleRate] = useState('');
+    const [txnSaleAmount, setTxnSaleAmount] = useState('');
     const [clientTxnAmount, setClientTxnAmount] = useState('');
     const [clientTxnDate, setClientTxnDate] = useState(new Date());
     const [showClientTxnDatePicker, setShowClientTxnDatePicker] = useState(false);
@@ -403,6 +410,22 @@ export default function DailyLedgerScreen({ navigation }) {
 
         // 1. PURCHASE or SALE Entry Flow
         if (clientTxnType === 'PURCHASE' || clientTxnType === 'SALE') {
+            const isPurchaseTrade = clientTxnType === 'PURCHASE';
+            const isDirectSaleActive = isPurchaseTrade && txnIsDirectSale;
+
+            // Direct Sale Validation in Purchase Form
+            if (isDirectSaleActive) {
+                if (!selectedBuyerClient) {
+                    Alert.alert('Buyer Required', 'Please select a Buyer Client (whom you are selling to), or turn off "Direct Sale to Client".');
+                    return;
+                }
+                const sAmt = parseFloat(txnSaleAmount) || ((parseFloat(txnQuantity) || 0) * (parseFloat(txnSaleRate) || 0));
+                if (sAmt <= 0) {
+                    Alert.alert('Sale Rate Required', 'Please enter a valid Sale Rate or Billing Amount for the buyer.');
+                    return;
+                }
+            }
+
             const isSale = clientTxnType === 'SALE';
             const isOwnVeh = txnVehicleSource === 'OWN';
             const effVeh = (isOwnVeh ? txnVehicleNumber : (txnVehicleNumber.trim() || 'OUTSIDE VEHICLE')).toUpperCase();
@@ -413,9 +436,9 @@ export default function DailyLedgerScreen({ navigation }) {
                 ? `${txnQuantity} Trips @ ₹${txnRate}/Trip`
                 : `${txnQuantity} Hrs @ ₹${txnRate}/Hr (₹${(parseFloat(txnRate || 0) / 60).toFixed(2)}/min)`;
 
-            const notesSummary = `${isSale ? 'Sale' : 'Purchase'}: ${txnMaterialType || 'Material'} [${rateSummary}] - ${effVeh}${txnTransporterName ? ` (Transporter: ${txnTransporterName})` : ''}${clientTxnNotes ? ' • ' + clientTxnNotes : ''}`;
+            // --- A. SAVE PURCHASE ENTRY (Client 1 / Supplier) ---
+            const notesSummary = `${isSale ? 'Sale' : 'Purchase'}: ${txnMaterialType || 'Material'} [${rateSummary}] - ${effVeh}${txnTransporterName ? ` (Transporter: ${txnTransporterName})` : ''}${isDirectSaleActive ? ` (Direct Sale to: ${selectedBuyerClient.name})` : ''}${clientTxnNotes ? ' • ' + clientTxnNotes : ''}`;
 
-            // Save to Client Khata (/clients/transactions)
             try {
                 const res = await fetch(`${API_BASE_URL}/clients/transactions`, {
                     method: 'POST',
@@ -439,7 +462,7 @@ export default function DailyLedgerScreen({ navigation }) {
                 return;
             }
 
-            // Save to Daily Ledger (/workforce/daily-ledger)
+            // Save Client 1 transaction to Daily Ledger
             try {
                 await fetch(`${API_BASE_URL}/workforce/daily-ledger`, {
                     method: 'POST',
@@ -457,6 +480,53 @@ export default function DailyLedgerScreen({ navigation }) {
                 console.log('Daily Ledger notice:', e);
             }
 
+            // --- B. SAVE DIRECT SALE ENTRY (Client 2 / Buyer) IF ACTIVE ---
+            let finalSaleAmt = 0;
+            if (isDirectSaleActive && selectedBuyerClient) {
+                finalSaleAmt = parseFloat(txnSaleAmount) || ((parseFloat(txnQuantity) || 0) * (parseFloat(txnSaleRate) || 0));
+                const saleRateSummary = txnRateType === 'TON'
+                    ? `${txnQuantity}T @ ₹${txnSaleRate}/T`
+                    : txnRateType === 'TRIP'
+                    ? `${txnQuantity} Trips @ ₹${txnSaleRate}/Trip`
+                    : `${txnQuantity} Hrs @ ₹${txnSaleRate}/Hr`;
+
+                // 1. Save to Buyer Khata
+                try {
+                    await fetch(`${API_BASE_URL}/clients/transactions`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+                        body: JSON.stringify({
+                            client_id: selectedBuyerClient.id,
+                            txn_type: 'SALE',
+                            amount: finalSaleAmt,
+                            date: dateStr,
+                            payment_mode: 'CREDIT',
+                            notes: `Sale: ${txnMaterialType || 'Material'} [${saleRateSummary}] - ${effVeh} (Purchased from: ${selectedClientForTxn.name})${clientTxnNotes ? ' • ' + clientTxnNotes : ''}`
+                        })
+                    });
+                } catch (sErr) {
+                    console.log('Buyer Khata notice:', sErr);
+                }
+
+                // 2. Save Buyer Sale to Daily Ledger
+                try {
+                    await fetch(`${API_BASE_URL}/workforce/daily-ledger`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+                        body: JSON.stringify({
+                            transaction_type: 'INCOME',
+                            category: 'MATERIAL_SALE',
+                            amount: finalSaleAmt,
+                            description: `Material Sale: ${selectedBuyerClient.name} (${txnMaterialType || 'Cargo'}) [${saleRateSummary}] - ${effVeh}`,
+                            date: dateStr,
+                            site_id: selectedSite?.id || 1
+                        })
+                    });
+                } catch (sdlErr) {
+                    console.log('Buyer Daily Ledger notice:', sdlErr);
+                }
+            }
+
             // Outside Vehicle Freight Expense (if applicable)
             const outsideFreight = parseFloat(txnOutsideBhada) || 0;
             if (!isOwnVeh && outsideFreight > 0) {
@@ -468,7 +538,7 @@ export default function DailyLedgerScreen({ navigation }) {
                             transaction_type: 'EXPENSE',
                             category: 'TRIP_EXPENSE',
                             amount: outsideFreight,
-                            description: `Outside Freight: ${effVeh} (${txnTransporterName || 'Transporter'}) for ${selectedClientForTxn.name} ${isSale ? 'Sale' : 'Purchase'}`,
+                            description: `Outside Freight: ${effVeh} (${txnTransporterName || 'Transporter'}) for ${selectedClientForTxn.name} trade`,
                             date: dateStr,
                             site_id: selectedSite?.id || 1
                         })
@@ -483,6 +553,10 @@ export default function DailyLedgerScreen({ navigation }) {
             if (isOwnVeh && txnCreateDispatch) {
                 try {
                     const totalMinutesVal = txnRateType === 'HOURLY' ? (parseFloat(txnQuantity) || 0) * 60 : 0;
+                    const dispatchTargetClient = isDirectSaleActive && selectedBuyerClient ? selectedBuyerClient : selectedClientForTxn;
+                    const dispatchOrigin = isDirectSaleActive ? selectedClientForTxn.name : (isSale ? 'Site' : selectedClientForTxn.name);
+                    const dispatchDestination = isDirectSaleActive && selectedBuyerClient ? selectedBuyerClient.name : (isSale ? selectedClientForTxn.name : 'Site');
+
                     const dispatchRes = await fetch(`${API_BASE_URL}/trips/dispatch`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
@@ -490,18 +564,20 @@ export default function DailyLedgerScreen({ navigation }) {
                             vehicle_number: effVeh,
                             material_type: txnMaterialType || 'General Cargo',
                             weight_tons: parseFloat(txnQuantity) || 1.0,
-                            rate: parseFloat(txnRate) || 0.0,
+                            rate: isDirectSaleActive ? (parseFloat(txnSaleRate) || 0.0) : (parseFloat(txnRate) || 0.0),
                             rate_type: txnRateType,
                             hourly_rate: txnRateType === 'HOURLY' ? parseFloat(txnRate) || 0.0 : 0.0,
                             total_minutes: totalMinutesVal,
-                            bhada: amt,
+                            bhada: isDirectSaleActive ? finalSaleAmt : amt,
                             staff_id: txnAssignedDriverId ? parseInt(txnAssignedDriverId) : null,
-                            client_id: selectedClientForTxn.id,
-                            client_name: selectedClientForTxn.name,
-                            trade_type: isSale ? 'SALE' : 'PURCHASE',
-                            origin: isSale ? 'Site' : selectedClientForTxn.name,
-                            destination: isSale ? selectedClientForTxn.name : 'Site',
-                            freight_notes: `${isSale ? 'Sale to' : 'Purchase from'} ${selectedClientForTxn.name} (${txnMaterialType || 'Cargo'})`
+                            client_id: dispatchTargetClient.id,
+                            client_name: dispatchTargetClient.name,
+                            trade_type: 'SALE',
+                            origin: dispatchOrigin,
+                            destination: dispatchDestination,
+                            freight_notes: isDirectSaleActive && selectedBuyerClient
+                                ? `Direct Trade: ${selectedClientForTxn.name} -> ${selectedBuyerClient.name} (${txnMaterialType || 'Cargo'})`
+                                : `${isSale ? 'Sale to' : 'Purchase from'} ${selectedClientForTxn.name} (${txnMaterialType || 'Cargo'})`
                         })
                     });
                     if (dispatchRes.ok) {
@@ -513,13 +589,26 @@ export default function DailyLedgerScreen({ navigation }) {
                 }
             }
 
-            Alert.alert(
-                isSale ? "Sale Recorded" : "Purchase Recorded",
-                `${isSale ? 'Sale' : 'Purchase'} of ₹${amt.toLocaleString('en-IN')} saved to ${selectedClientForTxn.name}'s Khata & Daily Ledger.` + 
-                (dispatchId ? `\n\n🚀 Dispatch Slip #${dispatchId} sent to Driver for ${effVeh}. Driver will complete odometer & photos from app.` : '')
-            );
+            if (isDirectSaleActive && selectedBuyerClient) {
+                Alert.alert(
+                    "Trade Deal Recorded! 🤝",
+                    `✅ Purchase: ₹${amt.toLocaleString('en-IN')} added to ${selectedClientForTxn.name}'s Khata (Dena Hai)\n` +
+                    `✅ Sale: ₹${finalSaleAmt.toLocaleString('en-IN')} added to ${selectedBuyerClient.name}'s Khata (Lena Hai)\n` +
+                    `💰 Profit Margin: ₹${(finalSaleAmt - amt).toLocaleString('en-IN')}` +
+                    (dispatchId ? `\n\n🚀 Dispatch Slip #${dispatchId} sent to Driver for ${effVeh}. Driver will complete odometer & photos on app.` : '')
+                );
+            } else {
+                Alert.alert(
+                    isSale ? "Sale Recorded" : "Purchase Recorded",
+                    `${isSale ? 'Sale' : 'Purchase'} of ₹${amt.toLocaleString('en-IN')} saved to ${selectedClientForTxn.name}'s Khata & Daily Ledger.` + 
+                    (dispatchId ? `\n\n🚀 Dispatch Slip #${dispatchId} sent to Driver for ${effVeh}. Driver will complete odometer & photos from app.` : '')
+                );
+            }
 
             setClientTxnAmount('');
+            setTxnSaleAmount('');
+            setTxnSaleRate('');
+            setSelectedBuyerClient(null);
             setClientTxnNotes('');
             setIsClientTxnModalVisible(false);
             await loadClientKhata();
@@ -2768,12 +2857,14 @@ export default function DailyLedgerScreen({ navigation }) {
                                                     const q = parseFloat(qVal) || 0;
                                                     const r = parseFloat(txnRate) || 0;
                                                     if (q > 0 && r > 0) setClientTxnAmount(String(Math.round(q * r)));
+                                                    const sr = parseFloat(txnSaleRate) || 0;
+                                                    if (q > 0 && sr > 0) setTxnSaleAmount(String(Math.round(q * sr)));
                                                 }}
                                             />
                                         </View>
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.modalLabel}>
-                                                Rate (₹ / {txnRateType === 'TON' ? 'Ton' : txnRateType === 'TRIP' ? 'Trip' : 'Hour'}) *
+                                                {clientTxnType === 'PURCHASE' ? 'Purchase Rate (₹)' : 'Sale Rate (₹)'} / {txnRateType === 'TON' ? 'Ton' : txnRateType === 'TRIP' ? 'Trip' : 'Hour'} *
                                             </Text>
                                             <TextInput
                                                 style={styles.modalInput}
@@ -2796,10 +2887,12 @@ export default function DailyLedgerScreen({ navigation }) {
                                         </View>
                                     </View>
 
-                                    {/* Total Amount Box */}
+                                    {/* Total Purchase / Sale Amount Box */}
                                     <View style={styles.formGroup}>
                                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                            <Text style={styles.modalLabel}>Total Value (₹) *</Text>
+                                            <Text style={styles.modalLabel}>
+                                                {clientTxnType === 'PURCHASE' ? 'Purchase Amount (खरीद लागत - Dena Hai) *' : 'Total Sale Amount (बिक्री राशि) *'}
+                                            </Text>
                                             {((parseFloat(txnQuantity) || 0) > 0 && (parseFloat(txnRate) || 0) > 0) && (
                                                 <Text style={{ fontSize: 11, color: '#059669', fontWeight: '700' }}>
                                                     Auto-calculated: {txnQuantity} × ₹{txnRate}
@@ -2815,6 +2908,119 @@ export default function DailyLedgerScreen({ navigation }) {
                                             onChangeText={setClientTxnAmount}
                                         />
                                     </View>
+
+                                    {/* Direct Sale Section (Right Inside Purchase Form!) */}
+                                    {clientTxnType === 'PURCHASE' && (
+                                        <View style={[styles.tradeSectionBox, { borderColor: txnIsDirectSale ? '#93C5FD' : '#E2E8F0', backgroundColor: txnIsDirectSale ? '#F8FAFC' : '#F1F5F9' }]}>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                                                    <View style={[styles.tradeSectionBadge, { backgroundColor: '#EFF6FF' }]}>
+                                                        <MaterialCommunityIcons name="truck-delivery" size={16} color="#2563EB" />
+                                                        <Text style={{ fontSize: 11, fontWeight: '900', color: '#1D4ED8', marginLeft: 4 }}>
+                                                            DIRECT SALE TO BUYER (सीधी बिक्री बिलिंग)
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                                <Switch
+                                                    value={txnIsDirectSale}
+                                                    onValueChange={setTxnIsDirectSale}
+                                                    trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
+                                                    thumbColor={txnIsDirectSale ? '#2563EB' : '#94A3B8'}
+                                                />
+                                            </View>
+
+                                            {txnIsDirectSale ? (
+                                                <>
+                                                    {/* Buyer Client Selection */}
+                                                    <View style={styles.formGroup}>
+                                                        <Text style={styles.modalLabel}>Sell To (Buyer Client) *</Text>
+                                                        <TouchableOpacity
+                                                            style={[styles.staffSelectBtn, !selectedBuyerClient && { borderColor: '#3B82F6', borderWidth: 1.5 }]}
+                                                            onPress={() => setIsBuyerPickerVisible(true)}
+                                                            activeOpacity={0.8}
+                                                        >
+                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                                                                <MaterialCommunityIcons name="account-arrow-right" size={20} color={selectedBuyerClient ? '#2563EB' : '#64748B'} />
+                                                                <Text style={selectedBuyerClient ? styles.staffSelectVal : styles.staffSelectPlaceholder}>
+                                                                    {selectedBuyerClient ? selectedBuyerClient.name : "Select Buyer Client (टैप करें) *"}
+                                                                </Text>
+                                                            </View>
+                                                            <MaterialCommunityIcons name="chevron-down" size={18} color="#64748B" />
+                                                        </TouchableOpacity>
+
+                                                        {/* Quick Buyer Chips */}
+                                                        {clients.filter(c => c.id !== selectedClientForTxn?.id).slice(0, 6).length > 0 && (
+                                                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 6 }}>
+                                                                {clients.filter(c => c.id !== selectedClientForTxn?.id).slice(0, 6).map(c => (
+                                                                    <TouchableOpacity
+                                                                        key={c.id}
+                                                                        style={[styles.matChip, selectedBuyerClient?.id === c.id && styles.matChipActive]}
+                                                                        onPress={() => setSelectedBuyerClient(c)}
+                                                                    >
+                                                                        <Text style={[styles.matChipText, selectedBuyerClient?.id === c.id && styles.matChipTextActive]}>
+                                                                            {c.name}
+                                                                        </Text>
+                                                                    </TouchableOpacity>
+                                                                ))}
+                                                            </ScrollView>
+                                                        )}
+                                                    </View>
+
+                                                    {/* Sale Rate and Sale Amount */}
+                                                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={styles.modalLabel}>
+                                                                Sale Rate (₹ / {txnRateType === 'TON' ? 'Ton' : txnRateType === 'TRIP' ? 'Trip' : 'Hour'}) *
+                                                            </Text>
+                                                            <TextInput
+                                                                style={styles.modalInput}
+                                                                placeholder="e.g. 1500"
+                                                                placeholderTextColor="#94A3B8"
+                                                                keyboardType="numeric"
+                                                                value={txnSaleRate}
+                                                                onChangeText={(srVal) => {
+                                                                    setTxnSaleRate(srVal);
+                                                                    const q = parseFloat(txnQuantity) || 0;
+                                                                    const sr = parseFloat(srVal) || 0;
+                                                                    if (q > 0 && sr > 0) setTxnSaleAmount(String(Math.round(q * sr)));
+                                                                }}
+                                                            />
+                                                        </View>
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={styles.modalLabel}>Sale Billing (₹) (Lena Hai) *</Text>
+                                                            <TextInput
+                                                                style={[styles.modalInput, { fontSize: 16, fontWeight: '800', color: '#2563EB' }]}
+                                                                placeholder="₹ 0.00"
+                                                                placeholderTextColor="#94A3B8"
+                                                                keyboardType="numeric"
+                                                                value={txnSaleAmount}
+                                                                onChangeText={setTxnSaleAmount}
+                                                            />
+                                                        </View>
+                                                    </View>
+
+                                                    {/* Live Margin / Profit Banner */}
+                                                    {(!!clientTxnAmount && !!txnSaleAmount) && (
+                                                        <View style={{ backgroundColor: '#ECFDF5', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: '#A7F3D0', marginBottom: 4, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            <View>
+                                                                <Text style={{ fontSize: 10, fontWeight: '800', color: '#047857' }}>ESTIMATED GROSS PROFIT</Text>
+                                                                <Text style={{ fontSize: 11, fontWeight: '700', color: '#065F46' }}>
+                                                                    Sale ₹{Number(txnSaleAmount).toLocaleString('en-IN')} - Cost ₹{Number(clientTxnAmount).toLocaleString('en-IN')}
+                                                                </Text>
+                                                            </View>
+                                                            <Text style={{ fontSize: 15, fontWeight: '900', color: (parseFloat(txnSaleAmount) || 0) >= (parseFloat(clientTxnAmount) || 0) ? '#059669' : '#DC2626' }}>
+                                                                {(parseFloat(txnSaleAmount) || 0) >= (parseFloat(clientTxnAmount) || 0) ? '+' : ''}₹{((parseFloat(txnSaleAmount) || 0) - (parseFloat(clientTxnAmount) || 0)).toLocaleString('en-IN')}
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <Text style={{ fontSize: 12, color: '#64748B', fontStyle: 'italic', paddingVertical: 4 }}>
+                                                    Direct sale disabled. Only purchase entry will be recorded in {selectedClientForTxn?.name}'s Khata.
+                                                </Text>
+                                            )}
+                                        </View>
+                                    )}
 
                                     {/* Vehicle Details Section */}
                                     <View style={styles.vehicleSectionBox}>
@@ -3030,7 +3236,9 @@ export default function DailyLedgerScreen({ navigation }) {
                                 style={[
                                     styles.submitBtn, 
                                     { 
-                                        backgroundColor: clientTxnType === 'PURCHASE' 
+                                        backgroundColor: (clientTxnType === 'PURCHASE' && txnIsDirectSale && selectedBuyerClient)
+                                            ? '#059669'
+                                            : clientTxnType === 'PURCHASE' 
                                             ? '#D97706' 
                                             : clientTxnType === 'SALE' 
                                             ? '#2563EB' 
@@ -3041,13 +3249,15 @@ export default function DailyLedgerScreen({ navigation }) {
                                 activeOpacity={0.85}
                             >
                                 <MaterialCommunityIcons 
-                                    name={editingClientTxn ? "check-circle" : (txnVehicleSource === 'OWN' && txnCreateDispatch && clientTxnType !== 'PAYMENT') ? "rocket-launch" : "check-bold"} 
+                                    name={editingClientTxn ? "check-circle" : (clientTxnType === 'PURCHASE' && txnIsDirectSale && selectedBuyerClient) ? "handshake" : (txnVehicleSource === 'OWN' && txnCreateDispatch && clientTxnType !== 'PAYMENT') ? "rocket-launch" : "check-bold"} 
                                     size={18} 
                                     color="#FFFFFF" 
                                 />
                                 <Text style={styles.submitBtnText}>
                                     {editingClientTxn 
                                         ? 'Update Entry' 
+                                        : (clientTxnType === 'PURCHASE' && txnIsDirectSale && selectedBuyerClient)
+                                        ? (txnVehicleSource === 'OWN' && txnCreateDispatch ? `Record Trade & Dispatch to Driver` : `Record Purchase & Direct Sale Trade`)
                                         : clientTxnType === 'SALE'
                                         ? (txnVehicleSource === 'OWN' && txnCreateDispatch ? 'Record Sale & Send Dispatch' : 'Record Sale (बिक्री)')
                                         : clientTxnType === 'PURCHASE'
@@ -3880,6 +4090,73 @@ export default function DailyLedgerScreen({ navigation }) {
                                     );
                                 })
                             )}
+                        </ScrollView>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            {/* Buyer Client Dropdown Picker Modal with Search */}
+            <Modal visible={isBuyerPickerVisible} transparent animationType="fade">
+                <TouchableOpacity style={styles.pickerModalOverlay} activeOpacity={1} onPress={() => setIsBuyerPickerVisible(false)}>
+                    <View style={styles.pickerModalContent} onStartShouldSetResponder={() => true}>
+                        <View style={styles.pickerModalHeader}>
+                            <View>
+                                <Text style={styles.pickerModalTitle}>Select Buyer Client</Text>
+                                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                                    Whom are you selling this {txnMaterialType || 'material'} to?
+                                </Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setIsBuyerPickerVisible(false)}>
+                                <MaterialCommunityIcons name="close" size={22} color="#64748B" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Search Bar */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, height: 40, marginVertical: 10 }}>
+                            <MaterialCommunityIcons name="magnify" size={18} color="#64748B" style={{ marginRight: 6 }} />
+                            <TextInput 
+                                style={{ flex: 1, fontSize: 13, color: '#0F172A' }}
+                                placeholder="Search buyer client name or phone..."
+                                placeholderTextColor="#94A3B8"
+                                value={buyerSearchText}
+                                onChangeText={setBuyerSearchText}
+                            />
+                            {buyerSearchText ? (
+                                <TouchableOpacity onPress={() => setBuyerSearchText('')}>
+                                    <MaterialCommunityIcons name="close-circle" size={16} color="#94A3B8" />
+                                </TouchableOpacity>
+                            ) : null}
+                        </View>
+
+                        {/* Saved Clients List */}
+                        <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+                            {clients
+                                .filter(c => c.id !== selectedClientForTxn?.id)
+                                .filter(c => !buyerSearchText.trim() || c.name.toLowerCase().includes(buyerSearchText.toLowerCase()) || (c.phone && c.phone.includes(buyerSearchText)))
+                                .map(c => {
+                                    const isSel = selectedBuyerClient?.id === c.id;
+                                    return (
+                                        <TouchableOpacity 
+                                            key={c.id} 
+                                            style={[styles.staffOptionRow, isSel && { backgroundColor: '#EFF6FF', borderColor: '#93C5FD', borderWidth: 1 }]}
+                                            onPress={() => {
+                                                setSelectedBuyerClient(c);
+                                                setIsBuyerPickerVisible(false);
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={[styles.staffOptionName, isSel && { color: '#1D4ED8' }]}>{c.name}</Text>
+                                                <Text style={styles.staffOptionSub}>
+                                                    {c.phone ? `📞 ${c.phone}` : 'No Phone'} {c.address ? ` • ${c.address}` : ''}
+                                                </Text>
+                                            </View>
+                                            {isSel && (
+                                                <MaterialCommunityIcons name="check-circle" size={18} color="#2563EB" />
+                                            )}
+                                        </TouchableOpacity>
+                                    );
+                                })}
                         </ScrollView>
                     </View>
                 </TouchableOpacity>
@@ -6146,5 +6423,20 @@ const styles = StyleSheet.create({
     payDirectionTextActive: {
         color: '#FFFFFF',
         fontWeight: '800',
-    }
+    },
+    tradeSectionBox: {
+        borderWidth: 1.5,
+        borderColor: '#E2E8F0',
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 14,
+        backgroundColor: '#FFFFFF',
+    },
+    tradeSectionBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+    },
 });

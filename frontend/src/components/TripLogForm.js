@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, Image, Modal, Platform , Keyboard } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, Image, Modal, Platform, Keyboard, Switch } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { AuthContext } from '../context/AuthContext';
@@ -52,16 +52,69 @@ export default function TripLogForm({
     const [dieselCost, setDieselCost] = useState('');
     const [bhada, setBhada] = useState('');
     const [advanceFreight, setAdvanceFreight] = useState('');
-    const [rateType, setRateType] = useState('TON'); // 'TON' | 'TRIP'
+    const [rateType, setRateType] = useState('TON'); // 'TON' | 'TRIP' | 'HOURLY'
     const [rate, setRate] = useState('');
     const [tripCount, setTripCount] = useState('1');
     const [ledgerType, setLedgerType] = useState('INCOME'); // 'INCOME' | 'EXPENSE'
+
+    // Dispatch & Time Tracking States
+    const [activeDispatches, setActiveDispatches] = useState([]);
+    const [selectedDispatchId, setSelectedDispatchId] = useState(null);
+    const [isTimeTrackingEnabled, setIsTimeTrackingEnabled] = useState(false);
+    const [startTime, setStartTime] = useState('');
+    const [endTime, setEndTime] = useState('');
+    const [totalMinutes, setTotalMinutes] = useState('');
+    const [hourlyRate, setHourlyRate] = useState('');
     
     // Photo state
     const [loadingPhoto, setLoadingPhoto] = useState(null);
     const [unloadingPhoto, setUnloadingPhoto] = useState(null);
     const [odometerPhoto, setOdometerPhoto] = useState(null);
     const [receiptPhoto, setReceiptPhoto] = useState(null);
+
+    // Fetch Active Dispatches for Driver
+    const fetchActiveDispatches = async () => {
+        if (!userToken) return;
+        try {
+            const res = await fetch(`${API_BASE_URL}/trips/active-dispatches`, {
+                headers: { 'Authorization': `Bearer ${userToken}` }
+            });
+            if (res.ok) {
+                const list = await res.json();
+                setActiveDispatches(list);
+            }
+        } catch (e) {
+            console.log("Could not fetch active dispatches:", e);
+        }
+    };
+
+    useEffect(() => {
+        fetchActiveDispatches();
+    }, [userToken, user]);
+
+    const loadDispatchIntoForm = (disp) => {
+        if (selectedDispatchId === disp.id) {
+            // Deselect
+            setSelectedDispatchId(null);
+            clearForm();
+            return;
+        }
+        setSelectedDispatchId(disp.id);
+        if (disp.vehicle_number) setVehicleNumber(disp.vehicle_number);
+        if (disp.client_name) setClientName(disp.client_name);
+        if (disp.material_type) setMaterialType(disp.material_type);
+        if (disp.weight_tons) setWeightTons(String(disp.weight_tons));
+        if (disp.origin) setOrigin(disp.origin);
+        if (disp.destination) setDestination(disp.destination);
+        if (disp.rate_type) setRateType(disp.rate_type);
+        if (disp.rate) setRate(String(disp.rate));
+        if (disp.bhada) setBhada(String(disp.bhada));
+        if (disp.hourly_rate) setHourlyRate(String(disp.hourly_rate));
+        if (disp.total_minutes) {
+            setIsTimeTrackingEnabled(true);
+            setTotalMinutes(String(disp.total_minutes));
+        }
+    };
 
     // Synchronize initialClientName when changed
     useEffect(() => {
@@ -130,9 +183,12 @@ export default function TripLogForm({
             if (newType === 'TON') {
                 const q = parseNumberSafe(weightTons);
                 if (q > 0) setBhada(String(Math.round(r * q)));
-            } else {
+            } else if (newType === 'TRIP') {
                 const count = parseNumberSafe(tripCount) || 1;
                 setBhada(String(Math.round(r * count)));
+            } else if (newType === 'HOURLY') {
+                const mins = parseNumberSafe(totalMinutes) || 0;
+                setBhada(String(Math.round(mins * (r / 60))));
             }
         }
     };
@@ -145,11 +201,25 @@ export default function TripLogForm({
             if (r > 0 && q > 0) {
                 setBhada(String(Math.round(r * q)));
             }
-        } else {
+        } else if (rateType === 'TRIP') {
             const count = parseNumberSafe(tripCount) || 1;
             if (r > 0 && count > 0) {
                 setBhada(String(Math.round(r * count)));
             }
+        } else if (rateType === 'HOURLY') {
+            const mins = parseNumberSafe(totalMinutes) || 0;
+            if (r > 0 && mins > 0) {
+                setBhada(String(Math.round(mins * (r / 60))));
+            }
+        }
+    };
+
+    const handleTotalMinutesChange = (mVal) => {
+        setTotalMinutes(mVal);
+        const mins = parseNumberSafe(mVal);
+        const r = parseNumberSafe(rate);
+        if (rateType === 'HOURLY' && r > 0 && mins > 0) {
+            setBhada(String(Math.round(mins * (r / 60))));
         }
     };
 
@@ -183,10 +253,15 @@ export default function TripLogForm({
             if (!isNaN(b) && !isNaN(q) && q > 0) {
                 setRate(String(Math.round((b / q) * 100) / 100));
             }
-        } else {
+        } else if (rateType === 'TRIP') {
             const count = parseFloat(tripCount) || 1;
             if (!isNaN(b) && count > 0) {
                 setRate(String(Math.round((b / count) * 100) / 100));
+            }
+        } else if (rateType === 'HOURLY') {
+            const mins = parseFloat(totalMinutes) || 0;
+            if (!isNaN(b) && mins > 0) {
+                setRate(String(Math.round((b / mins) * 60)));
             }
         }
     };
@@ -396,11 +471,59 @@ export default function TripLogForm({
                 : (isExternalTrip ? 'Sent by Someone Else' : null)
         };
 
+        body.rate_type = rateType;
+        body.rate = parseFloat(rate) || 0.0;
+        body.hourly_rate = rateType === 'HOURLY' ? parseFloat(rate) || 0.0 : 0.0;
+        body.start_time = isTimeTrackingEnabled ? startTime : null;
+        body.end_time = isTimeTrackingEnabled ? endTime : null;
+        body.total_minutes = isTimeTrackingEnabled ? (parseFloat(totalMinutes) || 0) : 0;
+
         if (isManagerOrAdmin && staffId && !isExternalTrip) {
             body.staff_id = parseInt(staffId);
         }
 
         try {
+            // Completing an Assigned Dispatch Order (Zero Duplicate Handshake)
+            if (selectedDispatchId) {
+                const completeRes = await fetch(`${API_BASE_URL}/trips/${selectedDispatchId}/complete`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${userToken}`
+                    },
+                    body: JSON.stringify({
+                        start_meter_reading: sMeter,
+                        end_meter_reading: eMeter,
+                        loading_photo_url: loadingPhoto,
+                        unloading_photo_url: unloadingPhoto,
+                        odometer_photo_url: odometerPhoto,
+                        receipt_photo_url: receiptPhoto,
+                        start_time: isTimeTrackingEnabled ? startTime : null,
+                        end_time: isTimeTrackingEnabled ? endTime : null,
+                        total_minutes: isTimeTrackingEnabled ? (parseFloat(totalMinutes) || 0) : 0,
+                        diesel_liters: parseFloat(dieselLiters) || 0,
+                        diesel_rate: parseFloat(dieselRate) || 0,
+                        diesel_cost: parseFloat(dieselCost) || 0
+                    })
+                });
+                if (completeRes.ok) {
+                    Alert.alert(
+                        "Dispatch Completed!",
+                        `Dispatch #${selectedDispatchId} for ${effVehicleNumber} completed and submitted for Manager approval.\n\nTotal: ${eMeter > sMeter ? eMeter - sMeter : 0} KM\nZero duplicate trips recorded!`
+                    );
+                    clearForm();
+                    fetchActiveDispatches();
+                    if (onSuccess) onSuccess();
+                    setIsLoading(false);
+                    return;
+                } else {
+                    const errD = await completeRes.json().catch(() => ({}));
+                    Alert.alert("Error", errD.detail || "Could not complete dispatch");
+                    setIsLoading(false);
+                    return;
+                }
+            }
+
             if (isOnline) {
                 const response = await fetch(`${API_BASE_URL}/trips/`, {
                     method: 'POST',
@@ -422,6 +545,7 @@ export default function TripLogForm({
                         : "Trip log submitted! Sent to Manager/Admin for approval & Bhada entry."
                     );
                     clearForm();
+                    fetchActiveDispatches();
                     if (onSuccess) onSuccess();
                 } else {
                     const data = await response.json();
@@ -444,6 +568,7 @@ export default function TripLogForm({
     };
 
     const clearForm = () => {
+        setSelectedDispatchId(null);
         setVehicleSource('OWN');
         setVehicleNumber(assignedVehiclesList[0] || user?.assigned_vehicle || ''); 
         setClientName(initialClientName || ''); setShowClientDropdown(false); setIsClientPickerVisible(false); setClientSearchModalText('');
@@ -451,6 +576,7 @@ export default function TripLogForm({
         setStartMeter(''); setEndMeter(''); setDieselLiters(''); setDieselRate(''); setDieselCost('');
         setBhada(''); setAdvanceFreight('');
         setRateType('TON'); setRate(''); setTripCount('1'); setLedgerType('INCOME');
+        setIsTimeTrackingEnabled(false); setStartTime(''); setEndTime(''); setTotalMinutes(''); setHourlyRate('');
         setLoadingPhoto(null); setUnloadingPhoto(null); setOdometerPhoto(null); setReceiptPhoto(null);
         setStaffId('');
     };
@@ -476,6 +602,72 @@ export default function TripLogForm({
                     <MaterialCommunityIcons name="sync" size={16} color="white" style={{marginRight: 8}} />
                     <Text style={styles.syncText}>{pendingCount} Pending Uploads • Tap to Sync</Text>
                 </TouchableOpacity>
+            )}
+
+            {/* Active Assigned Dispatches Banner */}
+            {activeDispatches.length > 0 && (
+                <View style={styles.dispatchAlertBox}>
+                    <View style={styles.dispatchAlertHeader}>
+                        <MaterialCommunityIcons name="clipboard-alert-outline" size={18} color="#D97706" />
+                        <Text style={styles.dispatchAlertTitle}>
+                            ASSIGNED DISPATCH ORDERS ({activeDispatches.length})
+                        </Text>
+                    </View>
+                    <Text style={styles.dispatchAlertSub}>
+                        Admin has created dispatch slip(s). Tap your order below to fill odometer & complete without duplicate entries:
+                    </Text>
+                    {activeDispatches.map(d => {
+                        const isSelected = selectedDispatchId === d.id;
+                        return (
+                            <TouchableOpacity
+                                key={d.id}
+                                style={[styles.dispatchCard, isSelected && styles.dispatchCardActive]}
+                                onPress={() => loadDispatchIntoForm(d)}
+                                activeOpacity={0.8}
+                            >
+                                <View style={{ flex: 1 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                        <Text style={styles.dispatchCardVeh}>{d.vehicle_number}</Text>
+                                        <View style={[styles.dispatchCardTypeBadge, { backgroundColor: d.trade_type === 'PURCHASE' ? '#FEF3C7' : '#EFF6FF' }]}>
+                                            <Text style={[styles.dispatchCardTypeBadgeText, { color: d.trade_type === 'PURCHASE' ? '#B45309' : '#1D4ED8' }]}>
+                                                {d.trade_type === 'PURCHASE' ? 'PURCHASE' : 'SALE'}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <Text style={styles.dispatchCardParty} numberOfLines={1}>
+                                        Party: {d.client_name || d.freight_notes || 'Client'}
+                                    </Text>
+                                    <Text style={styles.dispatchCardCargo}>
+                                        Cargo: {d.material_type} ({d.weight_tons} Tons)
+                                    </Text>
+                                </View>
+                                <View style={[styles.dispatchActionBtn, isSelected && styles.dispatchActionBtnActive]}>
+                                    <MaterialCommunityIcons 
+                                        name={isSelected ? "check" : "chevron-right"} 
+                                        size={16} 
+                                        color={isSelected ? "#FFFFFF" : "#059669"} 
+                                    />
+                                    <Text style={[styles.dispatchActionBtnText, isSelected && styles.dispatchActionBtnTextActive]}>
+                                        {isSelected ? "Active" : "Select"}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+            )}
+
+            {selectedDispatchId && (
+                <View style={styles.selectedDispatchBanner}>
+                    <MaterialCommunityIcons name="check-decagram" size={18} color="#059669" />
+                    <View style={{ flex: 1, marginLeft: 8 }}>
+                        <Text style={styles.selectedDispatchTitle}>Completing Dispatch #{selectedDispatchId}</Text>
+                        <Text style={styles.selectedDispatchSub}>Vehicle, Client and Cargo locked from dispatch slip. Enter meter & photos below.</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => clearForm()} style={{ padding: 4 }}>
+                        <MaterialCommunityIcons name="close-circle" size={18} color="#94A3B8" />
+                    </TouchableOpacity>
+                </View>
             )}
 
             {/* Header */}
@@ -714,6 +906,77 @@ export default function TripLogForm({
                     </View>
                 </View>
             )}
+
+            {/* Optional Time Tracking Section */}
+            <View style={styles.sectionCard}>
+                <TouchableOpacity 
+                    style={[styles.sectionHeader, { justifyContent: 'space-between' }]}
+                    onPress={() => setIsTimeTrackingEnabled(!isTimeTrackingEnabled)}
+                    activeOpacity={0.8}
+                >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                        <View style={[styles.iconCircle, { backgroundColor: '#F0FDF4' }]}>
+                            <MaterialCommunityIcons name="clock-time-four-outline" size={18} color="#16A34A" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.sectionTitle}>Time Tracking (Optional)</Text>
+                            <Text style={{ fontSize: 11, color: '#64748B' }}>
+                                {isTimeTrackingEnabled ? 'Active - Log working hours & minutes' : 'Tap to enable hourly / duration logging'}
+                            </Text>
+                        </View>
+                    </View>
+                    <Switch
+                        value={isTimeTrackingEnabled}
+                        onValueChange={setIsTimeTrackingEnabled}
+                        trackColor={{ false: '#CBD5E1', true: '#86EFAC' }}
+                        thumbColor={isTimeTrackingEnabled ? '#16A34A' : '#94A3B8'}
+                    />
+                </TouchableOpacity>
+
+                {isTimeTrackingEnabled && (
+                    <View style={{ marginTop: 12 }}>
+                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.inputLabel}>Start Time (e.g. 09:30 AM)</Text>
+                                <TextInput
+                                    placeholderTextColor="#94A3B8"
+                                    style={styles.textInput}
+                                    placeholder="09:00 AM"
+                                    value={startTime}
+                                    onChangeText={setStartTime}
+                                />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.inputLabel}>End Time (e.g. 05:30 PM)</Text>
+                                <TextInput
+                                    placeholderTextColor="#94A3B8"
+                                    style={styles.textInput}
+                                    placeholder="05:30 PM"
+                                    value={endTime}
+                                    onChangeText={setEndTime}
+                                />
+                            </View>
+                        </View>
+
+                        <View>
+                            <Text style={styles.inputLabel}>Total Duration (Minutes)</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                                <TextInput
+                                    placeholderTextColor="#94A3B8"
+                                    style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                                    placeholder="e.g. 180"
+                                    keyboardType="numeric"
+                                    value={totalMinutes}
+                                    onChangeText={handleTotalMinutesChange}
+                                />
+                                <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>
+                                    {totalMinutes ? `${Math.floor(Number(totalMinutes) / 60)}h ${Number(totalMinutes) % 60}m` : 'Mins'}
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+                )}
+            </View>
 
             {/* Section 3: Route & Cargo Details */}
             <View style={styles.sectionCard}>
@@ -1002,9 +1265,43 @@ export default function TripLogForm({
                                 Trip Wise (₹/Trip)
                             </Text>
                         </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={() => handleRateTypeChange('HOURLY')}
+                            style={{
+                                flex: 1,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                paddingVertical: 8,
+                                paddingHorizontal: 6,
+                                borderRadius: 6,
+                                backgroundColor: rateType === 'HOURLY' ? '#FFFFFF' : 'transparent',
+                                elevation: rateType === 'HOURLY' ? 1 : 0,
+                                shadowColor: '#000',
+                                shadowOpacity: rateType === 'HOURLY' ? 0.08 : 0,
+                                shadowOffset: { width: 0, height: 1 }
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialCommunityIcons 
+                                name="clock-outline" 
+                                size={14} 
+                                color={rateType === 'HOURLY' ? '#2563EB' : '#64748B'} 
+                                style={{ marginRight: 4 }} 
+                            />
+                            <Text 
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.8}
+                                style={{ fontSize: 12, fontWeight: '800', color: rateType === 'HOURLY' ? '#2563EB' : '#64748B' }}
+                            >
+                                Hourly (₹/Hr)
+                            </Text>
+                        </TouchableOpacity>
                     </View>
 
-                    {/* Dynamic Inputs: Ton Wise vs Trip Wise */}
+                    {/* Dynamic Inputs: Ton Wise vs Trip Wise vs Hourly */}
                     <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
                         {rateType === 'TON' ? (
                             <>
@@ -1044,7 +1341,7 @@ export default function TripLogForm({
                                     </View>
                                 </View>
                             </>
-                        ) : (
+                        ) : rateType === 'TRIP' ? (
                             <>
                                 {/* Number of Trips */}
                                 <View style={{ flex: 1 }}>
@@ -1082,6 +1379,46 @@ export default function TripLogForm({
                                     </View>
                                 </View>
                             </>
+                        ) : (
+                            <>
+                                {/* Hourly Duration */}
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                                        Duration (Mins) *
+                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                                        <TextInput 
+                                            style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                                            placeholder="e.g. 180"
+                                            placeholderTextColor="#94A3B8"
+                                            keyboardType="numeric"
+                                            value={totalMinutes}
+                                            onChangeText={handleTotalMinutesChange}
+                                        />
+                                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>
+                                            {totalMinutes ? `${Math.floor(Number(totalMinutes) / 60)}h ${Number(totalMinutes) % 60}m` : 'Mins'}
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                {/* Rate per Hour */}
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                                        Rate (₹ / Hour) *
+                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                                        <Text style={{ fontSize: 13, fontWeight: '800', color: '#2563EB', marginRight: 4 }}>₹</Text>
+                                        <TextInput 
+                                            style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                                            placeholder="e.g. 600"
+                                            placeholderTextColor="#94A3B8"
+                                            keyboardType="numeric"
+                                            value={rate}
+                                            onChangeText={handleRateChange}
+                                        />
+                                    </View>
+                                </View>
+                            </>
                         )}
                     </View>
 
@@ -1091,7 +1428,7 @@ export default function TripLogForm({
                             <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', flexShrink: 1 }}>
                                 Total {ledgerType === 'INCOME' ? 'Bhada / Income' : 'Expense'} Amount (₹) *
                             </Text>
-                            {!!rate && (rateType === 'TON' ? !!weightTons : !!tripCount) && (
+                            {!!rate && (rateType === 'TON' ? !!weightTons : rateType === 'TRIP' ? !!tripCount : !!totalMinutes) && (
                                 <View style={{ backgroundColor: '#ECFDF5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#A7F3D0' }}>
                                     <Text style={{ fontSize: 9, fontWeight: '800', color: '#059669' }}>
                                         AUTO-CALCULATED
@@ -1113,13 +1450,15 @@ export default function TripLogForm({
                     </View>
 
                     {/* Formula Breakdown Banner */}
-                    {!!rate && (rateType === 'TON' ? !!weightTons : !!tripCount) && (
+                    {!!rate && (rateType === 'TON' ? !!weightTons : rateType === 'TRIP' ? !!tripCount : !!totalMinutes) && (
                         <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}>
                             <MaterialCommunityIcons name="calculator" size={14} color="#2563EB" style={{ marginRight: 6 }} />
                             <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E40AF' }}>
                                 {rateType === 'TON' 
                                     ? `₹${rate} / Ton × ${weightTons} Tons = ₹${Number(bhada || 0).toLocaleString('en-IN')}`
-                                    : `₹${rate} / Trip × ${tripCount} Trips = ₹${Number(bhada || 0).toLocaleString('en-IN')}`
+                                    : rateType === 'TRIP'
+                                    ? `₹${rate} / Trip × ${tripCount} Trips = ₹${Number(bhada || 0).toLocaleString('en-IN')}`
+                                    : `₹${rate} / Hr (₹${(parseNumberSafe(rate) / 60).toFixed(2)}/min) × ${totalMinutes} mins = ₹${Number(bhada || 0).toLocaleString('en-IN')}`
                                 }
                             </Text>
                         </View>
@@ -1947,6 +2286,118 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#64748B',
         marginTop: 2,
+    },
+    // Active Dispatches
+    dispatchAlertBox: {
+        backgroundColor: '#FFFBEB',
+        borderRadius: 12,
+        borderWidth: 1.5,
+        borderColor: '#FDE68A',
+        padding: 12,
+        marginBottom: 16,
+    },
+    dispatchAlertHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: 4,
+    },
+    dispatchAlertTitle: {
+        fontSize: 13,
+        fontWeight: '900',
+        color: '#92400E',
+        letterSpacing: 0.5,
+    },
+    dispatchAlertSub: {
+        fontSize: 12,
+        color: '#B45309',
+        fontWeight: '600',
+        marginBottom: 10,
+        lineHeight: 16,
+    },
+    dispatchCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        borderWidth: 1.5,
+        borderColor: '#E2E8F0',
+        padding: 10,
+        marginBottom: 8,
+    },
+    dispatchCardActive: {
+        borderColor: '#059669',
+        backgroundColor: '#F0FDF4',
+    },
+    dispatchCardVeh: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#0F172A',
+    },
+    dispatchCardTypeBadge: {
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    dispatchCardTypeBadgeText: {
+        fontSize: 10,
+        fontWeight: '900',
+    },
+    dispatchCardParty: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#334155',
+    },
+    dispatchCardCargo: {
+        fontSize: 11,
+        color: '#64748B',
+        fontWeight: '600',
+        marginTop: 1,
+    },
+    dispatchActionBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRadius: 8,
+        backgroundColor: '#ECFDF5',
+        borderWidth: 1,
+        borderColor: '#A7F3D0',
+        marginLeft: 8,
+    },
+    dispatchActionBtnActive: {
+        backgroundColor: '#059669',
+        borderColor: '#059669',
+    },
+    dispatchActionBtnText: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#059669',
+        marginLeft: 2,
+    },
+    dispatchActionBtnTextActive: {
+        color: '#FFFFFF',
+    },
+    selectedDispatchBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#ECFDF5',
+        borderRadius: 10,
+        borderWidth: 1.5,
+        borderColor: '#6EE7B7',
+        padding: 10,
+        marginBottom: 14,
+    },
+    selectedDispatchTitle: {
+        fontSize: 13,
+        fontWeight: '800',
+        color: '#065F46',
+    },
+    selectedDispatchSub: {
+        fontSize: 11,
+        color: '#047857',
+        fontWeight: '600',
+        marginTop: 1,
     },
 });
 

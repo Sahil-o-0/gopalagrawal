@@ -34,16 +34,30 @@ class TripLog(Base):
     receipt_photo_url = Column(Text, nullable=True)
     
     # Status & Freight Accounting
-    status = Column(String(20), default="PENDING") # PENDING, VALIDATED
+    status = Column(String(20), default="PENDING") # PENDING, VALIDATED, DISPATCHED, APPROVED, REJECTED
     bhada = Column(Float, default=0.0) # Total Freight
     advance_freight_received = Column(Float, default=0.0) # Received at loading
     pending_freight = Column(Float, default=0.0) # Remaining to be collected
     freight_status = Column(String(20), default="PENDING") # PENDING, PARTIAL, PAID
     freight_notes = Column(String(255), nullable=True)
+
+    # Trade, Client & Dispatch Integration
+    trade_type = Column(String(20), nullable=True, default="TRIP") # PURCHASE, SALE, TRIP
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="SET NULL"), nullable=True)
+    client_name = Column(String(255), nullable=True)
+    transporter_name = Column(String(255), nullable=True)
+    vehicle_source = Column(String(20), nullable=True, default="OWN") # OWN, OTHER
+    rate_type = Column(String(20), nullable=True, default="TON") # TON, TRIP, HOURLY
+    rate = Column(Float, nullable=True, default=0.0)
+
+    # Optional Time Tracking (Hourly / Per-Minute calculation)
+    start_time = Column(String(50), nullable=True)
+    end_time = Column(String(50), nullable=True)
+    total_minutes = Column(Float, nullable=True, default=0.0)
+    hourly_rate = Column(Float, nullable=True, default=0.0)
     
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     # Relationship
     staff = relationship("User", backref="trips")
     site = relationship("Site", backref="trip_logs")
-

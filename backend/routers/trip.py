@@ -135,6 +135,143 @@ def create_trip(
 
     return new_trip
 
+# Create Dispatch Slip (Admin / Manager creates dispatch order for driver)
+@router.post("/dispatch", response_model=schemas.trip.TripLogResponse)
+def create_dispatch(
+    trip_in: schemas.trip.TripLogCreate,
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_manager_user)
+):
+    site_id = trip_in.site_id or current_user.site_id or 1
+    dump_data = trip_in.model_dump(exclude={"staff_id", "site_id"})
+    dump_data["status"] = "DISPATCHED"
+    dump_data["site_id"] = site_id
+    dump_data["staff_id"] = trip_in.staff_id
+
+    # If hourly rate calculation provided
+    if trip_in.rate_type == "HOURLY" and trip_in.hourly_rate and trip_in.total_minutes:
+        min_rate = trip_in.hourly_rate / 60.0
+        dump_data["bhada"] = round(trip_in.total_minutes * min_rate, 2)
+
+    new_trip = TripLog(**dump_data)
+    db.add(new_trip)
+    db.commit()
+    db.refresh(new_trip)
+
+    # Push Notification to Assigned Driver
+    if new_trip.staff_id:
+        try:
+            from services.push_service import send_push_to_user
+            send_push_to_user(
+                user_id=new_trip.staff_id,
+                title="🚨 New Dispatch Assigned",
+                body=f"Vehicle: {new_trip.vehicle_number} | {new_trip.client_name or 'Client'} - {new_trip.material_type} ({new_trip.weight_tons:g}T)",
+                data={"type": "DISPATCH_ASSIGNED", "trip_id": new_trip.id}
+            )
+        except Exception as e:
+            pass
+
+    return new_trip
+
+# Active Dispatches (for Driver / Staff to see assigned dispatches)
+@router.get("/active-dispatches", response_model=List[schemas.trip.TripLogResponse])
+def get_active_dispatches(
+    site_id: Optional[int] = Query(None),
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_current_active_user)
+):
+    user_vehicles = [v.strip().upper() for v in (current_user.assigned_vehicle or "").split(",") if v.strip()]
+    
+    query = db.query(TripLog).filter(TripLog.status == "DISPATCHED")
+    if site_id:
+        query = query.filter(TripLog.site_id == site_id)
+
+    user_role_str = str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role)
+    if user_role_str not in ["ADMIN", "MANAGER"]:
+        if user_vehicles:
+            query = query.filter((TripLog.staff_id == current_user.id) | (TripLog.vehicle_number.in_(user_vehicles)))
+        else:
+            query = query.filter(TripLog.staff_id == current_user.id)
+            
+    dispatches = query.order_by(TripLog.created_at.desc()).all()
+    return dispatches
+
+# Driver completes assigned dispatch with meter, photos & optional time
+@router.patch("/{trip_id}/complete", response_model=schemas.trip.TripLogResponse)
+def complete_dispatch_by_driver(
+    trip_id: int,
+    complete_in: schemas.trip.TripCompleteDriver,
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_current_active_user)
+):
+    trip = db.query(TripLog).filter(TripLog.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip / Dispatch not found")
+
+    start_m = float(complete_in.start_meter_reading or 0.0)
+    end_m = float(complete_in.end_meter_reading or 0.0)
+    if end_m > 0 and start_m > 0 and end_m < start_m:
+        raise HTTPException(status_code=400, detail="End meter cannot be less than start meter")
+    
+    trip.start_meter_reading = start_m
+    trip.end_meter_reading = end_m
+    trip.total_km = max(0.0, end_m - start_m)
+
+    if complete_in.loading_photo_url:
+        trip.loading_photo_url = complete_in.loading_photo_url
+    if complete_in.unloading_photo_url:
+        trip.unloading_photo_url = complete_in.unloading_photo_url
+    if complete_in.odometer_photo_url:
+        trip.odometer_photo_url = complete_in.odometer_photo_url
+    if complete_in.receipt_photo_url:
+        trip.receipt_photo_url = complete_in.receipt_photo_url
+
+    # Time tracking
+    if complete_in.start_time:
+        trip.start_time = complete_in.start_time
+    if complete_in.end_time:
+        trip.end_time = complete_in.end_time
+    if complete_in.total_minutes:
+        trip.total_minutes = complete_in.total_minutes
+        if trip.rate_type == "HOURLY" and trip.hourly_rate and trip.hourly_rate > 0:
+            trip.bhada = round(trip.total_minutes * (trip.hourly_rate / 60.0), 2)
+
+    # Diesel tracking
+    d_liters = float(complete_in.diesel_liters or 0.0)
+    d_rate = float(complete_in.diesel_rate or 0.0)
+    d_cost = float(complete_in.diesel_cost or 0.0)
+    if d_liters > 0 and d_rate > 0 and d_cost == 0:
+        d_cost = round(d_liters * d_rate, 2)
+    elif d_liters > 0 and d_cost > 0 and d_rate == 0:
+        d_rate = round(d_cost / d_liters, 2)
+
+    trip.diesel_liters = d_liters
+    trip.diesel_rate = d_rate
+    trip.diesel_cost = d_cost
+
+    # Mark as PENDING for Manager approval / validation
+    trip.status = "PENDING"
+    trip.staff_id = current_user.id
+
+    db.commit()
+    db.refresh(trip)
+
+    # Notify Manager & Admin
+    try:
+        from services.push_service import send_push_to_admins_and_managers
+        staff_name = current_user.full_name or current_user.username
+        veh = (trip.vehicle_number or "Vehicle").strip().upper()
+        send_push_to_admins_and_managers(
+            title=f"✅ Dispatch Completed: {veh}",
+            body=f"{staff_name} completed dispatch #{trip.id} ({veh}). Total: {trip.total_km} KM. Ready for approval.",
+            data={"type": "DISPATCH_COMPLETED", "trip_id": trip.id, "vehicle": veh},
+            site_id=trip.site_id
+        )
+    except Exception as e:
+        pass
+
+    return trip
+
 # Managers and Admins can view all trips
 @router.get("/", response_model=List[schemas.trip.TripLogResponse])
 def get_all_trips(
@@ -204,6 +341,21 @@ def update_trip_status(
         trip.freight_notes = status_update.freight_notes
     if status_update.weight_tons is not None:
         trip.weight_tons = status_update.weight_tons
+    if status_update.rate_type is not None:
+        trip.rate_type = status_update.rate_type
+    if status_update.rate is not None:
+        trip.rate = status_update.rate
+    if status_update.hourly_rate is not None:
+        trip.hourly_rate = status_update.hourly_rate
+    if status_update.total_minutes is not None:
+        trip.total_minutes = status_update.total_minutes
+
+    # If hourly rate is selected, auto-calculate bhada per minute: minutes * (hourly_rate / 60)
+    if trip.rate_type == "HOURLY":
+        h_rate = status_update.hourly_rate if status_update.hourly_rate is not None else (trip.hourly_rate or 0.0)
+        t_mins = status_update.total_minutes if status_update.total_minutes is not None else (trip.total_minutes or 0.0)
+        if h_rate > 0 and t_mins > 0:
+            trip.bhada = round(t_mins * (h_rate / 60.0), 2)
 
     # When validating a trip, ensure diesel expense is logged in DailyLedger if present
     if trip.diesel_cost and float(trip.diesel_cost) > 0:

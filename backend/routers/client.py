@@ -16,9 +16,9 @@ def compute_client_metrics(client: Client):
     billed = (client.opening_balance or 0.0)
     received = 0.0
     for t in txns:
-        if t.txn_type == "BILLED":
+        if t.txn_type in ["BILLED", "SALE"]:
             billed += (t.amount or 0.0)
-        elif t.txn_type in ["RECEIVED", "ADVANCE"]:
+        elif t.txn_type in ["RECEIVED", "ADVANCE", "PURCHASE"]:
             received += (t.amount or 0.0)
     pending = billed - received
     return {

@@ -162,7 +162,7 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.username}>{user?.full_name || user?.username}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
               <Text style={styles.roleTag}>{user?.role}</Text>
-              <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '800' }}>• v6.8</Text>
+              <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '800' }}>• v6.9</Text>
             </View>
           </View>
         </View>

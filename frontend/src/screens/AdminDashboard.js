@@ -165,8 +165,9 @@ export default function AdminDashboard({ navigation, route }) {
   const [validationPartyName, setValidationPartyName] = useState('');
   const [validationRate, setValidationRate] = useState('');
   const [validationQuantity, setValidationQuantity] = useState('');
-  const [validationRateType, setValidationRateType] = useState('TON'); // 'TON' | 'TRIP'
+  const [validationRateType, setValidationRateType] = useState('TON'); // 'TON' | 'TRIP' | 'HOURLY'
   const [validationTripCount, setValidationTripCount] = useState('1');
+  const [validationTotalMinutes, setValidationTotalMinutes] = useState('');
   const [validationLedgerType, setValidationLedgerType] = useState('INCOME'); // 'INCOME' | 'EXPENSE'
   const [showValidationClientDropdown, setShowValidationClientDropdown] = useState(false);
   const [clients, setClients] = useState([]);
@@ -279,10 +280,13 @@ export default function AdminDashboard({ navigation, route }) {
       const rateVal = parseFloat(validationRate) || 0;
       const qtyVal = parseFloat(validationQuantity) || selectedTrip?.weight_tons || 0;
       const tripCountVal = parseFloat(validationTripCount) || 1;
+      const minsVal = parseFloat(validationTotalMinutes) || selectedTrip?.total_minutes || 0;
       const isIncome = validationLedgerType === 'INCOME';
       const calcSummary = validationRateType === 'TON' 
         ? `${qtyVal}T @ ₹${rateVal}/T` 
-        : `${tripCountVal} Trips @ ₹${rateVal}/Trip`;
+        : validationRateType === 'TRIP'
+        ? `${tripCountVal} Trips @ ₹${rateVal}/Trip`
+        : `${minsVal} Mins @ ₹${rateVal}/Hr (₹${(rateVal / 60).toFixed(2)}/m)`;
 
       // 1. Update Trip Status, Bhada, Party, and Weight
       await fetch(`${API_BASE_URL}/trips/${tripId}/status`, {
@@ -292,7 +296,11 @@ export default function AdminDashboard({ navigation, route }) {
           status: 'VALIDATED',
           bhada: incomeVal,
           freight_notes: party || null,
-          weight_tons: qtyVal
+          weight_tons: qtyVal,
+          rate_type: validationRateType,
+          rate: rateVal,
+          hourly_rate: validationRateType === 'HOURLY' ? rateVal : 0,
+          total_minutes: minsVal
         })
       });
 
@@ -374,15 +382,32 @@ export default function AdminDashboard({ navigation, route }) {
 
   const openValidationModal = (trip) => {
     setSelectedTrip(trip);
-    setValidationRateType('TON');
-    setValidationTripCount('1');
     setValidationLedgerType('INCOME');
+    const isHourly = trip?.rate_type === 'HOURLY' || (trip?.total_minutes && trip.total_minutes > 0);
+    const isTripWise = trip?.rate_type === 'TRIP';
+    const initRateType = isHourly ? 'HOURLY' : (isTripWise ? 'TRIP' : 'TON');
+    setValidationRateType(initRateType);
+
     const qty = trip?.weight_tons ? String(trip.weight_tons) : '';
     setValidationQuantity(qty);
+    setValidationTripCount('1');
+    setValidationTotalMinutes(trip?.total_minutes ? String(trip.total_minutes) : '');
+
     const bAmt = trip?.bhada ? parseFloat(trip.bhada) : 0;
     const qNum = parseFloat(qty) || 0;
-    if (bAmt > 0 && qNum > 0) {
+    const minsNum = trip?.total_minutes ? parseFloat(trip.total_minutes) : 0;
+
+    if (trip?.rate && trip.rate > 0) {
+      setValidationRate(String(trip.rate));
+      setBookedAmount(bAmt > 0 ? String(bAmt) : '');
+    } else if (trip?.hourly_rate && trip.hourly_rate > 0) {
+      setValidationRate(String(trip.hourly_rate));
+      setBookedAmount(bAmt > 0 ? String(bAmt) : '');
+    } else if (bAmt > 0 && initRateType === 'TON' && qNum > 0) {
       setValidationRate(String(Math.round((bAmt / qNum) * 100) / 100));
+      setBookedAmount(String(bAmt));
+    } else if (bAmt > 0 && initRateType === 'HOURLY' && minsNum > 0) {
+      setValidationRate(String(Math.round((bAmt / minsNum) * 60)));
       setBookedAmount(String(bAmt));
     } else {
       setValidationRate('');
@@ -401,9 +426,12 @@ export default function AdminDashboard({ navigation, route }) {
       if (newType === 'TON') {
         const q = parseFloat(validationQuantity) || 0;
         if (q > 0) setBookedAmount(String(Math.round(r * q)));
-      } else {
+      } else if (newType === 'TRIP') {
         const count = parseFloat(validationTripCount) || 1;
         setBookedAmount(String(Math.round(r * count)));
+      } else if (newType === 'HOURLY') {
+        const mins = parseFloat(validationTotalMinutes) || 0;
+        if (mins > 0) setBookedAmount(String(Math.round(mins * (r / 60))));
       }
     }
   };
@@ -416,11 +444,25 @@ export default function AdminDashboard({ navigation, route }) {
       if (!isNaN(r) && !isNaN(q) && q > 0) {
         setBookedAmount(String(Math.round(r * q)));
       }
-    } else {
+    } else if (validationRateType === 'TRIP') {
       const count = parseFloat(validationTripCount) || 1;
       if (!isNaN(r) && count > 0) {
         setBookedAmount(String(Math.round(r * count)));
       }
+    } else if (validationRateType === 'HOURLY') {
+      const mins = parseFloat(validationTotalMinutes) || 0;
+      if (!isNaN(r) && mins > 0) {
+        setBookedAmount(String(Math.round(mins * (r / 60))));
+      }
+    }
+  };
+
+  const handleTotalMinutesChange = (mVal) => {
+    setValidationTotalMinutes(mVal);
+    const mins = parseFloat(mVal);
+    const r = parseFloat(validationRate);
+    if (validationRateType === 'HOURLY' && !isNaN(r) && !isNaN(mins) && r > 0 && mins > 0) {
+      setBookedAmount(String(Math.round(mins * (r / 60))));
     }
   };
 
@@ -454,10 +496,15 @@ export default function AdminDashboard({ navigation, route }) {
       if (!isNaN(a) && !isNaN(q) && q > 0) {
         setValidationRate(String(Math.round((a / q) * 100) / 100));
       }
-    } else {
+    } else if (validationRateType === 'TRIP') {
       const count = parseFloat(validationTripCount) || 1;
       if (!isNaN(a) && count > 0) {
         setValidationRate(String(Math.round((a / count) * 100) / 100));
+      }
+    } else if (validationRateType === 'HOURLY') {
+      const mins = parseFloat(validationTotalMinutes) || 0;
+      if (!isNaN(a) && mins > 0) {
+        setValidationRate(String(Math.round((a / mins) * 60)));
       }
     }
   };
@@ -1905,7 +1952,23 @@ export default function AdminDashboard({ navigation, route }) {
                   </Text>
                 </View>
 
-                {/* Rate Mode Selector: Ton Wise vs Trip Wise */}
+                {/* Driver Logged Time Banner (if present) */}
+                {(!!selectedTrip?.start_time || !!selectedTrip?.end_time || !!selectedTrip?.total_minutes) && (
+                  <View style={{ backgroundColor: '#F0FDF4', borderRadius: 8, padding: 8, marginBottom: 10, borderWidth: 1, borderColor: '#86EFAC', flexDirection: 'row', alignItems: 'center' }}>
+                    <MaterialCommunityIcons name="clock-check-outline" size={16} color="#16A34A" style={{ marginRight: 6 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#166534', letterSpacing: 0.5 }}>
+                        DRIVER LOGGED TIME
+                      </Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#15803D' }}>
+                        {selectedTrip.start_time ? selectedTrip.start_time : ''}{selectedTrip.end_time ? ` - ${selectedTrip.end_time}` : ''}
+                        {selectedTrip.total_minutes ? ` (${selectedTrip.total_minutes} mins / ${(selectedTrip.total_minutes / 60).toFixed(1)} hrs)` : ''}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Rate Mode Selector: Ton Wise vs Trip Wise vs Hourly */}
                 <View style={{ flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 8, padding: 3, marginBottom: 10 }}>
                   <TouchableOpacity
                     onPress={() => handleRateTypeChange('TON')}
@@ -1962,9 +2025,37 @@ export default function AdminDashboard({ navigation, route }) {
                       Trip Wise (₹/Trip)
                     </Text>
                   </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => handleRateTypeChange('HOURLY')}
+                    style={{
+                      flex: 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingVertical: 7,
+                      borderRadius: 6,
+                      backgroundColor: validationRateType === 'HOURLY' ? '#FFFFFF' : 'transparent',
+                      elevation: validationRateType === 'HOURLY' ? 1 : 0,
+                      shadowColor: '#000',
+                      shadowOpacity: validationRateType === 'HOURLY' ? 0.08 : 0,
+                      shadowOffset: { width: 0, height: 1 }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialCommunityIcons 
+                      name="clock-outline" 
+                      size={14} 
+                      color={validationRateType === 'HOURLY' ? '#2563EB' : '#64748B'} 
+                      style={{ marginRight: 4 }} 
+                    />
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: validationRateType === 'HOURLY' ? '#2563EB' : '#64748B' }}>
+                      Hourly (₹/Hr)
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
-                {/* Dynamic Inputs: Ton Wise vs Trip Wise */}
+                {/* Dynamic Inputs: Ton Wise vs Trip Wise vs Hourly */}
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
                   {validationRateType === 'TON' ? (
                     <>
@@ -2004,7 +2095,7 @@ export default function AdminDashboard({ navigation, route }) {
                         </View>
                       </View>
                     </>
-                  ) : (
+                  ) : validationRateType === 'TRIP' ? (
                     <>
                       {/* Number of Trips */}
                       <View style={{ flex: 1 }}>
@@ -2042,6 +2133,46 @@ export default function AdminDashboard({ navigation, route }) {
                         </View>
                       </View>
                     </>
+                  ) : (
+                    <>
+                      {/* Duration in Minutes */}
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                          Duration (Mins) *
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                          <TextInput 
+                            style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                            placeholder="e.g. 180"
+                            placeholderTextColor="#94A3B8"
+                            keyboardType="numeric"
+                            value={validationTotalMinutes}
+                            onChangeText={handleTotalMinutesChange}
+                          />
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>
+                            {validationTotalMinutes ? `${Math.floor(Number(validationTotalMinutes) / 60)}h ${Number(validationTotalMinutes) % 60}m` : 'Mins'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Hourly Rate */}
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                          Rate (₹ / Hour) *
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, height: 44 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '800', color: '#2563EB', marginRight: 4 }}>₹</Text>
+                          <TextInput 
+                            style={{ flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '700' }}
+                            placeholder="e.g. 600"
+                            placeholderTextColor="#94A3B8"
+                            keyboardType="numeric"
+                            value={validationRate}
+                            onChangeText={handleRateChange}
+                          />
+                        </View>
+                      </View>
+                    </>
                   )}
                 </View>
 
@@ -2051,9 +2182,9 @@ export default function AdminDashboard({ navigation, route }) {
                     <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B' }}>
                       Total {validationLedgerType === 'INCOME' ? 'Bhada / Income' : 'Expense'} Amount (₹) *
                     </Text>
-                    {!!validationRate && (validationRateType === 'TON' ? !!validationQuantity : !!validationTripCount) && (
+                    {!!validationRate && (validationRateType === 'TON' ? !!validationQuantity : validationRateType === 'TRIP' ? !!validationTripCount : !!validationTotalMinutes) && (
                       <Text style={{ fontSize: 10, fontWeight: '700', color: '#059669' }}>
-                        Auto-Calculated ({validationRateType === 'TON' ? 'Rate × Qty' : 'Rate × Trips'})
+                        Auto-Calculated ({validationRateType === 'TON' ? 'Rate × Qty' : validationRateType === 'TRIP' ? 'Rate × Trips' : 'Rate/60 × Mins'})
                       </Text>
                     )}
                   </View>
@@ -2071,13 +2202,15 @@ export default function AdminDashboard({ navigation, route }) {
                 </View>
 
                 {/* Formula Breakdown Banner */}
-                {!!validationRate && (validationRateType === 'TON' ? !!validationQuantity : !!validationTripCount) && (
+                {!!validationRate && (validationRateType === 'TON' ? !!validationQuantity : validationRateType === 'TRIP' ? !!validationTripCount : !!validationTotalMinutes) && (
                   <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}>
                     <MaterialCommunityIcons name="calculator" size={14} color="#2563EB" style={{ marginRight: 6 }} />
                     <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E40AF' }}>
                       {validationRateType === 'TON' 
                         ? `₹${validationRate} / Ton × ${validationQuantity} Tons = ₹${Number(bookedAmount || 0).toLocaleString('en-IN')}`
-                        : `₹${validationRate} / Trip × ${validationTripCount} Trips = ₹${Number(bookedAmount || 0).toLocaleString('en-IN')}`
+                        : validationRateType === 'TRIP'
+                        ? `₹${validationRate} / Trip × ${validationTripCount} Trips = ₹${Number(bookedAmount || 0).toLocaleString('en-IN')}`
+                        : `₹${validationRate} / Hr (₹${(parseFloat(validationRate) / 60).toFixed(2)}/m) × ${validationTotalMinutes} mins = ₹${Number(bookedAmount || 0).toLocaleString('en-IN')}`
                       }
                     </Text>
                   </View>

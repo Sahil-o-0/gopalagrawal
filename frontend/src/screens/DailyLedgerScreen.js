@@ -64,11 +64,23 @@ export default function DailyLedgerScreen({ navigation }) {
     const [editClientAddress, setEditClientAddress] = useState('');
     const [editClientOpeningBalance, setEditClientOpeningBalance] = useState('');
 
-    // Record Client Transaction Modal State
+    // Record Client Transaction / Purchase / Sale / Dispatch Modal State
     const [isClientTxnModalVisible, setIsClientTxnModalVisible] = useState(false);
     const [editingClientTxn, setEditingClientTxn] = useState(null);
     const [selectedClientForTxn, setSelectedClientForTxn] = useState(null);
-    const [clientTxnType, setClientTxnType] = useState('BILLED'); // BILLED, RECEIVED, ADVANCE
+    const [clientTxnType, setClientTxnType] = useState('PURCHASE'); // 'PURCHASE' | 'SALE' | 'PAYMENT'
+    const [paymentDirection, setPaymentDirection] = useState('RECEIVED'); // 'RECEIVED' (Got) | 'GAVE' (Gave)
+    const [txnMaterialType, setTxnMaterialType] = useState('Coal');
+    const [txnRateType, setTxnRateType] = useState('TON'); // 'TON' | 'TRIP' | 'HOURLY'
+    const [txnQuantity, setTxnQuantity] = useState('');
+    const [txnRate, setTxnRate] = useState('');
+    const [txnVehicleSource, setTxnVehicleSource] = useState('OWN'); // 'OWN' | 'OTHER'
+    const [txnVehicleNumber, setTxnVehicleNumber] = useState('');
+    const [txnTransporterName, setTxnTransporterName] = useState('');
+    const [txnOutsideBhada, setTxnOutsideBhada] = useState('');
+    const [txnAssignedDriverId, setTxnAssignedDriverId] = useState('');
+    const [txnCreateDispatch, setTxnCreateDispatch] = useState(true);
+    const [availableVehicles, setAvailableVehicles] = useState([]);
     const [clientTxnAmount, setClientTxnAmount] = useState('');
     const [clientTxnDate, setClientTxnDate] = useState(new Date());
     const [showClientTxnDatePicker, setShowClientTxnDatePicker] = useState(false);
@@ -329,7 +341,8 @@ export default function DailyLedgerScreen({ navigation }) {
     const openEditTxnModal = (txn, client) => {
         setSelectedClientForTxn(client || clients.find(c => String(c.id) === String(txn.client_id)));
         setEditingClientTxn(txn);
-        setClientTxnType(txn.type || txn.txn_type || 'BILLED');
+        const tType = txn.type || txn.txn_type || 'PURCHASE';
+        setClientTxnType(tType === 'SALE' ? 'SALE' : tType === 'PURCHASE' ? 'PURCHASE' : 'PAYMENT');
         setClientTxnAmount(String(txn.amount || ''));
         setClientTxnDate(txn.date ? new Date(txn.date) : new Date());
         setClientTxnMode(txn.payment_mode || 'CASH');
@@ -353,7 +366,7 @@ export default function DailyLedgerScreen({ navigation }) {
 
         if (editingClientTxn) {
             const editPayload = {
-                txn_type: clientTxnType,
+                txn_type: clientTxnType === 'PAYMENT' ? (paymentDirection === 'RECEIVED' ? 'RECEIVED' : 'BILLED') : clientTxnType,
                 amount: amt,
                 date: dateStr,
                 payment_mode: clientTxnMode,
@@ -388,67 +401,185 @@ export default function DailyLedgerScreen({ navigation }) {
             return;
         }
 
-        const createPayload = {
-            client_id: selectedClientForTxn.id,
-            txn_type: clientTxnType,
-            amount: amt,
-            date: dateStr,
-            payment_mode: clientTxnMode,
-            notes: clientTxnNotes.trim() || null,
-        };
+        // 1. PURCHASE or SALE Entry Flow
+        if (clientTxnType === 'PURCHASE' || clientTxnType === 'SALE') {
+            const isSale = clientTxnType === 'SALE';
+            const isOwnVeh = txnVehicleSource === 'OWN';
+            const effVeh = (isOwnVeh ? txnVehicleNumber : (txnVehicleNumber.trim() || 'OUTSIDE VEHICLE')).toUpperCase();
+            
+            let rateSummary = txnRateType === 'TON' 
+                ? `${txnQuantity}T @ ₹${txnRate}/T`
+                : txnRateType === 'TRIP'
+                ? `${txnQuantity} Trips @ ₹${txnRate}/Trip`
+                : `${txnQuantity} Hrs @ ₹${txnRate}/Hr (₹${(parseFloat(txnRate || 0) / 60).toFixed(2)}/min)`;
 
-        try {
-            if (!userToken) {
-                Alert.alert('Error', 'Please log in again.');
+            const notesSummary = `${isSale ? 'Sale' : 'Purchase'}: ${txnMaterialType || 'Material'} [${rateSummary}] - ${effVeh}${txnTransporterName ? ` (Transporter: ${txnTransporterName})` : ''}${clientTxnNotes ? ' • ' + clientTxnNotes : ''}`;
+
+            // Save to Client Khata (/clients/transactions)
+            try {
+                const res = await fetch(`${API_BASE_URL}/clients/transactions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+                    body: JSON.stringify({
+                        client_id: selectedClientForTxn.id,
+                        txn_type: isSale ? 'SALE' : 'PURCHASE',
+                        amount: amt,
+                        date: dateStr,
+                        payment_mode: 'CREDIT',
+                        notes: notesSummary
+                    })
+                });
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    Alert.alert('Error', errData.detail || 'Could not record transaction in cloud.');
+                    return;
+                }
+            } catch (err) {
+                Alert.alert('Error', 'Could not reach server to record transaction.');
                 return;
             }
-            const res = await fetch(`${API_BASE_URL}/clients/transactions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${userToken}`
-                },
-                body: JSON.stringify(createPayload)
-            });
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                Alert.alert('Error', errData.detail || 'Could not record transaction in cloud.');
-                return;
+
+            // Save to Daily Ledger (/workforce/daily-ledger)
+            try {
+                await fetch(`${API_BASE_URL}/workforce/daily-ledger`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+                    body: JSON.stringify({
+                        transaction_type: isSale ? 'INCOME' : 'EXPENSE',
+                        category: isSale ? 'MATERIAL_SALE' : 'MATERIAL_PURCHASE',
+                        amount: amt,
+                        description: `${isSale ? 'Material Sale' : 'Material Purchase'}: ${selectedClientForTxn.name} (${txnMaterialType || 'Cargo'}) [${rateSummary}] - ${effVeh}`,
+                        date: dateStr,
+                        site_id: selectedSite?.id || 1
+                    })
+                });
+            } catch (e) {
+                console.log('Daily Ledger notice:', e);
             }
-        } catch (err) {
-            console.log('Cloud txn create error:', err);
-            Alert.alert('Error', 'Could not reach server to record transaction.');
+
+            // Outside Vehicle Freight Expense (if applicable)
+            const outsideFreight = parseFloat(txnOutsideBhada) || 0;
+            if (!isOwnVeh && outsideFreight > 0) {
+                try {
+                    await fetch(`${API_BASE_URL}/workforce/daily-ledger`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+                        body: JSON.stringify({
+                            transaction_type: 'EXPENSE',
+                            category: 'TRIP_EXPENSE',
+                            amount: outsideFreight,
+                            description: `Outside Freight: ${effVeh} (${txnTransporterName || 'Transporter'}) for ${selectedClientForTxn.name} ${isSale ? 'Sale' : 'Purchase'}`,
+                            date: dateStr,
+                            site_id: selectedSite?.id || 1
+                        })
+                    });
+                } catch (fErr) {
+                    console.log('Outside freight notice:', fErr);
+                }
+            }
+
+            // If Own Vehicle and "Create Dispatch for Driver" is enabled -> Send Dispatch Slip to Driver
+            let dispatchId = null;
+            if (isOwnVeh && txnCreateDispatch) {
+                try {
+                    const totalMinutesVal = txnRateType === 'HOURLY' ? (parseFloat(txnQuantity) || 0) * 60 : 0;
+                    const dispatchRes = await fetch(`${API_BASE_URL}/trips/dispatch`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+                        body: JSON.stringify({
+                            vehicle_number: effVeh,
+                            material_type: txnMaterialType || 'General Cargo',
+                            weight_tons: parseFloat(txnQuantity) || 1.0,
+                            rate: parseFloat(txnRate) || 0.0,
+                            rate_type: txnRateType,
+                            hourly_rate: txnRateType === 'HOURLY' ? parseFloat(txnRate) || 0.0 : 0.0,
+                            total_minutes: totalMinutesVal,
+                            bhada: amt,
+                            staff_id: txnAssignedDriverId ? parseInt(txnAssignedDriverId) : null,
+                            client_id: selectedClientForTxn.id,
+                            client_name: selectedClientForTxn.name,
+                            trade_type: isSale ? 'SALE' : 'PURCHASE',
+                            origin: isSale ? 'Site' : selectedClientForTxn.name,
+                            destination: isSale ? selectedClientForTxn.name : 'Site',
+                            freight_notes: `${isSale ? 'Sale to' : 'Purchase from'} ${selectedClientForTxn.name} (${txnMaterialType || 'Cargo'})`
+                        })
+                    });
+                    if (dispatchRes.ok) {
+                        const disp = await dispatchRes.json();
+                        dispatchId = disp.id;
+                    }
+                } catch (dErr) {
+                    console.log("Dispatch creation notice:", dErr);
+                }
+            }
+
+            Alert.alert(
+                isSale ? "Sale Recorded" : "Purchase Recorded",
+                `${isSale ? 'Sale' : 'Purchase'} of ₹${amt.toLocaleString('en-IN')} saved to ${selectedClientForTxn.name}'s Khata & Daily Ledger.` + 
+                (dispatchId ? `\n\n🚀 Dispatch Slip #${dispatchId} sent to Driver for ${effVeh}. Driver will complete odometer & photos from app.` : '')
+            );
+
+            setClientTxnAmount('');
+            setClientTxnNotes('');
+            setIsClientTxnModalVisible(false);
+            await loadClientKhata();
+            fetchLedger();
             return;
         }
 
-        if (syncClientTxnToDaily && (clientTxnType === 'RECEIVED' || clientTxnType === 'ADVANCE')) {
-            const dailyPayload = {
-                transaction_type: 'INCOME',
-                category: 'CLIENT_PAYMENT',
-                amount: amt,
-                description: 'Payment from ' + selectedClientForTxn.name + ' (' + clientTxnMode + ')' + (clientTxnNotes ? ': ' + clientTxnNotes : ''),
-                date: dateStr,
-                site_id: selectedSite?.id || 1
-            };
+        // 2. PAYMENT Entry Flow
+        if (clientTxnType === 'PAYMENT') {
+            const isRec = paymentDirection === 'RECEIVED';
+            const pType = isRec ? 'RECEIVED' : 'BILLED';
+            
             try {
-                await fetch(API_BASE_URL + '/workforce/daily-ledger', {
+                const res = await fetch(`${API_BASE_URL}/clients/transactions`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + userToken
-                    },
-                    body: JSON.stringify(dailyPayload)
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+                    body: JSON.stringify({
+                        client_id: selectedClientForTxn.id,
+                        txn_type: pType,
+                        amount: amt,
+                        date: dateStr,
+                        payment_mode: clientTxnMode,
+                        notes: clientTxnNotes.trim() || (isRec ? 'Payment Received' : 'Payment Paid')
+                    })
                 });
-            } catch (e) {
-                console.log('Daily sync notice:', e);
+                if (!res.ok) {
+                    Alert.alert('Error', 'Could not record payment.');
+                    return;
+                }
+            } catch (pErr) {
+                Alert.alert('Error', 'Server unreachable.');
+                return;
             }
-        }
 
-        setClientTxnAmount('');
-        setClientTxnNotes('');
-        setIsClientTxnModalVisible(false);
-        await loadClientKhata();
-        Alert.alert('Recorded', 'Transaction of ₹' + amt.toLocaleString('en-IN') + ' recorded for ' + selectedClientForTxn.name + '.');
+            if (syncClientTxnToDaily) {
+                try {
+                    await fetch(`${API_BASE_URL}/workforce/daily-ledger`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+                        body: JSON.stringify({
+                            transaction_type: isRec ? 'INCOME' : 'EXPENSE',
+                            category: isRec ? 'CLIENT_PAYMENT' : 'SUPPLIER_PAYMENT',
+                            amount: amt,
+                            description: `Payment ${isRec ? 'from' : 'to'} ${selectedClientForTxn.name} (${clientTxnMode})${clientTxnNotes ? ': ' + clientTxnNotes : ''}`,
+                            date: dateStr,
+                            site_id: selectedSite?.id || 1
+                        })
+                    });
+                } catch (e) {
+                    console.log('Daily sync notice:', e);
+                }
+            }
+
+            Alert.alert("Payment Recorded", `₹${amt.toLocaleString('en-IN')} recorded for ${selectedClientForTxn.name}.`);
+            setClientTxnAmount('');
+            setClientTxnNotes('');
+            setIsClientTxnModalVisible(false);
+            await loadClientKhata();
+            fetchLedger();
+        }
     };
 
     const handleDeleteClientTxn = (txnId) => {
@@ -482,8 +613,8 @@ export default function DailyLedgerScreen({ navigation }) {
 
     const getClientMetrics = (clientId, openingBal = 0) => {
         const txns = clientTransactions.filter(t => String(t.client_id) === String(clientId));
-        const billed = txns.filter(t => t.type === 'BILLED' || t.txn_type === 'BILLED').reduce((s, t) => s + (t.amount || 0), 0) + (parseFloat(openingBal) || 0);
-        const received = txns.filter(t => t.type === 'RECEIVED' || t.txn_type === 'RECEIVED' || t.type === 'ADVANCE' || t.txn_type === 'ADVANCE').reduce((s, t) => s + (t.amount || 0), 0);
+        const billed = txns.filter(t => t.type === 'BILLED' || t.txn_type === 'BILLED' || t.type === 'SALE' || t.txn_type === 'SALE').reduce((s, t) => s + (t.amount || 0), 0) + (parseFloat(openingBal) || 0);
+        const received = txns.filter(t => t.type === 'RECEIVED' || t.txn_type === 'RECEIVED' || t.type === 'ADVANCE' || t.txn_type === 'ADVANCE' || t.type === 'PURCHASE' || t.txn_type === 'PURCHASE').reduce((s, t) => s + (t.amount || 0), 0);
         const pending = billed - received;
         return { billed, received, pending, txnsCount: txns.length };
     };
@@ -1090,6 +1221,24 @@ export default function DailyLedgerScreen({ navigation }) {
             if (resp.ok) {
                 const data = await resp.json();
                 setStaffList(data);
+                const vehSet = new Set();
+                data.forEach(s => {
+                    if (s.assigned_vehicle && s.assigned_vehicle.trim()) {
+                        s.assigned_vehicle.split(',').forEach(v => {
+                            if (v.trim()) vehSet.add(v.trim().toUpperCase());
+                        });
+                    }
+                });
+                if (user?.assigned_vehicle) {
+                    user.assigned_vehicle.split(',').forEach(v => {
+                        if (v.trim()) vehSet.add(v.trim().toUpperCase());
+                    });
+                }
+                const vList = Array.from(vehSet);
+                setAvailableVehicles(vList);
+                if (!txnVehicleNumber && vList.length > 0) {
+                    setTxnVehicleNumber(vList[0]);
+                }
             }
         } catch (e) {
             console.log("Error fetching staff:", e);
@@ -2475,157 +2624,435 @@ export default function DailyLedgerScreen({ navigation }) {
                                 </View>
                             )}
 
-                            {/* Type Selector: Billed vs Received vs Advance */}
+                            {/* Business Type Selector: Purchase vs Sale vs Payment */}
                             <View style={styles.clientTypeSwitcher}>
                                 <TouchableOpacity
                                     style={[
                                         styles.clientTypeBtn,
-                                        clientTxnType === 'BILLED' && styles.clientTypeBtnBilledActive
+                                        clientTxnType === 'PURCHASE' && styles.clientTypeBtnPurchaseActive
                                     ]}
-                                    onPress={() => setClientTxnType('BILLED')}
+                                    onPress={() => setClientTxnType('PURCHASE')}
                                     activeOpacity={0.8}
                                 >
                                     <MaterialCommunityIcons 
-                                        name="arrow-top-right" 
+                                        name="cart-arrow-down" 
                                         size={18} 
-                                        color={clientTxnType === 'BILLED' ? '#FFFFFF' : '#DC2626'} 
+                                        color={clientTxnType === 'PURCHASE' ? '#FFFFFF' : '#D97706'} 
                                     />
-                                    <Text style={[styles.clientTypeBtnText, clientTxnType === 'BILLED' && styles.clientTypeBtnTextActive]}>
-                                        Gave / Billed
+                                    <Text style={[styles.clientTypeBtnText, clientTxnType === 'PURCHASE' && styles.clientTypeBtnTextActive]}>
+                                        Purchase
                                     </Text>
-                                    <Text style={[styles.clientTypeBtnSub, clientTxnType === 'BILLED' && styles.clientTypeBtnSubActive]}>
-                                        माल दिया / बिल
+                                    <Text style={[styles.clientTypeBtnSub, clientTxnType === 'PURCHASE' && styles.clientTypeBtnSubActive]}>
+                                        खरीद (माल लिया)
                                     </Text>
                                 </TouchableOpacity>
 
                                 <TouchableOpacity
                                     style={[
                                         styles.clientTypeBtn,
-                                        clientTxnType === 'RECEIVED' && styles.clientTypeBtnReceivedActive
+                                        clientTxnType === 'SALE' && styles.clientTypeBtnSaleActive
                                     ]}
-                                    onPress={() => setClientTxnType('RECEIVED')}
+                                    onPress={() => setClientTxnType('SALE')}
                                     activeOpacity={0.8}
                                 >
                                     <MaterialCommunityIcons 
-                                        name="arrow-bottom-left" 
+                                        name="truck-fast-outline" 
                                         size={18} 
-                                        color={clientTxnType === 'RECEIVED' ? '#FFFFFF' : '#16A34A'} 
+                                        color={clientTxnType === 'SALE' ? '#FFFFFF' : '#2563EB'} 
                                     />
-                                    <Text style={[styles.clientTypeBtnText, clientTxnType === 'RECEIVED' && styles.clientTypeBtnTextActive]}>
-                                        Got / Payment
+                                    <Text style={[styles.clientTypeBtnText, clientTxnType === 'SALE' && styles.clientTypeBtnTextActive]}>
+                                        Sale
                                     </Text>
-                                    <Text style={[styles.clientTypeBtnSub, clientTxnType === 'RECEIVED' && styles.clientTypeBtnSubActive]}>
-                                        रुपया मिला
+                                    <Text style={[styles.clientTypeBtnSub, clientTxnType === 'SALE' && styles.clientTypeBtnSubActive]}>
+                                        बिक्री (माल दिया)
                                     </Text>
                                 </TouchableOpacity>
 
                                 <TouchableOpacity
                                     style={[
                                         styles.clientTypeBtn,
-                                        clientTxnType === 'ADVANCE' && styles.clientTypeBtnAdvanceActive
+                                        clientTxnType === 'PAYMENT' && styles.clientTypeBtnPaymentActive
                                     ]}
-                                    onPress={() => setClientTxnType('ADVANCE')}
+                                    onPress={() => setClientTxnType('PAYMENT')}
                                     activeOpacity={0.8}
                                 >
                                     <MaterialCommunityIcons 
-                                        name="hand-coin" 
+                                        name="cash-multiple" 
                                         size={18} 
-                                        color={clientTxnType === 'ADVANCE' ? '#FFFFFF' : '#0284C7'} 
+                                        color={clientTxnType === 'PAYMENT' ? '#FFFFFF' : '#16A34A'} 
                                     />
-                                    <Text style={[styles.clientTypeBtnText, clientTxnType === 'ADVANCE' && styles.clientTypeBtnTextActive]}>
-                                        Advance
+                                    <Text style={[styles.clientTypeBtnText, clientTxnType === 'PAYMENT' && styles.clientTypeBtnTextActive]}>
+                                        Payment
                                     </Text>
-                                    <Text style={[styles.clientTypeBtnSub, clientTxnType === 'ADVANCE' && styles.clientTypeBtnSubActive]}>
-                                        अग्रिम जमा
+                                    <Text style={[styles.clientTypeBtnSub, clientTxnType === 'PAYMENT' && styles.clientTypeBtnSubActive]}>
+                                        भुगतान (रोकड़ा)
                                     </Text>
                                 </TouchableOpacity>
                             </View>
 
-                            <View style={styles.formGroup}>
-                                <Text style={styles.modalLabel}>Amount (₹) *</Text>
-                                <TextInput
-                                    style={[styles.modalInput, { fontSize: 20, fontWeight: '800' }]}
-                                    placeholder="₹ 0.00"
-                                    placeholderTextColor="#94A3B8"
-                                    keyboardType="numeric"
-                                    value={clientTxnAmount}
-                                    onChangeText={setClientTxnAmount}
-                                    autoFocus
-                                />
-                            </View>
+                            {/* Form Sections for Purchase / Sale */}
+                            {(clientTxnType === 'PURCHASE' || clientTxnType === 'SALE') ? (
+                                <>
+                                    {/* Material Type */}
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.modalLabel}>Material / Product *</Text>
+                                        <TextInput
+                                            style={styles.modalInput}
+                                            placeholder="e.g. Coal, Iron Ore, Stone, Sand"
+                                            placeholderTextColor="#94A3B8"
+                                            value={txnMaterialType}
+                                            onChangeText={setTxnMaterialType}
+                                        />
+                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 6 }}>
+                                            {['Coal', 'Iron Ore', 'Stone', 'Sand', 'Aggregate', 'Gitti', 'Flyash'].map(mat => (
+                                                <TouchableOpacity
+                                                    key={mat}
+                                                    style={[styles.matChip, txnMaterialType === mat && styles.matChipActive]}
+                                                    onPress={() => setTxnMaterialType(mat)}
+                                                >
+                                                    <Text style={[styles.matChipText, txnMaterialType === mat && styles.matChipTextActive]}>
+                                                        {mat}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </ScrollView>
+                                    </View>
 
-                            {/* Payment Mode */}
-                            <View style={styles.formGroup}>
-                                <Text style={styles.modalLabel}>Payment Mode</Text>
-                                <View style={{ flexDirection: 'row', gap: 8 }}>
-                                    {['CASH', 'ONLINE', 'CHEQUE'].map(m => (
-                                        <TouchableOpacity
-                                            key={m}
-                                            style={[styles.freightModeChip, clientTxnMode === m && styles.freightModeChipActive]}
-                                            onPress={() => setClientTxnMode(m)}
-                                        >
-                                            <Text style={[styles.freightModeText, clientTxnMode === m && styles.freightModeTextActive]}>{m}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                            </View>
+                                    {/* Rate Calculation Type */}
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.modalLabel}>Rate Unit / Billing Type</Text>
+                                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                                            {[
+                                                { id: 'TON', label: 'By Ton (टन)', icon: 'weight' },
+                                                { id: 'TRIP', label: 'By Trip (ट्रिप)', icon: 'repeat' },
+                                                { id: 'HOURLY', label: 'Hourly (घंटे/मिनट)', icon: 'clock-outline' }
+                                            ].map(item => (
+                                                <TouchableOpacity
+                                                    key={item.id}
+                                                    style={[styles.unitChip, txnRateType === item.id && styles.unitChipActive]}
+                                                    onPress={() => {
+                                                        setTxnRateType(item.id);
+                                                        const q = parseFloat(txnQuantity) || 0;
+                                                        const r = parseFloat(txnRate) || 0;
+                                                        if (q > 0 && r > 0) setClientTxnAmount(String(Math.round(q * r)));
+                                                    }}
+                                                >
+                                                    <MaterialCommunityIcons 
+                                                        name={item.icon} 
+                                                        size={14} 
+                                                        color={txnRateType === item.id ? '#2563EB' : '#64748B'} 
+                                                        style={{ marginRight: 4 }} 
+                                                    />
+                                                    <Text style={[styles.unitChipText, txnRateType === item.id && styles.unitChipTextActive]}>
+                                                        {item.label}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    </View>
+
+                                    {/* Quantity and Rate Row */}
+                                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.modalLabel}>
+                                                {txnRateType === 'TON' ? 'Quantity (Tons) *' : txnRateType === 'TRIP' ? 'Trip Count *' : 'Duration (Hours) *'}
+                                            </Text>
+                                            <TextInput
+                                                style={styles.modalInput}
+                                                placeholder={txnRateType === 'TON' ? 'e.g. 25.4' : txnRateType === 'TRIP' ? 'e.g. 1' : 'e.g. 5.5'}
+                                                placeholderTextColor="#94A3B8"
+                                                keyboardType="numeric"
+                                                value={txnQuantity}
+                                                onChangeText={(qVal) => {
+                                                    setTxnQuantity(qVal);
+                                                    const q = parseFloat(qVal) || 0;
+                                                    const r = parseFloat(txnRate) || 0;
+                                                    if (q > 0 && r > 0) setClientTxnAmount(String(Math.round(q * r)));
+                                                }}
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.modalLabel}>
+                                                Rate (₹ / {txnRateType === 'TON' ? 'Ton' : txnRateType === 'TRIP' ? 'Trip' : 'Hour'}) *
+                                            </Text>
+                                            <TextInput
+                                                style={styles.modalInput}
+                                                placeholder="e.g. 1200"
+                                                placeholderTextColor="#94A3B8"
+                                                keyboardType="numeric"
+                                                value={txnRate}
+                                                onChangeText={(rVal) => {
+                                                    setTxnRate(rVal);
+                                                    const q = parseFloat(txnQuantity) || 0;
+                                                    const r = parseFloat(rVal) || 0;
+                                                    if (q > 0 && r > 0) setClientTxnAmount(String(Math.round(q * r)));
+                                                }}
+                                            />
+                                            {txnRateType === 'HOURLY' && (
+                                                <Text style={{ fontSize: 10.5, color: '#059669', fontWeight: '700', marginTop: 2 }}>
+                                                    ≈ ₹{((parseFloat(txnRate) || 0) / 60).toFixed(2)}/min
+                                                </Text>
+                                            )}
+                                        </View>
+                                    </View>
+
+                                    {/* Total Amount Box */}
+                                    <View style={styles.formGroup}>
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                            <Text style={styles.modalLabel}>Total Value (₹) *</Text>
+                                            {((parseFloat(txnQuantity) || 0) > 0 && (parseFloat(txnRate) || 0) > 0) && (
+                                                <Text style={{ fontSize: 11, color: '#059669', fontWeight: '700' }}>
+                                                    Auto-calculated: {txnQuantity} × ₹{txnRate}
+                                                </Text>
+                                            )}
+                                        </View>
+                                        <TextInput
+                                            style={[styles.modalInput, { fontSize: 20, fontWeight: '800', color: clientTxnType === 'SALE' ? '#2563EB' : '#D97706' }]}
+                                            placeholder="₹ 0.00"
+                                            placeholderTextColor="#94A3B8"
+                                            keyboardType="numeric"
+                                            value={clientTxnAmount}
+                                            onChangeText={setClientTxnAmount}
+                                        />
+                                    </View>
+
+                                    {/* Vehicle Details Section */}
+                                    <View style={styles.vehicleSectionBox}>
+                                        <Text style={{ fontSize: 12, fontWeight: '800', color: '#1E293B', textTransform: 'uppercase', marginBottom: 8 }}>
+                                            Vehicle Logistics
+                                        </Text>
+
+                                        {/* Source Toggle: Own vs Outside */}
+                                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                                            <TouchableOpacity
+                                                style={[styles.sourceToggleBtn, txnVehicleSource === 'OWN' && styles.sourceToggleBtnActive]}
+                                                onPress={() => setTxnVehicleSource('OWN')}
+                                            >
+                                                <MaterialCommunityIcons name="truck-check" size={16} color={txnVehicleSource === 'OWN' ? '#FFFFFF' : '#475569'} />
+                                                <Text style={[styles.sourceToggleText, txnVehicleSource === 'OWN' && styles.sourceToggleTextActive]}>
+                                                    Own Vehicle (हमारी)
+                                                </Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity
+                                                style={[styles.sourceToggleBtn, txnVehicleSource === 'OTHER' && styles.sourceToggleBtnOtherActive]}
+                                                onPress={() => setTxnVehicleSource('OTHER')}
+                                            >
+                                                <MaterialCommunityIcons name="account-arrow-right" size={16} color={txnVehicleSource === 'OTHER' ? '#FFFFFF' : '#475569'} />
+                                                <Text style={[styles.sourceToggleText, txnVehicleSource === 'OTHER' && styles.sourceToggleTextOtherActive]}>
+                                                    Outside Vehicle (बाहरी)
+                                                </Text>
+                                            </TouchableOpacity>
+                                        </View>
+
+                                        {txnVehicleSource === 'OWN' ? (
+                                            <>
+                                                {/* Own Vehicle Selector */}
+                                                <Text style={styles.modalLabel}>Select Our Fleet Vehicle *</Text>
+                                                <TextInput
+                                                    style={styles.modalInput}
+                                                    placeholder="e.g. MH-12-FE-4920"
+                                                    placeholderTextColor="#94A3B8"
+                                                    value={txnVehicleNumber}
+                                                    onChangeText={setTxnVehicleNumber}
+                                                    autoCapitalize="characters"
+                                                />
+                                                {availableVehicles.length > 0 && (
+                                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 6, marginBottom: 10 }}>
+                                                        {availableVehicles.map(veh => (
+                                                            <TouchableOpacity
+                                                                key={veh}
+                                                                style={[styles.matChip, txnVehicleNumber.toUpperCase() === veh.toUpperCase() && styles.matChipActive]}
+                                                                onPress={() => setTxnVehicleNumber(veh)}
+                                                            >
+                                                                <Text style={[styles.matChipText, txnVehicleNumber.toUpperCase() === veh.toUpperCase() && styles.matChipTextActive]}>
+                                                                    {veh}
+                                                                </Text>
+                                                            </TouchableOpacity>
+                                                        ))}
+                                                    </ScrollView>
+                                                )}
+
+                                                {/* Assign Driver */}
+                                                <View style={{ marginBottom: 10 }}>
+                                                    <Text style={styles.modalLabel}>Assign Driver (Optional)</Text>
+                                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 4 }}>
+                                                        {staffList.filter(u => u.role !== 'ADMIN').map(d => (
+                                                            <TouchableOpacity
+                                                                key={d.id}
+                                                                style={[styles.driverChip, txnAssignedDriverId === String(d.id) && styles.driverChipActive]}
+                                                                onPress={() => setTxnAssignedDriverId(txnAssignedDriverId === String(d.id) ? '' : String(d.id))}
+                                                            >
+                                                                <MaterialCommunityIcons name="steering" size={13} color={txnAssignedDriverId === String(d.id) ? '#FFFFFF' : '#059669'} style={{ marginRight: 4 }} />
+                                                                <Text style={[styles.driverChipText, txnAssignedDriverId === String(d.id) && styles.driverChipTextActive]}>
+                                                                    {d.full_name || d.username}
+                                                                </Text>
+                                                            </TouchableOpacity>
+                                                        ))}
+                                                    </ScrollView>
+                                                </View>
+
+                                                {/* Create Dispatch for Driver Switch */}
+                                                <TouchableOpacity
+                                                    style={[styles.dispatchToggleCard, txnCreateDispatch && styles.dispatchToggleCardActive]}
+                                                    onPress={() => setTxnCreateDispatch(!txnCreateDispatch)}
+                                                    activeOpacity={0.8}
+                                                >
+                                                    <MaterialCommunityIcons
+                                                        name={txnCreateDispatch ? "checkbox-marked" : "checkbox-blank-outline"}
+                                                        size={22}
+                                                        color={txnCreateDispatch ? "#059669" : "#94A3B8"}
+                                                    />
+                                                    <View style={{ flex: 1, marginLeft: 8 }}>
+                                                        <Text style={[styles.dispatchToggleTitle, txnCreateDispatch && { color: '#065F46' }]}>
+                                                            Create Dispatch Slip for Driver
+                                                        </Text>
+                                                        <Text style={styles.dispatchToggleSub}>
+                                                            Sends dispatch to driver's app. Driver will enter odometer & photos on-site — Zero duplicate entries!
+                                                        </Text>
+                                                    </View>
+                                                </TouchableOpacity>
+                                            </>
+                                        ) : (
+                                            <>
+                                                {/* Outside Vehicle Details */}
+                                                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                                                    <View style={{ flex: 1.2 }}>
+                                                        <Text style={styles.modalLabel}>Vehicle Number *</Text>
+                                                        <TextInput
+                                                            style={styles.modalInput}
+                                                            placeholder="e.g. CG-04-E-1234"
+                                                            placeholderTextColor="#94A3B8"
+                                                            value={txnVehicleNumber}
+                                                            onChangeText={setTxnVehicleNumber}
+                                                            autoCapitalize="characters"
+                                                        />
+                                                    </View>
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={styles.modalLabel}>Transporter (Opt)</Text>
+                                                        <TextInput
+                                                            style={styles.modalInput}
+                                                            placeholder="e.g. Ramesh Transport"
+                                                            placeholderTextColor="#94A3B8"
+                                                            value={txnTransporterName}
+                                                            onChangeText={setTxnTransporterName}
+                                                        />
+                                                    </View>
+                                                </View>
+
+                                                <View style={styles.formGroup}>
+                                                    <Text style={styles.modalLabel}>Outside Bhada / Freight (₹) (Optional)</Text>
+                                                    <TextInput
+                                                        style={styles.modalInput}
+                                                        placeholder="Freight to pay to outside truck"
+                                                        placeholderTextColor="#94A3B8"
+                                                        keyboardType="numeric"
+                                                        value={txnOutsideBhada}
+                                                        onChangeText={setTxnOutsideBhada}
+                                                    />
+                                                </View>
+                                            </>
+                                        )}
+                                    </View>
+                                </>
+                            ) : (
+                                <>
+                                    {/* PAYMENT MODE: Direction (Got vs Gave) */}
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.modalLabel}>Payment Direction *</Text>
+                                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                                            <TouchableOpacity
+                                                style={[styles.payDirectionBtn, paymentDirection === 'RECEIVED' && styles.payDirectionBtnRecActive]}
+                                                onPress={() => setPaymentDirection('RECEIVED')}
+                                            >
+                                                <MaterialCommunityIcons name="arrow-bottom-left" size={18} color={paymentDirection === 'RECEIVED' ? '#FFFFFF' : '#16A34A'} />
+                                                <Text style={[styles.payDirectionText, paymentDirection === 'RECEIVED' && styles.payDirectionTextActive]}>
+                                                    Got / Received (रुपया मिला)
+                                                </Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity
+                                                style={[styles.payDirectionBtn, paymentDirection === 'GAVE' && styles.payDirectionBtnGaveActive]}
+                                                onPress={() => setPaymentDirection('GAVE')}
+                                            >
+                                                <MaterialCommunityIcons name="arrow-top-right" size={18} color={paymentDirection === 'GAVE' ? '#FFFFFF' : '#DC2626'} />
+                                                <Text style={[styles.payDirectionText, paymentDirection === 'GAVE' && styles.payDirectionTextActive]}>
+                                                    Gave / Paid (रुपया दिया)
+                                                </Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.modalLabel}>Amount (₹) *</Text>
+                                        <TextInput
+                                            style={[styles.modalInput, { fontSize: 20, fontWeight: '800' }]}
+                                            placeholder="₹ 0.00"
+                                            placeholderTextColor="#94A3B8"
+                                            keyboardType="numeric"
+                                            value={clientTxnAmount}
+                                            onChangeText={setClientTxnAmount}
+                                            autoFocus
+                                        />
+                                    </View>
+
+                                    {/* Payment Mode */}
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.modalLabel}>Payment Mode</Text>
+                                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                                            {['CASH', 'ONLINE', 'CHEQUE'].map(m => (
+                                                <TouchableOpacity
+                                                    key={m}
+                                                    style={[styles.freightModeChip, clientTxnMode === m && styles.freightModeChipActive]}
+                                                    onPress={() => setClientTxnMode(m)}
+                                                >
+                                                    <Text style={[styles.freightModeText, clientTxnMode === m && styles.freightModeTextActive]}>{m}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    </View>
+                                </>
+                            )}
 
                             <View style={styles.formGroup}>
-                                <Text style={styles.modalLabel}>Challan / Bill / Notes (Optional)</Text>
+                                <Text style={styles.modalLabel}>Challan / Bill Ref / Notes (Optional)</Text>
                                 <TextInput
                                     style={styles.modalInput}
-                                    placeholder="e.g. Challan #4092, Truck CG04MC1234, 30 Tons"
+                                    placeholder="e.g. Challan #4092, Unloading settlement"
                                     placeholderTextColor="#94A3B8"
                                     value={clientTxnNotes}
                                     onChangeText={setClientTxnNotes}
                                 />
                             </View>
 
-                            {/* Sync to Daily Ledger Checkbox (only if adding, not editing) */}
-                            {!editingClientTxn && (clientTxnType === 'RECEIVED' || clientTxnType === 'ADVANCE') && (
-                                <TouchableOpacity
-                                    style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 8 }}
-                                    onPress={() => setSyncClientTxnToDaily(!syncClientTxnToDaily)}
-                                >
-                                    <MaterialCommunityIcons
-                                        name={syncClientTxnToDaily ? "checkbox-marked" : "checkbox-blank-outline"}
-                                        size={22}
-                                        color="#2563EB"
-                                    />
-                                    <Text style={{ fontSize: 13, color: '#334155', fontWeight: '600' }}>
-                                        Also record in Daily Cashflow as Income
-                                    </Text>
-                                </TouchableOpacity>
-                            )}
-
                             {/* Solid Color Form Confirm Button */}
                             <TouchableOpacity 
                                 style={[
                                     styles.submitBtn, 
                                     { 
-                                        backgroundColor: clientTxnType === 'BILLED' 
-                                            ? '#DC2626' 
-                                            : clientTxnType === 'RECEIVED' 
-                                            ? '#16A34A' 
-                                            : '#0284C7' 
+                                        backgroundColor: clientTxnType === 'PURCHASE' 
+                                            ? '#D97706' 
+                                            : clientTxnType === 'SALE' 
+                                            ? '#2563EB' 
+                                            : '#16A34A' 
                                     }
                                 ]} 
                                 onPress={handleRecordClientTxn} 
                                 activeOpacity={0.85}
                             >
                                 <MaterialCommunityIcons 
-                                    name={editingClientTxn ? "check-circle" : "check-bold"} 
+                                    name={editingClientTxn ? "check-circle" : (txnVehicleSource === 'OWN' && txnCreateDispatch && clientTxnType !== 'PAYMENT') ? "rocket-launch" : "check-bold"} 
                                     size={18} 
                                     color="#FFFFFF" 
                                 />
                                 <Text style={styles.submitBtnText}>
                                     {editingClientTxn 
                                         ? 'Update Entry' 
-                                        : clientTxnType === 'BILLED' 
-                                        ? 'Confirm Billed / Gave (₹)' 
-                                        : clientTxnType === 'RECEIVED' 
-                                        ? 'Confirm Payment Received (₹)' 
-                                        : 'Confirm Advance (₹)'
+                                        : clientTxnType === 'SALE'
+                                        ? (txnVehicleSource === 'OWN' && txnCreateDispatch ? 'Record Sale & Send Dispatch' : 'Record Sale (बिक्री)')
+                                        : clientTxnType === 'PURCHASE'
+                                        ? (txnVehicleSource === 'OWN' && txnCreateDispatch ? 'Record Purchase & Send Dispatch' : 'Record Purchase (खरीद)')
+                                        : 'Confirm Payment (भुगतान)'
                                     }
                                 </Text>
                             </TouchableOpacity>
@@ -2711,7 +3138,7 @@ export default function DailyLedgerScreen({ navigation }) {
                             let runningBal = parseFloat(selectedClientForStatement.opening_balance) || 0;
                             const enrichedTxns = rawTxns.map(t => {
                                 const type = t.type || t.txn_type || 'BILLED';
-                                const isDebit = type === 'BILLED';
+                                const isDebit = type === 'BILLED' || type === 'SALE';
                                 const amt = parseFloat(t.amount) || 0;
                                 if (isDebit) {
                                     runningBal += amt;
@@ -5533,5 +5960,191 @@ const styles = StyleSheet.create({
         padding: 6,
         borderRadius: 8,
         backgroundColor: '#F1F5F9',
+    },
+
+    /* Purchase / Sale / Payment Modal Enhancements */
+    clientTypeBtnPurchaseActive: {
+        backgroundColor: '#D97706',
+        borderColor: '#B45309',
+    },
+    clientTypeBtnSaleActive: {
+        backgroundColor: '#2563EB',
+        borderColor: '#1D4ED8',
+    },
+    clientTypeBtnPaymentActive: {
+        backgroundColor: '#16A34A',
+        borderColor: '#15803D',
+    },
+
+    matChip: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        backgroundColor: '#F1F5F9',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        marginRight: 6,
+    },
+    matChipActive: {
+        backgroundColor: '#EFF6FF',
+        borderColor: '#2563EB',
+    },
+    matChipText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#475569',
+    },
+    matChipTextActive: {
+        color: '#2563EB',
+        fontWeight: '800',
+    },
+
+    unitChip: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 4,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        backgroundColor: '#FFFFFF',
+    },
+    unitChipActive: {
+        borderColor: '#2563EB',
+        backgroundColor: '#EFF6FF',
+    },
+    unitChipText: {
+        fontSize: 11.5,
+        fontWeight: '700',
+        color: '#64748B',
+    },
+    unitChipTextActive: {
+        color: '#2563EB',
+        fontWeight: '800',
+    },
+
+    vehicleSectionBox: {
+        backgroundColor: '#F8FAFC',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 14,
+    },
+    sourceToggleBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 9,
+        gap: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#CBD5E1',
+        backgroundColor: '#FFFFFF',
+    },
+    sourceToggleBtnActive: {
+        backgroundColor: '#2563EB',
+        borderColor: '#1D4ED8',
+    },
+    sourceToggleBtnOtherActive: {
+        backgroundColor: '#D97706',
+        borderColor: '#B45309',
+    },
+    sourceToggleText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#475569',
+    },
+    sourceToggleTextActive: {
+        color: '#FFFFFF',
+        fontWeight: '800',
+    },
+    sourceToggleTextOtherActive: {
+        color: '#FFFFFF',
+        fontWeight: '800',
+    },
+
+    driverChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 8,
+        backgroundColor: '#F1F5F9',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        marginRight: 6,
+    },
+    driverChipActive: {
+        backgroundColor: '#059669',
+        borderColor: '#047857',
+    },
+    driverChipText: {
+        fontSize: 11.5,
+        fontWeight: '700',
+        color: '#334155',
+    },
+    driverChipTextActive: {
+        color: '#FFFFFF',
+        fontWeight: '800',
+    },
+
+    dispatchToggleCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1.5,
+        borderColor: '#E2E8F0',
+        borderRadius: 10,
+        padding: 10,
+        marginTop: 6,
+    },
+    dispatchToggleCardActive: {
+        backgroundColor: '#ECFDF5',
+        borderColor: '#A7F3D0',
+    },
+    dispatchToggleTitle: {
+        fontSize: 12.5,
+        fontWeight: '800',
+        color: '#1E293B',
+    },
+    dispatchToggleSub: {
+        fontSize: 10.5,
+        color: '#64748B',
+        marginTop: 1,
+        lineHeight: 14,
+    },
+
+    payDirectionBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        gap: 6,
+        borderRadius: 8,
+        borderWidth: 1.5,
+        borderColor: '#E2E8F0',
+        backgroundColor: '#FFFFFF',
+    },
+    payDirectionBtnRecActive: {
+        backgroundColor: '#16A34A',
+        borderColor: '#15803D',
+    },
+    payDirectionBtnGaveActive: {
+        backgroundColor: '#DC2626',
+        borderColor: '#B91C1C',
+    },
+    payDirectionText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#475569',
+    },
+    payDirectionTextActive: {
+        color: '#FFFFFF',
+        fontWeight: '800',
     }
 });

@@ -903,6 +903,14 @@ def send_due_compliance_reminders(
             body = f"Fitness certificate expires in {days_left} day(s) on {item.fitness_expiry}."
             send_expo_push_notification(push_tokens, title, body, {"screen": "ComplianceVault", "id": item.id})
             alerts_triggered.append({"vehicle": item.vehicle_number, "type": "FITNESS", "days_left": days_left})
+
+        # Check Service Schedule
+        if getattr(item, 'next_service_date', None) and today <= item.next_service_date <= target_date:
+            days_left = (item.next_service_date - today).days
+            title = f"🔧 Service Due: {item.vehicle_number}"
+            body = f"Vehicle service scheduled in {days_left} day(s) on {item.next_service_date}."
+            send_expo_push_notification(push_tokens, title, body, {"screen": "ComplianceVault", "id": item.id})
+            alerts_triggered.append({"vehicle": item.vehicle_number, "type": "SERVICE", "days_left": days_left})
             
     return {
         "message": f"Processed compliance alerts. {len(alerts_triggered)} alert(s) sent.",

@@ -142,6 +142,17 @@ def generate_due_alerts(db: Session) -> List[dict]:
                     "data": {"type": "PERMIT", "vehicle": veh, "id": r.id}
                 })
 
+        # 7. Vehicle Service Due Alert
+        if getattr(r, 'next_service_date', None):
+            days = (r.next_service_date - today_ist).days
+            if days <= 7:
+                status_text = f"Overdue by {abs(days)}d" if days < 0 else (f"Due TODAY" if days == 0 else f"{days}d left")
+                alerts.append({
+                    "title": f"🔧 Service Alert: {veh}",
+                    "body": f"Vehicle Service for {veh} is scheduled on {r.next_service_date.strftime('%d %b %Y')} ({status_text}).",
+                    "data": {"type": "SERVICE", "vehicle": veh, "id": r.id}
+                })
+
     return alerts
 
 def send_push_to_admins(title: str, body: str, data: Optional[dict] = None) -> dict:
@@ -239,6 +250,41 @@ def send_push_to_admins_and_managers(title: str, body: str, data: Optional[dict]
         return send_expo_push_notifications(messages)
     except Exception as e:
         print(f"[Push Service Error] Failed to send instant push: {e}")
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+def send_push_to_user(user_id: int, title: str, body: str, data: Optional[dict] = None) -> dict:
+    """
+    Sends an instant push notification to a specific user (e.g. Driver for newly assigned dispatch).
+    """
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+        if not user or not user.expo_push_token:
+            return {"sent": False, "message": "User has no registered push token"}
+            
+        token = user.expo_push_token.strip()
+        if token.startswith("ExponentPushToken["):
+            messages = [{
+                "to": token,
+                "sound": "default",
+                "title": title,
+                "body": body,
+                "data": data or {},
+                "priority": "high",
+                "channelId": "default"
+            }]
+            return send_expo_push_notifications(messages)
+        else:
+            try:
+                from core.firebase import send_fcm_notification_to_tokens
+                send_fcm_notification_to_tokens([token], title, body, data)
+                return {"sent": True, "type": "fcm"}
+            except Exception as fe:
+                return {"error": str(fe)}
+    except Exception as e:
+        print(f"[Push Service Error] Failed to send push to user {user_id}: {e}")
         return {"error": str(e)}
     finally:
         db.close()

@@ -1606,6 +1606,7 @@ export default function AdminDashboard({ navigation, route }) {
           const days = getDaysRemaining(e.emi_due_date);
           const insDays = getDaysRemaining(e.insurance_expiry);
           const fitDays = getDaysRemaining(e.fitness_expiry);
+          const srvDays = getDaysRemaining(e.next_service_date);
           return (
             <TouchableOpacity key={`e-${e.id}`} style={styles.emiCard} activeOpacity={0.9} onPress={() => navigation.navigate('ComplianceVault')}>
               <View style={styles.emiCardTop}>
@@ -1625,12 +1626,12 @@ export default function AdminDashboard({ navigation, route }) {
               </View>
 
               {/* Compliance Badges Row */}
-              {(e.insurance_expiry || e.fitness_expiry) && (
+              {(e.insurance_expiry || e.fitness_expiry || e.next_service_date) && (
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderColor: '#F1F5F9' }}>
                   {e.insurance_expiry && (
                     <View style={{ flex: 1, backgroundColor: '#EFF6FF', padding: 6, borderRadius: 6 }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#1E40AF' }}>INSURANCE</Text>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{(() => { const d = new Date(e.insurance_expiry); return isNaN(d.getTime()) ? e.insurance_expiry : `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`; })()}</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{formatDisplayDate(e.insurance_expiry)}</Text>
                       <Text style={{ fontSize: 9, color: insDays <= 7 ? '#DC2626' : '#2563EB', fontWeight: '700' }}>
                         {insDays !== null ? (insDays < 0 ? `${Math.abs(insDays)}d Expired` : `${insDays}d left`) : ''}
                       </Text>
@@ -1639,9 +1640,18 @@ export default function AdminDashboard({ navigation, route }) {
                   {e.fitness_expiry && (
                     <View style={{ flex: 1, backgroundColor: '#F0FDF4', padding: 6, borderRadius: 6 }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#166534' }}>FITNESS EXPIRY</Text>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{(() => { const d = new Date(e.fitness_expiry); return isNaN(d.getTime()) ? e.fitness_expiry : `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`; })()}</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{formatDisplayDate(e.fitness_expiry)}</Text>
                       <Text style={{ fontSize: 9, color: fitDays <= 7 ? '#DC2626' : '#16A34A', fontWeight: '700' }}>
                         {fitDays !== null ? (fitDays < 0 ? `${Math.abs(fitDays)}d Expired` : `${fitDays}d left`) : ''}
+                      </Text>
+                    </View>
+                  )}
+                  {e.next_service_date && (
+                    <View style={{ flex: 1, backgroundColor: '#F0F9FF', padding: 6, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#0369A1' }}>NEXT SERVICE</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{formatDisplayDate(e.next_service_date)}</Text>
+                      <Text style={{ fontSize: 9, color: srvDays <= 7 ? '#DC2626' : '#0284C7', fontWeight: '700' }}>
+                        {srvDays !== null ? (srvDays < 0 ? `${Math.abs(srvDays)}d Overdue` : `${srvDays}d left`) : ''}
                       </Text>
                     </View>
                   )}

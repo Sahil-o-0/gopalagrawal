@@ -61,6 +61,8 @@ export default function ComplianceVaultScreen({ navigation }) {
   const [financier, setFinancier] = useState('');
   const [notes, setNotes] = useState('');
   const [documentUrl, setDocumentUrl] = useState(null);
+  const [serviceDate, setServiceDate] = useState(null);
+  const [nextServiceDate, setNextServiceDate] = useState(null);
 
   // DatePicker state
   const [activeDatePicker, setActiveDatePicker] = useState(null); // 'emi', 'insurance', 'fitness', 'roadTax', 'pucc'
@@ -207,9 +209,7 @@ export default function ComplianceVaultScreen({ navigation }) {
 
   const formatDisplayDate = (d) => {
     if (!d) return 'Pick Date';
-    if (typeof d === 'string') return d.split('T')[0];
-    if (d instanceof Date && !isNaN(d)) return formatLocalDate(d);
-    return 'Pick Date';
+    return fmtDisplayDate(d) || 'Pick Date';
   };
 
   const openAddModal = () => {
@@ -231,6 +231,8 @@ export default function ComplianceVaultScreen({ navigation }) {
     setFinancier('');
     setNotes('');
     setDocumentUrl(null);
+    setServiceDate(null);
+    setNextServiceDate(null);
     setIsModalVisible(true);
   };
 
@@ -253,6 +255,8 @@ export default function ComplianceVaultScreen({ navigation }) {
     setFinancier(rec.financier || '');
     setNotes(rec.notes || '');
     setDocumentUrl(rec.document_url || null);
+    setServiceDate(rec.service_date ? new Date(rec.service_date) : null);
+    setNextServiceDate(rec.next_service_date ? new Date(rec.next_service_date) : null);
     setIsModalVisible(true);
   };
 
@@ -312,6 +316,8 @@ export default function ComplianceVaultScreen({ navigation }) {
       registration_date: registrationDate ? formatLocalDate(registrationDate) : null,
       permit_valid_upto: permitValidUpto ? formatLocalDate(permitValidUpto) : null,
       permit_fee: parseFloat(permitFee) || 0.0,
+      service_date: serviceDate ? formatLocalDate(serviceDate) : null,
+      next_service_date: nextServiceDate ? formatLocalDate(nextServiceDate) : null,
       notes: notes.trim() || null,
       document_url: documentUrl,
       site_id: selectedSite?.id || 1,
@@ -418,6 +424,7 @@ export default function ComplianceVaultScreen({ navigation }) {
     const taxDays = getDaysDiff(r.road_tax_expiry);
     const pucDays = getDaysDiff(r.pucc_expiry);
     const permitDays = getDaysDiff(r.permit_valid_upto);
+    const srvDays = getDaysDiff(r.next_service_date);
 
     if (activeFilter === 'ACTION_REQUIRED') {
       return (emiDays !== null && emiDays <= 7) ||
@@ -425,7 +432,8 @@ export default function ComplianceVaultScreen({ navigation }) {
              (fitDays !== null && fitDays <= 7) ||
              (taxDays !== null && taxDays <= 7) ||
              (pucDays !== null && pucDays <= 7) ||
-             (permitDays !== null && permitDays <= 7);
+             (permitDays !== null && permitDays <= 7) ||
+             (srvDays !== null && srvDays <= 7);
     }
     if (activeFilter === 'EMI_DUE') {
       return emiDays !== null && emiDays <= 10;
@@ -436,6 +444,7 @@ export default function ComplianceVaultScreen({ navigation }) {
              (taxDays !== null && taxDays >= 0 && taxDays <= 15) || 
              (pucDays !== null && pucDays >= 0 && pucDays <= 15) || 
              (permitDays !== null && permitDays >= 0 && permitDays <= 15) || 
+             (srvDays !== null && srvDays >= 0 && srvDays <= 15) ||
              (emiDays !== null && emiDays >= 0 && emiDays <= 7);
     }
     if (activeFilter === 'EXPIRED') {
@@ -444,6 +453,7 @@ export default function ComplianceVaultScreen({ navigation }) {
              (taxDays !== null && taxDays < 0) || 
              (pucDays !== null && pucDays < 0) || 
              (permitDays !== null && permitDays < 0) || 
+             (srvDays !== null && srvDays < 0) || 
              (emiDays !== null && emiDays < 0);
     }
 
@@ -458,7 +468,8 @@ export default function ComplianceVaultScreen({ navigation }) {
     const d4 = getDaysDiff(r.road_tax_expiry);
     const d5 = getDaysDiff(r.pucc_expiry);
     const d6 = getDaysDiff(r.permit_valid_upto);
-    return (d1 !== null && d1 <= 7) || (d2 !== null && d2 <= 7) || (d3 !== null && d3 <= 7) || (d4 !== null && d4 <= 7) || (d5 !== null && d5 <= 7) || (d6 !== null && d6 <= 7);
+    const d7 = getDaysDiff(r.next_service_date);
+    return (d1 !== null && d1 <= 7) || (d2 !== null && d2 <= 7) || (d3 !== null && d3 <= 7) || (d4 !== null && d4 <= 7) || (d5 !== null && d5 <= 7) || (d6 !== null && d6 <= 7) || (d7 !== null && d7 <= 7);
   }).length;
 
   const modalScrollViewRef = useRef(null);
@@ -673,6 +684,39 @@ export default function ComplianceVaultScreen({ navigation }) {
               value={puccFee}
               onChangeText={setPuccFee}
             />
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: 'service_schedule',
+      title: 'Service & Maintenance Schedule',
+      icon: 'wrench-clock',
+      color: '#0284C7',
+      height: 78,
+      renderContent: () => (
+        <View style={styles.formRow}>
+          <View style={{ flex: 1, marginRight: 6 }}>
+            <TouchableOpacity
+              style={styles.datePickerBtn}
+              onPress={() => setActiveDatePicker('serviceDate')}
+            >
+              <Text style={styles.datePickerBtnText} numberOfLines={1}>
+                {serviceDate ? formatDisplayDate(serviceDate) : 'Last Service'}
+              </Text>
+              <MaterialCommunityIcons name="wrench" size={18} color="#0284C7" />
+            </TouchableOpacity>
+          </View>
+          <View style={{ flex: 1, marginLeft: 6 }}>
+            <TouchableOpacity
+              style={styles.datePickerBtn}
+              onPress={() => setActiveDatePicker('nextServiceDate')}
+            >
+              <Text style={styles.datePickerBtnText} numberOfLines={1}>
+                {nextServiceDate ? formatDisplayDate(nextServiceDate) : 'Next Service'}
+              </Text>
+              <MaterialCommunityIcons name="calendar-clock" size={18} color="#0284C7" />
+            </TouchableOpacity>
           </View>
         </View>
       ),
@@ -981,6 +1025,7 @@ export default function ComplianceVaultScreen({ navigation }) {
             const taxDays = getDaysDiff(rec.road_tax_expiry);
             const pucDays = getDaysDiff(rec.pucc_expiry);
             const permitDays = getDaysDiff(rec.permit_valid_upto);
+            const srvDays = getDaysDiff(rec.next_service_date);
 
             const emiBadge = getStatusBadge(emiDays);
             const insBadge = getStatusBadge(insDays);
@@ -988,6 +1033,7 @@ export default function ComplianceVaultScreen({ navigation }) {
             const taxBadge = getStatusBadge(taxDays);
             const pucBadge = getStatusBadge(pucDays);
             const permitBadge = getStatusBadge(permitDays);
+            const srvBadge = getStatusBadge(srvDays);
 
             const emiAmt = parseFloat(rec.emi_amount) || 0;
             const insPrem = parseFloat(rec.insurance_premium) || 0;
@@ -1003,14 +1049,16 @@ export default function ComplianceVaultScreen({ navigation }) {
             const hasRoadTax = taxAmt > 0 || !!rec.road_tax_expiry;
             const hasPucc = pucFee > 0 || !!rec.pucc_expiry;
             const hasRegistration = !!rec.registration_date;
-            const hasAnyCompliance = hasEmi || hasInsurance || hasPermit || hasFitness || hasRoadTax || hasPucc || hasRegistration;
+            const hasService = !!rec.service_date || !!rec.next_service_date;
+            const hasAnyCompliance = hasEmi || hasInsurance || hasPermit || hasFitness || hasRoadTax || hasPucc || hasRegistration || hasService;
 
             const hasUrgent = (emiDays !== null && emiDays <= 7) ||
               (insDays !== null && insDays <= 7) ||
               (fitDays !== null && fitDays <= 7) ||
               (taxDays !== null && taxDays <= 7) ||
               (pucDays !== null && pucDays <= 7) ||
-              (permitDays !== null && permitDays <= 7);
+              (permitDays !== null && permitDays <= 7) ||
+              (srvDays !== null && srvDays <= 7);
 
             return (
               <View key={rec.id} style={[styles.card, hasUrgent && styles.cardUrgentBorder]}>
@@ -1166,6 +1214,18 @@ export default function ComplianceVaultScreen({ navigation }) {
                         </View>
                       )}
 
+                      {hasService && (
+                        <View style={[styles.miniChip, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
+                          <MaterialCommunityIcons name="wrench-clock" size={12} color="#0284C7" />
+                          <Text style={[styles.miniChipText, { color: '#0369A1' }]}>Service</Text>
+                          {rec.next_service_date ? (
+                            <View style={[styles.miniPillBadge, { backgroundColor: srvBadge.bg }]}>
+                              <Text style={[styles.miniPillBadgeText, { color: srvBadge.color }]}>{srvBadge.text}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      )}
+
                       {!hasAnyCompliance && (
                         <Text style={styles.noComplianceCompactText}>No compliance items configured</Text>
                       )}
@@ -1204,7 +1264,7 @@ export default function ComplianceVaultScreen({ navigation }) {
                           ) : null}
                           <View style={{ alignItems: emiAmt > 0 ? 'flex-end' : 'flex-start' }}>
                             <Text style={styles.label}>DUE DATE</Text>
-                            <Text style={styles.valDate}>{rec.emi_due_date || 'Not Scheduled'}</Text>
+                            <Text style={styles.valDate}>{fmtDisplayDate(rec.emi_due_date) || 'Not Scheduled'}</Text>
                           </View>
                         </View>
                         {emiAmt > 0 && rec.emi_due_date ? (
@@ -1243,7 +1303,7 @@ export default function ComplianceVaultScreen({ navigation }) {
                           ) : null}
                           <View style={{ alignItems: insPrem > 0 ? 'flex-end' : 'flex-start' }}>
                             <Text style={styles.label}>EXPIRY DATE</Text>
-                            <Text style={styles.valDate}>{rec.insurance_expiry || 'Not set'}</Text>
+                            <Text style={styles.valDate}>{fmtDisplayDate(rec.insurance_expiry) || 'Not set'}</Text>
                           </View>
                         </View>
                         {insPrem > 0 ? (
@@ -1282,7 +1342,7 @@ export default function ComplianceVaultScreen({ navigation }) {
                           ) : null}
                           <View style={{ alignItems: permitFee > 0 ? 'flex-end' : 'flex-start' }}>
                             <Text style={styles.label}>VALID UPTO</Text>
-                            <Text style={styles.valDate}>{rec.permit_valid_upto || 'Not set'}</Text>
+                            <Text style={styles.valDate}>{fmtDisplayDate(rec.permit_valid_upto) || 'Not set'}</Text>
                           </View>
                         </View>
                         {permitFee > 0 ? (
@@ -1321,7 +1381,7 @@ export default function ComplianceVaultScreen({ navigation }) {
                           ) : null}
                           <View style={{ alignItems: fitFee > 0 ? 'flex-end' : 'flex-start' }}>
                             <Text style={styles.label}>EXPIRY DATE</Text>
-                            <Text style={styles.valDate}>{rec.fitness_expiry || 'Not set'}</Text>
+                            <Text style={styles.valDate}>{fmtDisplayDate(rec.fitness_expiry) || 'Not set'}</Text>
                           </View>
                         </View>
                         {fitFee > 0 ? (
@@ -1360,7 +1420,7 @@ export default function ComplianceVaultScreen({ navigation }) {
                           ) : null}
                           <View style={{ alignItems: taxAmt > 0 ? 'flex-end' : 'flex-start' }}>
                             <Text style={styles.label}>EXPIRY DATE</Text>
-                            <Text style={styles.valDate}>{rec.road_tax_expiry || 'Not set'}</Text>
+                            <Text style={styles.valDate}>{fmtDisplayDate(rec.road_tax_expiry) || 'Not set'}</Text>
                           </View>
                         </View>
                         {taxAmt > 0 ? (
@@ -1399,7 +1459,7 @@ export default function ComplianceVaultScreen({ navigation }) {
                           ) : null}
                           <View style={{ alignItems: pucFee > 0 ? 'flex-end' : 'flex-start' }}>
                             <Text style={styles.label}>EXPIRY DATE</Text>
-                            <Text style={styles.valDate}>{rec.pucc_expiry || 'Not set'}</Text>
+                            <Text style={styles.valDate}>{fmtDisplayDate(rec.pucc_expiry) || 'Not set'}</Text>
                           </View>
                         </View>
                         {pucFee > 0 ? (
@@ -1424,7 +1484,36 @@ export default function ComplianceVaultScreen({ navigation }) {
                             <Text style={styles.sectionHeading}>REGISTRATION DATE</Text>
                           </View>
                         </View>
-                        <Text style={styles.valDate}>{rec.registration_date}</Text>
+                        <Text style={styles.valDate}>{fmtDisplayDate(rec.registration_date)}</Text>
+                      </View>
+                    )}
+
+                    {/* Section 8: Vehicle Service & Maintenance */}
+                    {hasService && (
+                      <View style={[styles.costBlock, hasAnyCompliance && { marginTop: 10 }]}>
+                        <View style={styles.sectionHeaderRow}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <MaterialCommunityIcons name="wrench-clock" size={16} color="#0284C7" />
+                            <Text style={styles.sectionHeading}>SERVICE & MAINTENANCE</Text>
+                          </View>
+                          {rec.next_service_date && (
+                            <View style={[styles.badge, { backgroundColor: srvBadge.bg }]}>
+                              <Text style={[styles.badgeText, { color: srvBadge.color }]}>{srvBadge.text}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.infoRow}>
+                          <View>
+                            <Text style={styles.label}>LAST SERVICE DATE</Text>
+                            <Text style={styles.valDate}>{fmtDisplayDate(rec.service_date) || 'Not recorded'}</Text>
+                          </View>
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={styles.label}>NEXT SERVICE DATE</Text>
+                            <Text style={[styles.valDate, { color: '#0284C7', fontWeight: '700' }]}>
+                              {fmtDisplayDate(rec.next_service_date) || 'Not scheduled'}
+                            </Text>
+                          </View>
+                        </View>
                       </View>
                     )}
 
@@ -1537,6 +1626,8 @@ export default function ComplianceVaultScreen({ navigation }) {
             activeDatePicker === 'pucc' ? (puccExpiry || new Date()) :
             activeDatePicker === 'regDate' ? (registrationDate || new Date()) :
             activeDatePicker === 'permit' ? (permitValidUpto || new Date()) :
+            activeDatePicker === 'serviceDate' ? (serviceDate || new Date()) :
+            activeDatePicker === 'nextServiceDate' ? (nextServiceDate || new Date()) :
             new Date()
           }
           mode="date"
@@ -1552,6 +1643,8 @@ export default function ComplianceVaultScreen({ navigation }) {
               if (picker === 'pucc') setPuccExpiry(selectedDate);
               if (picker === 'regDate') setRegistrationDate(selectedDate);
               if (picker === 'permit') setPermitValidUpto(selectedDate);
+              if (picker === 'serviceDate') setServiceDate(selectedDate);
+              if (picker === 'nextServiceDate') setNextServiceDate(selectedDate);
             }
           }}
         />

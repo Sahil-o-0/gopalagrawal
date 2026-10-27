@@ -125,6 +125,8 @@ class VehicleEMIBase(BaseModel):
     road_tax_amount: Optional[float] = 0.0
     pucc_expiry: Optional[datetime.date] = None
     pucc_fee: Optional[float] = 0.0
+    service_date: Optional[datetime.date] = None
+    next_service_date: Optional[datetime.date] = None
     financier: Optional[str] = None
     notes: Optional[str] = None
     document_url: Optional[str] = None
@@ -148,6 +150,8 @@ class VehicleEMIUpdate(BaseModel):
     road_tax_amount: Optional[float] = None
     pucc_expiry: Optional[datetime.date] = None
     pucc_fee: Optional[float] = None
+    service_date: Optional[datetime.date] = None
+    next_service_date: Optional[datetime.date] = None
     financier: Optional[str] = None
     notes: Optional[str] = None
     document_url: Optional[str] = None

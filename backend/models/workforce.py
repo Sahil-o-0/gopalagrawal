@@ -146,6 +146,8 @@ class VehicleEMI(Base):
     road_tax_amount = Column(Float, default=0.0, nullable=True)
     pucc_expiry = Column(Date, nullable=True)
     pucc_fee = Column(Float, default=0.0, nullable=True)
+    service_date = Column(Date, nullable=True)
+    next_service_date = Column(Date, nullable=True)
     financier = Column(String(100), nullable=True) # Bank / Finance company
     notes = Column(String(255), nullable=True)
     document_url = Column(Text, nullable=True) # Document scan / receipt URL or Base64

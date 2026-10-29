@@ -71,6 +71,11 @@ export default function ComplianceVaultScreen({ navigation }) {
   const [currentHours, setCurrentHours] = useState('');
   const [serviceTab, setServiceTab] = useState('DATE');
 
+  const handleServiceTabChange = (tab) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setServiceTab(tab);
+  };
+
   // DatePicker state
   const [activeDatePicker, setActiveDatePicker] = useState(null); // 'emi', 'insurance', 'fitness', 'roadTax', 'pucc'
 
@@ -737,7 +742,7 @@ export default function ComplianceVaultScreen({ navigation }) {
       title: 'Service & Maintenance Schedule',
       icon: 'wrench-clock',
       color: '#0284C7',
-      height: 145,
+      height: serviceTab === 'DATE' ? 142 : 210,
       renderContent: () => {
         const hasDateData = !!serviceDate || !!nextServiceDate;
         const hasKmData = !!serviceKm || !!nextServiceKm;
@@ -749,7 +754,7 @@ export default function ComplianceVaultScreen({ navigation }) {
             <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
               <TouchableOpacity
                 style={[styles.serviceModeTab, serviceTab === 'DATE' && styles.serviceModeTabActive]}
-                onPress={() => setServiceTab('DATE')}
+                onPress={() => handleServiceTabChange('DATE')}
                 activeOpacity={0.7}
               >
                 <MaterialCommunityIcons name="calendar-clock" size={14} color={serviceTab === 'DATE' ? '#FFFFFF' : '#0284C7'} />
@@ -760,7 +765,7 @@ export default function ComplianceVaultScreen({ navigation }) {
 
               <TouchableOpacity
                 style={[styles.serviceModeTab, serviceTab === 'KM' && styles.serviceModeTabActive]}
-                onPress={() => setServiceTab('KM')}
+                onPress={() => handleServiceTabChange('KM')}
                 activeOpacity={0.7}
               >
                 <MaterialCommunityIcons name="speedometer" size={14} color={serviceTab === 'KM' ? '#FFFFFF' : '#0284C7'} />
@@ -771,7 +776,7 @@ export default function ComplianceVaultScreen({ navigation }) {
 
               <TouchableOpacity
                 style={[styles.serviceModeTab, serviceTab === 'HOURS' && styles.serviceModeTabActive]}
-                onPress={() => setServiceTab('HOURS')}
+                onPress={() => handleServiceTabChange('HOURS')}
                 activeOpacity={0.7}
               >
                 <MaterialCommunityIcons name="clock-outline" size={14} color={serviceTab === 'HOURS' ? '#FFFFFF' : '#0284C7'} />
@@ -838,10 +843,22 @@ export default function ComplianceVaultScreen({ navigation }) {
                     />
                   </View>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 }}>
-                  <Text style={[styles.label, { fontSize: 9, minWidth: 70 }]}>CURRENT ODO:</Text>
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: 8,
+                  paddingHorizontal: 8,
+                  paddingVertical: 5,
+                  backgroundColor: '#F0F9FF',
+                  borderRadius: 7,
+                  borderWidth: 1,
+                  borderColor: '#BAE6FD',
+                  gap: 8,
+                }}>
+                  <MaterialCommunityIcons name="speedometer" size={16} color="#0284C7" />
+                  <Text style={[styles.label, { fontSize: 10, fontWeight: '700', color: '#0369A1', minWidth: 80, marginBottom: 0 }]}>CURRENT ODO:</Text>
                   <TextInput
-                    style={[styles.input, { flex: 1, marginBottom: 0, height: 34, paddingVertical: 2 }]}
+                    style={[styles.input, { flex: 1, marginBottom: 0, height: 34, paddingVertical: 2, backgroundColor: '#FFFFFF' }]}
                     placeholder="Current KM (e.g. 52000)"
                     placeholderTextColor="#94A3B8"
                     keyboardType="numeric"
@@ -879,10 +896,22 @@ export default function ComplianceVaultScreen({ navigation }) {
                     />
                   </View>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 }}>
-                  <Text style={[styles.label, { fontSize: 9, minWidth: 70 }]}>CURRENT HRS:</Text>
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: 8,
+                  paddingHorizontal: 8,
+                  paddingVertical: 5,
+                  backgroundColor: '#F0F9FF',
+                  borderRadius: 7,
+                  borderWidth: 1,
+                  borderColor: '#BAE6FD',
+                  gap: 8,
+                }}>
+                  <MaterialCommunityIcons name="clock-outline" size={16} color="#0284C7" />
+                  <Text style={[styles.label, { fontSize: 10, fontWeight: '700', color: '#0369A1', minWidth: 80, marginBottom: 0 }]}>CURRENT HRS:</Text>
                   <TextInput
-                    style={[styles.input, { flex: 1, marginBottom: 0, height: 34, paddingVertical: 2 }]}
+                    style={[styles.input, { flex: 1, marginBottom: 0, height: 34, paddingVertical: 2, backgroundColor: '#FFFFFF' }]}
                     placeholder="Current Hours (e.g. 710)"
                     placeholderTextColor="#94A3B8"
                     keyboardType="numeric"

@@ -61,7 +61,8 @@ export default function DraggableFormSections({
     return currentY;
   }, [sections]);
 
-  // Load saved order from AsyncStorage
+  // Load saved order from AsyncStorage once on mount or when section IDs change
+  const sectionIdsKey = sections.map((s) => s.id).join(',');
   useEffect(() => {
     let isMounted = true;
 
@@ -107,21 +108,23 @@ export default function DraggableFormSections({
       isDraggingRef.current = false;
       activeDragIdRef.current = null;
     };
-  }, [sections]);
+  }, [sectionIdsKey]);
 
   // Initialize Animated values for each section
   orderedSections.forEach((sec, index) => {
+    const secDef = sections.find((s) => s.id === sec.id) || sec;
+    const h = secDef.height || 92;
     if (!positionsRef.current[sec.id]) {
       const y = getSlotY(index);
       positionsRef.current[sec.id] = {
         currentSlotIndex: index,
         pan: new Animated.ValueXY({ x: 0, y }),
         scale: new Animated.Value(1),
-        height: sec.height || 92,
+        height: h,
       };
     } else {
       positionsRef.current[sec.id].currentSlotIndex = index;
-      positionsRef.current[sec.id].height = sec.height || 92;
+      positionsRef.current[sec.id].height = h;
     }
   });
 
@@ -447,8 +450,11 @@ export default function DraggableFormSections({
     finalizeDrag(sec.id);
   };
 
-  // Calculate container height
-  const containerHeight = orderedSections.reduce((acc, s) => acc + (s.height || 92) + GAP, 0);
+  // Calculate container height dynamically using latest section heights
+  const containerHeight = orderedSections.reduce((acc, s) => {
+    const secDef = sections.find((x) => x.id === s.id) || s;
+    return acc + (secDef.height || 92) + GAP;
+  }, 0);
 
   return (
     <View
@@ -466,7 +472,8 @@ export default function DraggableFormSections({
         {orderedSections.map((sec, index) => {
           const isDragging = activeDragId === sec.id;
           const posObj = positionsRef.current[sec.id];
-          const secHeight = sec.height || 92;
+          const secDef = sections.find((s) => s.id === sec.id) || sec;
+          const secHeight = secDef.height || 92;
 
           const panStyle = posObj
             ? {
@@ -526,7 +533,7 @@ export default function DraggableFormSections({
 
               {/* Section Form Content */}
               <View style={styles.sectionBody}>
-                {sec.renderContent()}
+                {secDef.renderContent ? secDef.renderContent() : sec.renderContent()}
               </View>
             </Animated.View>
           );

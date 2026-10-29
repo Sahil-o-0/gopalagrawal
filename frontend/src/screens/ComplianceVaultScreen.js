@@ -63,6 +63,13 @@ export default function ComplianceVaultScreen({ navigation }) {
   const [documentUrl, setDocumentUrl] = useState(null);
   const [serviceDate, setServiceDate] = useState(null);
   const [nextServiceDate, setNextServiceDate] = useState(null);
+  const [serviceKm, setServiceKm] = useState('');
+  const [nextServiceKm, setNextServiceKm] = useState('');
+  const [currentKm, setCurrentKm] = useState('');
+  const [serviceHours, setServiceHours] = useState('');
+  const [nextServiceHours, setNextServiceHours] = useState('');
+  const [currentHours, setCurrentHours] = useState('');
+  const [serviceTab, setServiceTab] = useState('DATE');
 
   // DatePicker state
   const [activeDatePicker, setActiveDatePicker] = useState(null); // 'emi', 'insurance', 'fitness', 'roadTax', 'pucc'
@@ -233,6 +240,13 @@ export default function ComplianceVaultScreen({ navigation }) {
     setDocumentUrl(null);
     setServiceDate(null);
     setNextServiceDate(null);
+    setServiceKm('');
+    setNextServiceKm('');
+    setCurrentKm('');
+    setServiceHours('');
+    setNextServiceHours('');
+    setCurrentHours('');
+    setServiceTab('DATE');
     setIsModalVisible(true);
   };
 
@@ -257,6 +271,13 @@ export default function ComplianceVaultScreen({ navigation }) {
     setDocumentUrl(rec.document_url || null);
     setServiceDate(rec.service_date ? new Date(rec.service_date) : null);
     setNextServiceDate(rec.next_service_date ? new Date(rec.next_service_date) : null);
+    setServiceKm(rec.service_km != null ? String(rec.service_km) : '');
+    setNextServiceKm(rec.next_service_km != null ? String(rec.next_service_km) : '');
+    setCurrentKm(rec.current_km != null ? String(rec.current_km) : (rec.latest_trip_km != null ? String(rec.latest_trip_km) : ''));
+    setServiceHours(rec.service_hours != null ? String(rec.service_hours) : '');
+    setNextServiceHours(rec.next_service_hours != null ? String(rec.next_service_hours) : '');
+    setCurrentHours(rec.current_hours != null ? String(rec.current_hours) : '');
+    setServiceTab(rec.next_service_hours ? 'HOURS' : (rec.next_service_km ? 'KM' : 'DATE'));
     setIsModalVisible(true);
   };
 
@@ -318,6 +339,13 @@ export default function ComplianceVaultScreen({ navigation }) {
       permit_fee: parseFloat(permitFee) || 0.0,
       service_date: serviceDate ? formatLocalDate(serviceDate) : null,
       next_service_date: nextServiceDate ? formatLocalDate(nextServiceDate) : null,
+      service_km: serviceKm !== '' ? parseFloat(serviceKm) : null,
+      next_service_km: nextServiceKm !== '' ? parseFloat(nextServiceKm) : null,
+      current_km: currentKm !== '' ? parseFloat(currentKm) : null,
+      service_hours: serviceHours !== '' ? parseFloat(serviceHours) : null,
+      next_service_hours: nextServiceHours !== '' ? parseFloat(nextServiceHours) : null,
+      current_hours: currentHours !== '' ? parseFloat(currentHours) : null,
+      service_type: serviceTab || 'DATE',
       notes: notes.trim() || null,
       document_url: documentUrl,
       site_id: selectedSite?.id || 1,
@@ -425,6 +453,15 @@ export default function ComplianceVaultScreen({ navigation }) {
     const pucDays = getDaysDiff(r.pucc_expiry);
     const permitDays = getDaysDiff(r.permit_valid_upto);
     const srvDays = getDaysDiff(r.next_service_date);
+    const cKm = r.current_km != null ? r.current_km : r.latest_trip_km;
+    const kmDiff = (r.next_service_km != null && cKm != null) ? (r.next_service_km - cKm) : null;
+    const isKmUrgent = kmDiff !== null && kmDiff <= 500;
+    const isKmExpired = kmDiff !== null && kmDiff <= 0;
+
+    const cHrs = r.current_hours;
+    const hrsDiff = (r.next_service_hours != null && cHrs != null) ? (r.next_service_hours - cHrs) : null;
+    const isHrsUrgent = hrsDiff !== null && hrsDiff <= 25;
+    const isHrsExpired = hrsDiff !== null && hrsDiff <= 0;
 
     if (activeFilter === 'ACTION_REQUIRED') {
       return (emiDays !== null && emiDays <= 7) ||
@@ -433,7 +470,8 @@ export default function ComplianceVaultScreen({ navigation }) {
              (taxDays !== null && taxDays <= 7) ||
              (pucDays !== null && pucDays <= 7) ||
              (permitDays !== null && permitDays <= 7) ||
-             (srvDays !== null && srvDays <= 7);
+             (srvDays !== null && srvDays <= 7) ||
+             isKmUrgent || isHrsUrgent;
     }
     if (activeFilter === 'EMI_DUE') {
       return emiDays !== null && emiDays <= 10;
@@ -445,7 +483,8 @@ export default function ComplianceVaultScreen({ navigation }) {
              (pucDays !== null && pucDays >= 0 && pucDays <= 15) || 
              (permitDays !== null && permitDays >= 0 && permitDays <= 15) || 
              (srvDays !== null && srvDays >= 0 && srvDays <= 15) ||
-             (emiDays !== null && emiDays >= 0 && emiDays <= 7);
+             (emiDays !== null && emiDays >= 0 && emiDays <= 7) ||
+             isKmUrgent || isHrsUrgent;
     }
     if (activeFilter === 'EXPIRED') {
       return (insDays !== null && insDays < 0) || 
@@ -454,6 +493,7 @@ export default function ComplianceVaultScreen({ navigation }) {
              (pucDays !== null && pucDays < 0) || 
              (permitDays !== null && permitDays < 0) || 
              (srvDays !== null && srvDays < 0) || 
+             isKmExpired || isHrsExpired ||
              (emiDays !== null && emiDays < 0);
     }
 
@@ -469,7 +509,11 @@ export default function ComplianceVaultScreen({ navigation }) {
     const d5 = getDaysDiff(r.pucc_expiry);
     const d6 = getDaysDiff(r.permit_valid_upto);
     const d7 = getDaysDiff(r.next_service_date);
-    return (d1 !== null && d1 <= 7) || (d2 !== null && d2 <= 7) || (d3 !== null && d3 <= 7) || (d4 !== null && d4 <= 7) || (d5 !== null && d5 <= 7) || (d6 !== null && d6 <= 7) || (d7 !== null && d7 <= 7);
+    const cKm = r.current_km != null ? r.current_km : r.latest_trip_km;
+    const kmD = (r.next_service_km != null && cKm != null) ? (r.next_service_km - cKm) : null;
+    const cHrs = r.current_hours;
+    const hrsD = (r.next_service_hours != null && cHrs != null) ? (r.next_service_hours - cHrs) : null;
+    return (d1 !== null && d1 <= 7) || (d2 !== null && d2 <= 7) || (d3 !== null && d3 <= 7) || (d4 !== null && d4 <= 7) || (d5 !== null && d5 <= 7) || (d6 !== null && d6 <= 7) || (d7 !== null && d7 <= 7) || (kmD !== null && kmD <= 500) || (hrsD !== null && hrsD <= 25);
   }).length;
 
   const modalScrollViewRef = useRef(null);
@@ -693,33 +737,164 @@ export default function ComplianceVaultScreen({ navigation }) {
       title: 'Service & Maintenance Schedule',
       icon: 'wrench-clock',
       color: '#0284C7',
-      height: 78,
-      renderContent: () => (
-        <View style={styles.formRow}>
-          <View style={{ flex: 1, marginRight: 6 }}>
-            <TouchableOpacity
-              style={styles.datePickerBtn}
-              onPress={() => setActiveDatePicker('serviceDate')}
-            >
-              <Text style={styles.datePickerBtnText} numberOfLines={1}>
-                {serviceDate ? formatDisplayDate(serviceDate) : 'Last Service'}
-              </Text>
-              <MaterialCommunityIcons name="wrench" size={18} color="#0284C7" />
-            </TouchableOpacity>
+      height: 145,
+      renderContent: () => {
+        const hasDateData = !!serviceDate || !!nextServiceDate;
+        const hasKmData = !!serviceKm || !!nextServiceKm;
+        const hasHrsData = !!serviceHours || !!nextServiceHours;
+
+        return (
+          <View>
+            {/* Mode selection tabs: Date, KM, Hours */}
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+              <TouchableOpacity
+                style={[styles.serviceModeTab, serviceTab === 'DATE' && styles.serviceModeTabActive]}
+                onPress={() => setServiceTab('DATE')}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons name="calendar-clock" size={14} color={serviceTab === 'DATE' ? '#FFFFFF' : '#0284C7'} />
+                <Text style={[styles.serviceModeTabText, serviceTab === 'DATE' && styles.serviceModeTabTextActive]}>
+                  By Date {hasDateData ? '•' : ''}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.serviceModeTab, serviceTab === 'KM' && styles.serviceModeTabActive]}
+                onPress={() => setServiceTab('KM')}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons name="speedometer" size={14} color={serviceTab === 'KM' ? '#FFFFFF' : '#0284C7'} />
+                <Text style={[styles.serviceModeTabText, serviceTab === 'KM' && styles.serviceModeTabTextActive]}>
+                  By KM {hasKmData ? '•' : ''}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.serviceModeTab, serviceTab === 'HOURS' && styles.serviceModeTabActive]}
+                onPress={() => setServiceTab('HOURS')}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons name="clock-outline" size={14} color={serviceTab === 'HOURS' ? '#FFFFFF' : '#0284C7'} />
+                <Text style={[styles.serviceModeTabText, serviceTab === 'HOURS' && styles.serviceModeTabTextActive]}>
+                  By Hours {hasHrsData ? '•' : ''}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Date-based fields */}
+            {serviceTab === 'DATE' && (
+              <View style={styles.formRow}>
+                <View style={{ flex: 1, marginRight: 6 }}>
+                  <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>LAST SERVICE DATE</Text>
+                  <TouchableOpacity
+                    style={styles.datePickerBtn}
+                    onPress={() => setActiveDatePicker('serviceDate')}
+                  >
+                    <Text style={styles.datePickerBtnText} numberOfLines={1}>
+                      {serviceDate ? formatDisplayDate(serviceDate) : 'Pick Date'}
+                    </Text>
+                    <MaterialCommunityIcons name="wrench" size={16} color="#0284C7" />
+                  </TouchableOpacity>
+                </View>
+                <View style={{ flex: 1, marginLeft: 6 }}>
+                  <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>NEXT SERVICE DUE</Text>
+                  <TouchableOpacity
+                    style={styles.datePickerBtn}
+                    onPress={() => setActiveDatePicker('nextServiceDate')}
+                  >
+                    <Text style={styles.datePickerBtnText} numberOfLines={1}>
+                      {nextServiceDate ? formatDisplayDate(nextServiceDate) : 'Pick Date'}
+                    </Text>
+                    <MaterialCommunityIcons name="calendar-clock" size={16} color="#0284C7" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* KM-based fields */}
+            {serviceTab === 'KM' && (
+              <View>
+                <View style={styles.formRow}>
+                  <View style={{ flex: 1, marginRight: 6 }}>
+                    <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>LAST SERVICE KM</Text>
+                    <TextInput
+                      style={[styles.input, { marginBottom: 0, height: 40 }]}
+                      placeholder="e.g. 45000"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                      value={serviceKm}
+                      onChangeText={setServiceKm}
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 6 }}>
+                    <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>NEXT DUE AT KM</Text>
+                    <TextInput
+                      style={[styles.input, { marginBottom: 0, height: 40 }]}
+                      placeholder="e.g. 55000"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                      value={nextServiceKm}
+                      onChangeText={setNextServiceKm}
+                    />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 }}>
+                  <Text style={[styles.label, { fontSize: 9, minWidth: 70 }]}>CURRENT ODO:</Text>
+                  <TextInput
+                    style={[styles.input, { flex: 1, marginBottom: 0, height: 34, paddingVertical: 2 }]}
+                    placeholder="Current KM (e.g. 52000)"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="numeric"
+                    value={currentKm}
+                    onChangeText={setCurrentKm}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Hours-based fields */}
+            {serviceTab === 'HOURS' && (
+              <View>
+                <View style={styles.formRow}>
+                  <View style={{ flex: 1, marginRight: 6 }}>
+                    <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>LAST SERVICE HRS</Text>
+                    <TextInput
+                      style={[styles.input, { marginBottom: 0, height: 40 }]}
+                      placeholder="e.g. 500"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                      value={serviceHours}
+                      onChangeText={setServiceHours}
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 6 }}>
+                    <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>NEXT DUE AT HRS</Text>
+                    <TextInput
+                      style={[styles.input, { marginBottom: 0, height: 40 }]}
+                      placeholder="e.g. 750"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                      value={nextServiceHours}
+                      onChangeText={setNextServiceHours}
+                    />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 }}>
+                  <Text style={[styles.label, { fontSize: 9, minWidth: 70 }]}>CURRENT HRS:</Text>
+                  <TextInput
+                    style={[styles.input, { flex: 1, marginBottom: 0, height: 34, paddingVertical: 2 }]}
+                    placeholder="Current Hours (e.g. 710)"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="numeric"
+                    value={currentHours}
+                    onChangeText={setCurrentHours}
+                  />
+                </View>
+              </View>
+            )}
           </View>
-          <View style={{ flex: 1, marginLeft: 6 }}>
-            <TouchableOpacity
-              style={styles.datePickerBtn}
-              onPress={() => setActiveDatePicker('nextServiceDate')}
-            >
-              <Text style={styles.datePickerBtnText} numberOfLines={1}>
-                {nextServiceDate ? formatDisplayDate(nextServiceDate) : 'Next Service'}
-              </Text>
-              <MaterialCommunityIcons name="calendar-clock" size={18} color="#0284C7" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      ),
+        );
+      },
     },
     {
       id: 'notes_doc',
@@ -1049,16 +1224,48 @@ export default function ComplianceVaultScreen({ navigation }) {
             const hasRoadTax = taxAmt > 0 || !!rec.road_tax_expiry;
             const hasPucc = pucFee > 0 || !!rec.pucc_expiry;
             const hasRegistration = !!rec.registration_date;
-            const hasService = !!rec.service_date || !!rec.next_service_date;
+            const hasServiceDate = !!rec.service_date || !!rec.next_service_date;
+            const hasServiceKm = rec.service_km != null || rec.next_service_km != null;
+            const hasServiceHours = rec.service_hours != null || rec.next_service_hours != null;
+            const hasService = hasServiceDate || hasServiceKm || hasServiceHours;
             const hasAnyCompliance = hasEmi || hasInsurance || hasPermit || hasFitness || hasRoadTax || hasPucc || hasRegistration || hasService;
 
+            const currKm = rec.current_km != null ? rec.current_km : rec.latest_trip_km;
+            const kmDiff = (rec.next_service_km != null && currKm != null) ? (rec.next_service_km - currKm) : null;
+            let kmBadge = null;
+            if (rec.next_service_km != null) {
+              if (kmDiff !== null) {
+                if (kmDiff <= 0) kmBadge = { text: `${Math.abs(Math.round(kmDiff)).toLocaleString()} KM Overdue`, bg: '#FEE2E2', color: '#DC2626' };
+                else if (kmDiff <= 500) kmBadge = { text: `${Math.round(kmDiff).toLocaleString()} KM Left`, bg: '#FEF3C7', color: '#D97706' };
+                else kmBadge = { text: `${Math.round(kmDiff).toLocaleString()} KM Left`, bg: '#ECFDF5', color: '#059669' };
+              } else {
+                kmBadge = { text: `Due: ${rec.next_service_km.toLocaleString()} KM`, bg: '#F0F9FF', color: '#0284C7' };
+              }
+            }
+
+            const currHrs = rec.current_hours;
+            const hrsDiff = (rec.next_service_hours != null && currHrs != null) ? (rec.next_service_hours - currHrs) : null;
+            let hrsBadge = null;
+            if (rec.next_service_hours != null) {
+              if (hrsDiff !== null) {
+                if (hrsDiff <= 0) hrsBadge = { text: `${Math.abs(hrsDiff).toFixed(1)}h Overdue`, bg: '#FEE2E2', color: '#DC2626' };
+                else if (hrsDiff <= 25) hrsBadge = { text: `${hrsDiff.toFixed(1)}h Left`, bg: '#FEF3C7', color: '#D97706' };
+                else hrsBadge = { text: `${hrsDiff.toFixed(1)}h Left`, bg: '#ECFDF5', color: '#059669' };
+              } else {
+                hrsBadge = { text: `Due: ${rec.next_service_hours.toLocaleString()} hrs`, bg: '#F0F9FF', color: '#0284C7' };
+              }
+            }
+
+            const isKmUrgent = kmDiff !== null && kmDiff <= 500;
+            const isHrsUrgent = hrsDiff !== null && hrsDiff <= 25;
             const hasUrgent = (emiDays !== null && emiDays <= 7) ||
               (insDays !== null && insDays <= 7) ||
               (fitDays !== null && fitDays <= 7) ||
               (taxDays !== null && taxDays <= 7) ||
               (pucDays !== null && pucDays <= 7) ||
               (permitDays !== null && permitDays <= 7) ||
-              (srvDays !== null && srvDays <= 7);
+              (srvDays !== null && srvDays <= 7) ||
+              isKmUrgent || isHrsUrgent;
 
             return (
               <View key={rec.id} style={[styles.card, hasUrgent && styles.cardUrgentBorder]}>
@@ -1217,10 +1424,20 @@ export default function ComplianceVaultScreen({ navigation }) {
                       {hasService && (
                         <View style={[styles.miniChip, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
                           <MaterialCommunityIcons name="wrench-clock" size={12} color="#0284C7" />
-                          <Text style={[styles.miniChipText, { color: '#0369A1' }]}>Service</Text>
-                          {rec.next_service_date ? (
+                          <Text style={[styles.miniChipText, { color: '#0369A1' }]}>
+                            {hasServiceKm && !hasServiceDate ? 'Srv KM' : (hasServiceHours && !hasServiceDate ? 'Srv Hrs' : 'Service')}
+                          </Text>
+                          {srvBadge && rec.next_service_date ? (
                             <View style={[styles.miniPillBadge, { backgroundColor: srvBadge.bg }]}>
                               <Text style={[styles.miniPillBadgeText, { color: srvBadge.color }]}>{srvBadge.text}</Text>
+                            </View>
+                          ) : kmBadge ? (
+                            <View style={[styles.miniPillBadge, { backgroundColor: kmBadge.bg }]}>
+                              <Text style={[styles.miniPillBadgeText, { color: kmBadge.color }]}>{kmBadge.text}</Text>
+                            </View>
+                          ) : hrsBadge ? (
+                            <View style={[styles.miniPillBadge, { backgroundColor: hrsBadge.bg }]}>
+                              <Text style={[styles.miniPillBadgeText, { color: hrsBadge.color }]}>{hrsBadge.text}</Text>
                             </View>
                           ) : null}
                         </View>
@@ -1488,7 +1705,7 @@ export default function ComplianceVaultScreen({ navigation }) {
                       </View>
                     )}
 
-                    {/* Section 8: Vehicle Service & Maintenance */}
+                    {/* Section 8: Vehicle Service & Maintenance (Date, KM, Hours) */}
                     {hasService && (
                       <View style={[styles.costBlock, hasAnyCompliance && { marginTop: 10 }]}>
                         <View style={styles.sectionHeaderRow}>
@@ -1496,24 +1713,110 @@ export default function ComplianceVaultScreen({ navigation }) {
                             <MaterialCommunityIcons name="wrench-clock" size={16} color="#0284C7" />
                             <Text style={styles.sectionHeading}>SERVICE & MAINTENANCE</Text>
                           </View>
-                          {rec.next_service_date && (
+                          {kmBadge ? (
+                            <View style={[styles.badge, { backgroundColor: kmBadge.bg }]}>
+                              <Text style={[styles.badgeText, { color: kmBadge.color }]}>{kmBadge.text}</Text>
+                            </View>
+                          ) : hrsBadge ? (
+                            <View style={[styles.badge, { backgroundColor: hrsBadge.bg }]}>
+                              <Text style={[styles.badgeText, { color: hrsBadge.color }]}>{hrsBadge.text}</Text>
+                            </View>
+                          ) : rec.next_service_date ? (
                             <View style={[styles.badge, { backgroundColor: srvBadge.bg }]}>
                               <Text style={[styles.badgeText, { color: srvBadge.color }]}>{srvBadge.text}</Text>
                             </View>
-                          )}
+                          ) : null}
                         </View>
-                        <View style={styles.infoRow}>
-                          <View>
-                            <Text style={styles.label}>LAST SERVICE DATE</Text>
-                            <Text style={styles.valDate}>{fmtDisplayDate(rec.service_date) || 'Not recorded'}</Text>
+
+                        {/* 1. Date Schedule */}
+                        {hasServiceDate && (
+                          <View style={{ marginTop: 4 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>📅 CALENDAR SCHEDULE</Text>
+                              {rec.next_service_date && (
+                                <View style={[styles.badge, { backgroundColor: srvBadge.bg, paddingVertical: 1, paddingHorizontal: 6 }]}>
+                                  <Text style={[styles.badgeText, { color: srvBadge.color, fontSize: 10 }]}>{srvBadge.text}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <View style={styles.infoRow}>
+                              <View>
+                                <Text style={styles.label}>LAST SERVICE</Text>
+                                <Text style={styles.valDate}>{fmtDisplayDate(rec.service_date) || 'Not set'}</Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={styles.label}>NEXT DUE DATE</Text>
+                                <Text style={[styles.valDate, { color: '#0284C7', fontWeight: '700' }]}>
+                                  {fmtDisplayDate(rec.next_service_date) || 'Not scheduled'}
+                                </Text>
+                              </View>
+                            </View>
                           </View>
-                          <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={styles.label}>NEXT SERVICE DATE</Text>
-                            <Text style={[styles.valDate, { color: '#0284C7', fontWeight: '700' }]}>
-                              {fmtDisplayDate(rec.next_service_date) || 'Not scheduled'}
-                            </Text>
+                        )}
+
+                        {/* 2. KM Schedule */}
+                        {hasServiceKm && (
+                          <View style={[hasServiceDate && { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderColor: '#F1F5F9' }]}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>🛣️ ODOMETER SCHEDULE</Text>
+                              {kmBadge && (
+                                <View style={[styles.badge, { backgroundColor: kmBadge.bg, paddingVertical: 1, paddingHorizontal: 6 }]}>
+                                  <Text style={[styles.badgeText, { color: kmBadge.color, fontSize: 10 }]}>{kmBadge.text}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <View style={styles.infoRow}>
+                              <View>
+                                <Text style={styles.label}>LAST SERVICE</Text>
+                                <Text style={styles.valDate}>{rec.service_km != null ? `${Number(rec.service_km).toLocaleString()} KM` : 'Not set'}</Text>
+                              </View>
+                              {currKm != null ? (
+                                <View style={{ alignItems: 'center' }}>
+                                  <Text style={styles.label}>CURRENT RUN</Text>
+                                  <Text style={[styles.valDate, { color: '#475569' }]}>{Number(currKm).toLocaleString()} KM</Text>
+                                </View>
+                              ) : null}
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={styles.label}>NEXT DUE AT</Text>
+                                <Text style={[styles.valDate, { color: '#0284C7', fontWeight: '700' }]}>
+                                  {rec.next_service_km != null ? `${Number(rec.next_service_km).toLocaleString()} KM` : 'Not set'}
+                                </Text>
+                              </View>
+                            </View>
                           </View>
-                        </View>
+                        )}
+
+                        {/* 3. Hours Schedule */}
+                        {hasServiceHours && (
+                          <View style={[(hasServiceDate || hasServiceKm) && { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderColor: '#F1F5F9' }]}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>⏱️ ENGINE HOURS SCHEDULE</Text>
+                              {hrsBadge && (
+                                <View style={[styles.badge, { backgroundColor: hrsBadge.bg, paddingVertical: 1, paddingHorizontal: 6 }]}>
+                                  <Text style={[styles.badgeText, { color: hrsBadge.color, fontSize: 10 }]}>{hrsBadge.text}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <View style={styles.infoRow}>
+                              <View>
+                                <Text style={styles.label}>LAST SERVICE</Text>
+                                <Text style={styles.valDate}>{rec.service_hours != null ? `${Number(rec.service_hours).toLocaleString()} hrs` : 'Not set'}</Text>
+                              </View>
+                              {rec.current_hours != null ? (
+                                <View style={{ alignItems: 'center' }}>
+                                  <Text style={styles.label}>CURRENT</Text>
+                                  <Text style={[styles.valDate, { color: '#475569' }]}>{Number(rec.current_hours).toLocaleString()} hrs</Text>
+                                </View>
+                              ) : null}
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={styles.label}>NEXT DUE AT</Text>
+                                <Text style={[styles.valDate, { color: '#0284C7', fontWeight: '700' }]}>
+                                  {rec.next_service_hours != null ? `${Number(rec.next_service_hours).toLocaleString()} hrs` : 'Not set'}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        )}
                       </View>
                     )}
 
@@ -2090,5 +2393,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  serviceModeTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    backgroundColor: '#F0F9FF',
+  },
+  serviceModeTabActive: {
+    backgroundColor: '#0284C7',
+    borderColor: '#0284C7',
+  },
+  serviceModeTabText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  serviceModeTabTextActive: {
+    color: '#FFFFFF',
   },
 });

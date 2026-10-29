@@ -1626,7 +1626,7 @@ export default function AdminDashboard({ navigation, route }) {
               </View>
 
               {/* Compliance Badges Row */}
-              {(e.insurance_expiry || e.fitness_expiry || e.next_service_date) && (
+              {(e.insurance_expiry || e.fitness_expiry || e.next_service_date || e.next_service_km || e.next_service_hours) && (
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderColor: '#F1F5F9' }}>
                   {e.insurance_expiry && (
                     <View style={{ flex: 1, backgroundColor: '#EFF6FF', padding: 6, borderRadius: 6 }}>
@@ -1653,6 +1653,28 @@ export default function AdminDashboard({ navigation, route }) {
                       <Text style={{ fontSize: 9, color: srvDays <= 7 ? '#DC2626' : '#0284C7', fontWeight: '700' }}>
                         {srvDays !== null ? (srvDays < 0 ? `${Math.abs(srvDays)}d Overdue` : `${srvDays}d left`) : ''}
                       </Text>
+                    </View>
+                  )}
+                  {e.next_service_km && !e.next_service_date && (
+                    <View style={{ flex: 1, backgroundColor: '#F0F9FF', padding: 6, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#0369A1' }}>SERVICE DUE (KM)</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{`${Number(e.next_service_km).toLocaleString()} KM`}</Text>
+                      {e.current_km ? (
+                        <Text style={{ fontSize: 9, color: (e.next_service_km - e.current_km) <= 500 ? '#DC2626' : '#0284C7', fontWeight: '700' }}>
+                          {(e.next_service_km - e.current_km) <= 0 ? `${Math.abs(Math.round(e.next_service_km - e.current_km))} KM Overdue` : `${Math.round(e.next_service_km - e.current_km)} KM left`}
+                        </Text>
+                      ) : null}
+                    </View>
+                  )}
+                  {e.next_service_hours && !e.next_service_date && !e.next_service_km && (
+                    <View style={{ flex: 1, backgroundColor: '#F0F9FF', padding: 6, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#0369A1' }}>SERVICE DUE (HRS)</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{`${Number(e.next_service_hours).toLocaleString()} hrs`}</Text>
+                      {e.current_hours ? (
+                        <Text style={{ fontSize: 9, color: (e.next_service_hours - e.current_hours) <= 25 ? '#DC2626' : '#0284C7', fontWeight: '700' }}>
+                          {(e.next_service_hours - e.current_hours) <= 0 ? `${Math.abs(e.next_service_hours - e.current_hours).toFixed(1)}h Overdue` : `${(e.next_service_hours - e.current_hours).toFixed(1)}h left`}
+                        </Text>
+                      ) : null}
                     </View>
                   )}
                 </View>

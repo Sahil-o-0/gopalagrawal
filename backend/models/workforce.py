@@ -148,6 +148,13 @@ class VehicleEMI(Base):
     pucc_fee = Column(Float, default=0.0, nullable=True)
     service_date = Column(Date, nullable=True)
     next_service_date = Column(Date, nullable=True)
+    service_km = Column(Float, nullable=True)
+    next_service_km = Column(Float, nullable=True)
+    current_km = Column(Float, nullable=True)
+    service_hours = Column(Float, nullable=True)
+    next_service_hours = Column(Float, nullable=True)
+    current_hours = Column(Float, nullable=True)
+    service_type = Column(String(50), default='DATE', nullable=True) # DATE, KM, HOURS, ALL
     financier = Column(String(100), nullable=True) # Bank / Finance company
     notes = Column(String(255), nullable=True)
     document_url = Column(Text, nullable=True) # Document scan / receipt URL or Base64

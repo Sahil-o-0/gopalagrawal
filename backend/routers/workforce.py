@@ -680,7 +680,21 @@ def get_emi_records(
     query = db.query(VehicleEMI)
     if site_id is not None:
         query = query.filter(VehicleEMI.site_id == site_id)
-    return query.offset(skip).limit(limit).all()
+    records = query.offset(skip).limit(limit).all()
+    try:
+        from models.trip import TripLog
+        for r in records:
+            if r.vehicle_number:
+                latest_trip = db.query(TripLog).filter(
+                    TripLog.vehicle_number == r.vehicle_number,
+                    TripLog.end_meter_reading.isnot(None),
+                    TripLog.end_meter_reading > 0
+                ).order_by(TripLog.id.desc()).first()
+                if latest_trip:
+                    r.latest_trip_km = latest_trip.end_meter_reading
+    except Exception:
+        pass
+    return records
 
 @router.patch("/emi/{emi_id}/mark_paid", response_model=schemas.workforce.VehicleEMIResponse)
 def mark_emi_paid(

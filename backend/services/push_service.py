@@ -142,7 +142,7 @@ def generate_due_alerts(db: Session) -> List[dict]:
                     "data": {"type": "PERMIT", "vehicle": veh, "id": r.id}
                 })
 
-        # 7. Vehicle Service Due Alert
+        # 7. Vehicle Service Due Alert (Date, KM, Hours)
         if getattr(r, 'next_service_date', None):
             days = (r.next_service_date - today_ist).days
             if days <= 7:
@@ -150,7 +150,33 @@ def generate_due_alerts(db: Session) -> List[dict]:
                 alerts.append({
                     "title": f"🔧 Service Alert: {veh}",
                     "body": f"Vehicle Service for {veh} is scheduled on {r.next_service_date.strftime('%d %b %Y')} ({status_text}).",
-                    "data": {"type": "SERVICE", "vehicle": veh, "id": r.id}
+                    "data": {"type": "SERVICE_DATE", "vehicle": veh, "id": r.id}
+                })
+
+        # 8. KM-Based Service Alert
+        curr_km = getattr(r, 'current_km', None)
+        next_km = getattr(r, 'next_service_km', None)
+        if next_km and curr_km:
+            km_left = next_km - curr_km
+            if km_left <= 500:
+                status_text = f"Overdue by {abs(km_left):,.0f} KM" if km_left < 0 else (f"Due at {next_km:,.0f} KM ({km_left:,.0f} KM left)")
+                alerts.append({
+                    "title": f"🛣️ Service Alert (KM): {veh}",
+                    "body": f"Vehicle Service for {veh} is due at {next_km:,.0f} KM. Current: {curr_km:,.0f} KM ({status_text}).",
+                    "data": {"type": "SERVICE_KM", "vehicle": veh, "id": r.id}
+                })
+
+        # 9. Hours-Based Service Alert
+        curr_hrs = getattr(r, 'current_hours', None)
+        next_hrs = getattr(r, 'next_service_hours', None)
+        if next_hrs and curr_hrs:
+            hrs_left = next_hrs - curr_hrs
+            if hrs_left <= 20:
+                status_text = f"Overdue by {abs(hrs_left):,.1f} hrs" if hrs_left < 0 else (f"Due at {next_hrs:,.1f} hrs ({hrs_left:,.1f} hrs left)")
+                alerts.append({
+                    "title": f"⏱️ Service Alert (Hours): {veh}",
+                    "body": f"Vehicle Service for {veh} is due at {next_hrs:,.1f} hrs. Current: {curr_hrs:,.1f} hrs ({status_text}).",
+                    "data": {"type": "SERVICE_HOURS", "vehicle": veh, "id": r.id}
                 })
 
     return alerts

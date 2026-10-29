@@ -127,6 +127,13 @@ class VehicleEMIBase(BaseModel):
     pucc_fee: Optional[float] = 0.0
     service_date: Optional[datetime.date] = None
     next_service_date: Optional[datetime.date] = None
+    service_km: Optional[float] = None
+    next_service_km: Optional[float] = None
+    current_km: Optional[float] = None
+    service_hours: Optional[float] = None
+    next_service_hours: Optional[float] = None
+    current_hours: Optional[float] = None
+    service_type: Optional[str] = 'DATE'
     financier: Optional[str] = None
     notes: Optional[str] = None
     document_url: Optional[str] = None
@@ -152,6 +159,13 @@ class VehicleEMIUpdate(BaseModel):
     pucc_fee: Optional[float] = None
     service_date: Optional[datetime.date] = None
     next_service_date: Optional[datetime.date] = None
+    service_km: Optional[float] = None
+    next_service_km: Optional[float] = None
+    current_km: Optional[float] = None
+    service_hours: Optional[float] = None
+    next_service_hours: Optional[float] = None
+    current_hours: Optional[float] = None
+    service_type: Optional[str] = 'DATE'
     financier: Optional[str] = None
     notes: Optional[str] = None
     document_url: Optional[str] = None
@@ -159,6 +173,7 @@ class VehicleEMIUpdate(BaseModel):
 
 class VehicleEMIResponse(VehicleEMIBase):
     id: int
+    latest_trip_km: Optional[float] = None
     created_at: datetime.datetime
     class Config: from_attributes = True
 

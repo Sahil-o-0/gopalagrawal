@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, field_serializer
 from typing import Optional, List
 import datetime
 from .trip import TripLogResponse
@@ -20,10 +20,25 @@ class AttendanceBase(BaseModel):
     punch_out_location: Optional[str] = None
     hours_worked: Optional[float] = 0.0
 
+    @field_validator("punch_in_time", "punch_out_time", mode="after")
+    @classmethod
+    def _to_naive_utc(cls, v):
+        # Store all punch times as naive UTC (client sends UTC ISO strings with 'Z')
+        if v is not None and v.tzinfo is not None:
+            v = v.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        return v
+
 class AttendanceCreate(AttendanceBase):
     pass
 
 class AttendanceResponse(AttendanceBase):
+    @field_serializer("punch_in_time", "punch_out_time")
+    def _ser_utc(self, v):
+        # Naive values are UTC; append 'Z' so clients convert to local timezone
+        if v is None:
+            return None
+        return v.isoformat() + "Z" if v.tzinfo is None else v.isoformat()
+
     id: int
     recorded_by_id: Optional[int] = None
     created_at: datetime.datetime

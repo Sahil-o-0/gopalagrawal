@@ -87,7 +87,7 @@ def punch_attendance(
 ):
     import datetime
     today = datetime.date.today()
-    now = datetime.datetime.now()
+    now = datetime.datetime.utcnow()
 
     # Read target staff member (Admin and Manager can specify other staff; otherwise defaults to current logged-in user)
     target_staff_id = punch.staff_id if (punch.staff_id and current_user.role in ["ADMIN", "MANAGER"]) else current_user.id

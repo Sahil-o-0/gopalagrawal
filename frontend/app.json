@@ -4,7 +4,7 @@
     "slug": "frontend",
     "version": "6.2",
     "orientation": "portrait",
-    "icon": "./assets/images/app-logo.png",
+    "icon": "./assets/images/icon-app.png",
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -24,8 +24,8 @@
         "ACCESS_COARSE_LOCATION"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#023c69",
-        "foregroundImage": "./assets/images/app-logo.png"
+        "backgroundColor": "#F4F5F4",
+        "foregroundImage": "./assets/images/icon-foreground.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false

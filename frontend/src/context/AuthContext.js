@@ -238,6 +238,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const deleteAccount = async () => {
+    const resp = await fetch(`${API_BASE_URL}/auth/me`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${userToken}` }
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to delete account');
+    }
+    await logout();
+  };
+
   const logout = async () => {
     try {
       await AsyncStorage.removeItem('userToken');
@@ -250,7 +262,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ login, verifyOtp, resendOtp, registerFirebaseSession, signup, logout, isLoading, userToken, user }}>
+    <AuthContext.Provider value={{ login, verifyOtp, resendOtp, registerFirebaseSession, signup, logout, deleteAccount, isLoading, userToken, user }}>
       {children}
     </AuthContext.Provider>
   );

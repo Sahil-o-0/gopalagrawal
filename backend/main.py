@@ -67,6 +67,27 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+from fastapi.responses import HTMLResponse
+
+_PAGE = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title>
+<style>body{{font-family:Arial,sans-serif;max-width:720px;margin:30px auto;padding:0 16px;line-height:1.6;color:#1e293b}}</style></head><body>{body}</body></html>"""
+
+@app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+def privacy_policy():
+    return _PAGE.format(title="Privacy Policy", body="""<h1>Privacy Policy - Gopal Agrawal Enterprises</h1>
+<p>This app is for internal business use by employees of Gopal Agrawal Enterprises. Accounts are created only by the company administrator.</p>
+<h3>Data we collect</h3><p>Name, phone number, role, attendance records (including punch time, location and photo), trip and vehicle logs, ledger entries, and documents uploaded by the company (such as ID proofs and vehicle papers).</p>
+<h3>How it is used</h3><p>Only for payroll, attendance, fleet and accounting operations of the company. Data is not sold or shared with third parties, except push-notification delivery (Firebase / Expo).</p>
+<h3>Security</h3><p>Data is transmitted over HTTPS and stored on company-controlled servers.</p>
+<h3>Account deletion</h3><p>See <a href="/delete-account">/delete-account</a>.</p>""")
+
+@app.get("/delete-account", response_class=HTMLResponse, include_in_schema=False)
+def delete_account_page():
+    return _PAGE.format(title="Delete Account", body="""<h1>Delete your account</h1>
+<p><b>In the app:</b> open the app &rarr; Home screen &rarr; tap <b>Delete Account</b> &rarr; confirm.</p>
+<p><b>Or ask the administrator</b> of Gopal Agrawal Enterprises to remove your account.</p>
+<p>On deletion your personal details (name, phone, photo, ID proofs, address, relative details) are erased and the account is deactivated. Company business records (attendance, trips, ledger entries) are retained in anonymised form for accounting and legal compliance.</p>""")
+
 # Configure CORS for the mobile app
 app.add_middleware(
     CORSMiddleware,

@@ -119,7 +119,7 @@ const getNavCards = (userRole) => [
 ];
 
 export default function HomeScreen({ navigation }) {
-  const { user, userToken, logout } = useContext(AuthContext);
+  const { user, userToken, logout, deleteAccount } = useContext(AuthContext);
   const { selectedSite, loading: siteLoading, error: siteError, fetchSites } = useSite();
   const [alertsSummary, setAlertsSummary] = useState(null);
   const scrollViewRef = useRef(null);
@@ -136,6 +136,19 @@ export default function HomeScreen({ navigation }) {
   const allowedCards = getNavCards(user?.role).filter(card => card.roles.includes(user?.role));
   const insets = useSafeAreaInsets();
   const topPadding = Math.max(insets.top, Platform.OS === 'android' ? 36 : 20);
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account?',
+      'This will permanently erase your personal data and deactivate your login. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: async () => {
+          try { await deleteAccount(); } catch (e) { Alert.alert('Error', e.message || 'Failed to delete account'); }
+        }}
+      ]
+    );
+  };
 
   const handleCardPress = (card) => {
     if (!selectedSite && card.id !== 'sites') {
@@ -162,13 +175,18 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.username}>{user?.full_name || user?.username}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
               <Text style={styles.roleTag}>{user?.role}</Text>
-              <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '800' }}>• v7.3</Text>
+              <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '800' }}>• v7.4</Text>
             </View>
           </View>
         </View>
-        <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.8}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+        <View style={{ alignItems: 'flex-end', gap: 6 }}>
+          <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.8}>
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={confirmDeleteAccount} activeOpacity={0.7}>
+            <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '700' }}>Delete Account</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView

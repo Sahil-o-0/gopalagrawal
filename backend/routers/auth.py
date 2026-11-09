@@ -483,6 +483,39 @@ def delete_user(
     db.commit()
     return {"message": "User deleted"}
 
+@router.delete("/me")
+def delete_my_account(
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_current_active_user)
+):
+    """Self-service account deletion (Google Play requirement).
+    Personal data is erased and the account deactivated; business records
+    (ledgers, trips, attendance) stay linked to the anonymised user id."""
+    if current_user.role == UserRole.ADMIN:
+        other_admins = db.query(User).filter(
+            User.role == UserRole.ADMIN, User.is_active == True, User.id != current_user.id
+        ).count()
+        if other_admins == 0:
+            raise HTTPException(status_code=400, detail="You are the only active admin. Create another admin before deleting this account.")
+
+    u = db.query(User).filter(User.id == current_user.id).first()
+    u.username = f"deleted_user_{u.id}"
+    u.full_name = "Deleted User"
+    u.phone_number = None
+    u.hashed_password = get_password_hash(secrets.token_urlsafe(32))
+    u.profile_photo_url = None
+    u.aadhar_id = None
+    u.aadhar_front_url = None
+    u.aadhar_back_url = None
+    u.address = None
+    u.relative_name = None
+    u.relative_relation = None
+    u.relative_phone_number = None
+    u.expo_push_token = None
+    u.is_active = False
+    db.commit()
+    return {"message": "Account deleted"}
+
 
 # --- DESIGNATION ENDPOINTS ---
 

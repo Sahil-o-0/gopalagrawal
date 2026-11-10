@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, ActivityIndicator, StatusBar, Platform, Alert, Image
+  TouchableOpacity, ActivityIndicator, StatusBar, Platform, Alert, Image, Modal
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import SiteSelector from '../components/SiteSelector';
 import ErrorCard from '../components/ErrorCard';
 import DraggableDashboardGrid from '../components/DraggableDashboardGrid';
 import { checkAndTriggerAutomatedAlerts } from '../context/NotificationService';
+import { API_BASE_URL } from '../config';
 
 const getNavCards = (userRole) => [
   {
@@ -122,16 +123,74 @@ export default function HomeScreen({ navigation }) {
   const { user, userToken, logout, deleteAccount } = useContext(AuthContext);
   const { selectedSite, loading: siteLoading, error: siteError, fetchSites } = useSite();
   const [alertsSummary, setAlertsSummary] = useState(null);
+  const [showBellModal, setShowBellModal] = useState(false);
+  const [pendingOtps, setPendingOtps] = useState([]);
+  const [loadingBell, setLoadingBell] = useState(false);
   const scrollViewRef = useRef(null);
   const scrollYRef = useRef(0);
 
+  const fetchBellNotifications = useCallback(async (silent = false) => {
+    if (!userToken) return;
+    if (!silent) setLoadingBell(true);
+    try {
+      const headers = {
+        'Authorization': `Bearer ${userToken}`,
+        'bypass-tunnel-reminder': 'true',
+      };
+      // 1. Fetch Staff Login OTPs for Admin
+      if (user?.role === 'ADMIN') {
+        const otpRes = await fetch(`${API_BASE_URL}/auth/admin/pending-otps`, { headers });
+        if (otpRes.ok) {
+          const otpData = await otpRes.json();
+          if (Array.isArray(otpData)) {
+            setPendingOtps(otpData);
+          }
+        }
+      }
+      // 2. Fetch Automated Compliance & EMI Alerts for Admin / Manager
+      if (user?.role === 'ADMIN' || user?.role === 'MANAGER') {
+        const siteQuery = selectedSite?.id ? `?site_id=${selectedSite.id}` : '';
+        const alertRes = await fetch(`${API_BASE_URL}/reports/automated-alerts${siteQuery}`, { headers });
+        if (alertRes.ok) {
+          const alertData = await alertRes.json();
+          setAlertsSummary(alertData);
+        }
+      }
+    } catch (e) {
+      // ignore background poll errors
+    } finally {
+      if (!silent) setLoadingBell(false);
+    }
+  }, [userToken, user?.role, selectedSite?.id]);
+
   useEffect(() => {
     if (userToken && (user?.role === 'ADMIN' || user?.role === 'MANAGER')) {
-      checkAndTriggerAutomatedAlerts(userToken, selectedSite?.id).then(data => {
-        setAlertsSummary(data);
-      }).catch(() => {});
+      checkAndTriggerAutomatedAlerts(userToken, selectedSite?.id).catch(() => {});
+      fetchBellNotifications(true);
+      const interval = setInterval(() => {
+        fetchBellNotifications(true);
+      }, 10000);
+      return () => clearInterval(interval);
     }
-  }, [userToken, selectedSite?.id]);
+  }, [userToken, user?.role, selectedSite?.id, fetchBellNotifications]);
+
+  useEffect(() => {
+    if (showBellModal && user?.role === 'ADMIN') {
+      fetchBellNotifications(false);
+      const fastPoll = setInterval(() => {
+        fetchBellNotifications(true);
+      }, 5000);
+      return () => clearInterval(fastPoll);
+    }
+  }, [showBellModal, user?.role, fetchBellNotifications]);
+
+  const nowUtcMs = Date.now();
+  const activeOtpCount = pendingOtps.filter(otp => {
+    if (otp.is_used) return false;
+    const expStr = otp.expires_at ? (otp.expires_at.endsWith('Z') ? otp.expires_at : `${otp.expires_at}Z`) : null;
+    return expStr ? new Date(expStr).getTime() > nowUtcMs : true;
+  }).length;
+  const totalAlertCount = activeOtpCount + (alertsSummary?.alerts?.length || 0);
 
   const allowedCards = getNavCards(user?.role).filter(card => card.roles.includes(user?.role));
   const insets = useSafeAreaInsets();
@@ -164,28 +223,56 @@ export default function HomeScreen({ navigation }) {
 
       {/* Header */}
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
           <Image 
             source={require('../../assets/images/app-logo.png')} 
             style={styles.headerLogo} 
             resizeMode="contain"
           />
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.username}>{user?.full_name || user?.username}</Text>
+            <Text style={styles.username} numberOfLines={1}>{user?.full_name || user?.username}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
               <Text style={styles.roleTag}>{user?.role}</Text>
-              <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '800' }}>• v7.6</Text>
+              <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '800' }}>• v7.7</Text>
             </View>
           </View>
         </View>
-        <View style={{ alignItems: 'flex-end', gap: 6 }}>
-          <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.8}>
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={confirmDeleteAccount} activeOpacity={0.7}>
-            <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '700' }}>Delete Account</Text>
-          </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
+            <TouchableOpacity
+              style={[
+                styles.bellBtn,
+                activeOtpCount > 0 && { backgroundColor: '#ECFDF5', borderColor: '#10B981' }
+              ]}
+              onPress={() => {
+                setShowBellModal(true);
+                fetchBellNotifications(false);
+              }}
+              activeOpacity={0.75}
+            >
+              <MaterialCommunityIcons
+                name={activeOtpCount > 0 ? 'bell-ring' : 'bell-outline'}
+                size={22}
+                color={activeOtpCount > 0 ? '#059669' : '#1E293B'}
+              />
+              {totalAlertCount > 0 && (
+                <View style={[styles.bellBadge, activeOtpCount > 0 && { backgroundColor: '#059669' }]}>
+                  <Text style={styles.bellBadgeText}>
+                    {totalAlertCount > 99 ? '99+' : totalAlertCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+          <View style={{ alignItems: 'flex-end', gap: 6 }}>
+            <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.8}>
+              <Text style={styles.logoutText}>Logout</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={confirmDeleteAccount} activeOpacity={0.7}>
+              <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '700' }}>Delete Account</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -274,6 +361,195 @@ export default function HomeScreen({ navigation }) {
           scrollYRef={scrollYRef}
         />
       </ScrollView>
+
+      {/* Notification Bell Popup Modal (Live Staff Login OTPs & Compliance Alerts) */}
+      <Modal
+        visible={showBellModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowBellModal(false)}
+      >
+        <View style={styles.bellModalOverlay}>
+          <View style={styles.bellModalCard}>
+            {/* Modal Header */}
+            <View style={styles.bellModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={styles.bellHeaderIconBox}>
+                  <MaterialCommunityIcons name="bell-ring-outline" size={22} color="#006C49" />
+                </View>
+                <View>
+                  <Text style={styles.bellModalTitle}>Notifications & OTPs</Text>
+                  <Text style={styles.bellModalSubtitle}>
+                    {user?.role === 'ADMIN' ? 'Live Staff Login OTPs & Fleet Alerts' : 'Fleet & Compliance Alerts'}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => fetchBellNotifications(false)}
+                  style={styles.bellRefreshBtn}
+                  activeOpacity={0.7}
+                >
+                  {loadingBell ? (
+                    <ActivityIndicator size="small" color="#006C49" />
+                  ) : (
+                    <MaterialCommunityIcons name="refresh" size={18} color="#006C49" />
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setShowBellModal(false)}
+                  style={styles.bellCloseBtn}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons name="close" size={20} color="#475569" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <ScrollView
+              style={{ maxHeight: 500 }}
+              contentContainerStyle={{ paddingBottom: 20 }}
+              showsVerticalScrollIndicator={true}
+            >
+              {/* SECTION 1: Admin Live Staff Login OTPs */}
+              {user?.role === 'ADMIN' && (
+                <View style={{ marginBottom: 18 }}>
+                  <View style={styles.bellSectionHeaderRow}>
+                    <MaterialCommunityIcons name="shield-key-outline" size={16} color="#006C49" />
+                    <Text style={styles.bellSectionTitle}>STAFF LOGIN OTP REQUESTS</Text>
+                    {activeOtpCount > 0 && (
+                      <View style={styles.activeCountPill}>
+                        <Text style={styles.activeCountPillText}>{activeOtpCount} ACTIVE</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {pendingOtps.length === 0 ? (
+                    <View style={styles.emptyBellBox}>
+                      <MaterialCommunityIcons name="key-outline" size={24} color="#94A3B8" />
+                      <Text style={styles.emptyBellText}>No recent staff login OTP requests in the last hour.</Text>
+                    </View>
+                  ) : (
+                    pendingOtps.map((otp) => {
+                      const expStr = otp.expires_at
+                        ? (otp.expires_at.endsWith('Z') ? otp.expires_at : `${otp.expires_at}Z`)
+                        : null;
+                      const createdStr = otp.created_at
+                        ? (otp.created_at.endsWith('Z') ? otp.created_at : `${otp.created_at}Z`)
+                        : null;
+                      const expMs = expStr ? new Date(expStr).getTime() : 0;
+                      const isExpired = expMs > 0 && expMs <= Date.now();
+                      const isActive = !otp.is_used && !isExpired;
+                      const minsLeft = isActive && expMs > 0 ? Math.max(1, Math.ceil((expMs - Date.now()) / 60000)) : 0;
+                      const timeLabel = createdStr
+                        ? new Date(createdStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : '';
+
+                      return (
+                        <View
+                          key={otp.id || otp.session_id}
+                          style={[
+                            styles.otpItemCard,
+                            isActive ? styles.otpItemCardActive : styles.otpItemCardInactive
+                          ]}
+                        >
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <View style={{ flex: 1, paddingRight: 8 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <Text style={styles.otpUserTitle}>{otp.full_name || otp.username}</Text>
+                                <View style={styles.otpRoleBadge}>
+                                  <Text style={styles.otpRoleBadgeText}>{otp.role}</Text>
+                                </View>
+                              </View>
+                              <Text style={styles.otpMetaText}>
+                                @{otp.username} {timeLabel ? `• Requested at ${timeLabel}` : ''}
+                              </Text>
+                            </View>
+
+                            <View
+                              style={[
+                                styles.otpStatusBadge,
+                                isActive
+                                  ? { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' }
+                                  : otp.is_used
+                                  ? { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1' }
+                                  : { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.otpStatusBadgeText,
+                                  isActive
+                                    ? { color: '#15803D' }
+                                    : otp.is_used
+                                    ? { color: '#475569' }
+                                    : { color: '#B91C1C' }
+                                ]}
+                              >
+                                {isActive ? `ACTIVE (${minsLeft}m left)` : otp.is_used ? 'USED' : 'EXPIRED'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={[styles.otpCodeDisplayBox, !isActive && { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}>
+                            <Text style={styles.otpCodeLabel}>6-DIGIT LOGIN OTP</Text>
+                            <Text style={[styles.otpCodeValue, !isActive && { color: '#94A3B8' }]}>
+                              {String(otp.otp_code || '').split('').join(' ')}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+              )}
+
+              {/* SECTION 2: Fleet & Compliance Alerts */}
+              <View>
+                <View style={styles.bellSectionHeaderRow}>
+                  <MaterialCommunityIcons name="alert-decagram-outline" size={16} color="#D97706" />
+                  <Text style={styles.bellSectionTitle}>FLEET & COMPLIANCE REMINDERS</Text>
+                </View>
+
+                {!alertsSummary?.alerts || alertsSummary.alerts.length === 0 ? (
+                  <View style={styles.emptyBellBox}>
+                    <MaterialCommunityIcons name="check-decagram-outline" size={24} color="#10B981" />
+                    <Text style={styles.emptyBellText}>All fleet EMIs and compliance certificates are up to date!</Text>
+                  </View>
+                ) : (
+                  alertsSummary.alerts.map((alertItem, idx) => {
+                    const isCrit = alertItem.severity === 'CRITICAL' || alertItem.days_until_due < 0;
+                    return (
+                      <TouchableOpacity
+                        key={alertItem.id || idx}
+                        style={[
+                          styles.alertItemCard,
+                          isCrit ? { backgroundColor: '#FEF2F2', borderColor: '#FECACA' } : { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }
+                        ]}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          setShowBellModal(false);
+                          navigation.navigate('ComplianceVault');
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '800', color: isCrit ? '#991B1B' : '#92400E' }}>
+                            {alertItem.vehicle_number} • {alertItem.type}
+                          </Text>
+                          <MaterialCommunityIcons name="chevron-right" size={18} color="#64748B" />
+                        </View>
+                        <Text style={{ fontSize: 12, color: '#334155', lineHeight: 17 }}>
+                          {alertItem.message}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -318,6 +594,36 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginTop: 2,
   },
+  bellBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#EF4444',
+    minWidth: 19,
+    height: 19,
+    borderRadius: 10,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  bellBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+  },
   logoutBtn: {
     backgroundColor: '#FEF2F2',
     borderWidth: 1,
@@ -354,6 +660,181 @@ const styles = StyleSheet.create({
   loadingText: {
     color: '#6B7280',
     fontSize: 14,
+  },
+  bellModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  bellModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 28,
+    maxHeight: '85%',
+  },
+  bellModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    marginBottom: 14,
+  },
+  bellHeaderIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellModalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  bellModalSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  bellRefreshBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  bellSectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#475569',
+    letterSpacing: 0.8,
+  },
+  activeCountPill: {
+    backgroundColor: '#059669',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 4,
+  },
+  activeCountPillText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  emptyBellBox: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    gap: 6,
+  },
+  emptyBellText: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  otpItemCard: {
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1.5,
+  },
+  otpItemCardActive: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#6EE7B7',
+  },
+  otpItemCardInactive: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2E8F0',
+  },
+  otpUserTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  otpRoleBadge: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  otpRoleBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  otpMetaText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  otpStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  otpStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  otpCodeDisplayBox: {
+    marginTop: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  otpCodeLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#047857',
+    letterSpacing: 0.6,
+  },
+  otpCodeValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#006C49',
+    letterSpacing: 2,
+  },
+  alertItemCard: {
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
   },
 });
 

@@ -112,15 +112,11 @@ def login(
         }
     )
 
-    # Fetch active admin phone numbers for client-side Firebase SMS trigger
-    admins = db.query(User).filter(User.role == "ADMIN", User.is_active == True).all()
-    admin_phones = [u.phone_number.strip() for u in admins if u.phone_number and u.phone_number.strip()]
-
     return {
         "require_otp": True,
         "otp_session": session_id,
         "user_hint": f"{user_display}{designation_text}",
-        "admin_phones": admin_phones,
+        "admin_phones": [],
         "message": f"A 6-digit verification code has been sent to Admin for '{user.username}'. Please obtain the OTP from your Admin to log in."
     }
 
@@ -160,18 +156,7 @@ def verify_login_otp(
         )
 
     clean_entered_otp = payload.otp.strip()
-    is_valid = False
-
-    # 1. Match backend internal OTP code
-    if clean_entered_otp == otp_record.otp_code:
-        is_valid = True
-
-    # 2. Match Google Firebase SMS Phone Auth code
-    firebase_id = payload.verification_id or getattr(otp_record, 'firebase_verification_id', None)
-    if not is_valid and firebase_id:
-        from core.firebase import verify_firebase_phone_otp
-        if verify_firebase_phone_otp(firebase_id, clean_entered_otp):
-            is_valid = True
+    is_valid = (clean_entered_otp == otp_record.otp_code)
 
     if not is_valid:
         db.commit()
@@ -260,13 +245,10 @@ def resend_login_otp(
         }
     )
 
-    admins = db.query(User).filter(User.role == "ADMIN", User.is_active == True).all()
-    admin_phones = [u.phone_number.strip() for u in admins if u.phone_number and u.phone_number.strip()]
-
     return {
         "status": "success",
         "otp_session": new_session_id,
-        "admin_phones": admin_phones,
+        "admin_phones": [],
         "message": f"A new OTP has been sent to the Admin for '{user.username}'."
     }
 
@@ -275,18 +257,7 @@ def register_firebase_session(
     payload: schemas.user.FirebaseSessionRegister,
     db: Session = Depends(dependencies.get_db)
 ):
-    """
-    Associates the Google Firebase Phone Auth verification ID with the OTP login session.
-    """
-    otp_record = db.query(LoginOTP).filter(
-        LoginOTP.session_id == payload.otp_session,
-        LoginOTP.is_used == False
-    ).first()
-    if otp_record:
-        otp_record.firebase_verification_id = payload.verification_id
-        db.commit()
-        return {"status": "success", "session_id": payload.otp_session}
-    return {"status": "session_not_found"}
+    return {"status": "disabled"}
 
 @router.get("/admin/pending-otps", response_model=List[schemas.user.PendingOTPResponse])
 def get_pending_admin_otps(
@@ -294,12 +265,12 @@ def get_pending_admin_otps(
     current_user: User = Depends(dependencies.get_admin_user)
 ):
     """
-    Returns active OTPs created in the last 15 minutes for Admin live view.
+    Returns recent OTPs created in the last 60 minutes for Admin Notification Bell live view.
     """
-    fifteen_mins_ago = datetime.datetime.utcnow() - timedelta(minutes=15)
+    cutoff_time = datetime.datetime.utcnow() - timedelta(minutes=60)
     records = db.query(LoginOTP, User).join(User, LoginOTP.user_id == User.id).filter(
-        LoginOTP.created_at >= fifteen_mins_ago
-    ).order_by(LoginOTP.created_at.desc()).limit(20).all()
+        LoginOTP.created_at >= cutoff_time
+    ).order_by(LoginOTP.created_at.desc()).limit(25).all()
 
     results = []
     for otp, u in records:

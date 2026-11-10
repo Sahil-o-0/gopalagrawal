@@ -17,7 +17,6 @@ import {
 import * as Updates from 'expo-updates';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { WebView } from 'react-native-webview';
 import { AuthContext } from '../context/AuthContext';
 
 export default function LoginScreen() {
@@ -34,15 +33,7 @@ export default function LoginScreen() {
   const [resendTimer, setResendTimer] = useState(0);
   const [isResending, setIsResending] = useState(false);
 
-  // Firebase Phone Auth reCAPTCHA states
-  const [adminPhone, setAdminPhone] = useState('');
-  const [showCaptchaModal, setShowCaptchaModal] = useState(false);
-  const [captchaStatus, setCaptchaStatus] = useState('');
-  const [smsSent, setSmsSent] = useState(false);
-  const [captchaUrl, setCaptchaUrl] = useState('');
-  const [verificationId, setVerificationId] = useState('');
-
-  const { login, verifyOtp, resendOtp, registerFirebaseSession, signup, isLoading } = useContext(AuthContext);
+  const { login, verifyOtp, resendOtp, signup, isLoading } = useContext(AuthContext);
 
   // Timer countdown for resending OTP
   React.useEffect(() => {
@@ -54,35 +45,6 @@ export default function LoginScreen() {
     }
     return () => clearInterval(interval);
   }, [resendTimer]);
-
-  const handleWebViewMessage = (event) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === 'READY') {
-        setCaptchaStatus('Performing security verification...');
-      } else if (data.type === 'SMS_SENT') {
-        setCaptchaStatus('SMS OTP sent to Admin!');
-        setSmsSent(true);
-        if (data.verificationId) {
-          setVerificationId(data.verificationId);
-          if (otpSession && registerFirebaseSession) {
-            registerFirebaseSession(otpSession, data.verificationId);
-          }
-        }
-        setTimeout(() => {
-          setShowCaptchaModal(false);
-        }, 1200);
-      } else if (data.type === 'ERROR') {
-        console.warn('Firebase Phone Auth SMS notice:', data.message, data.code);
-        setCaptchaStatus('Admin alerted via push notification. Enter OTP to proceed.');
-        setTimeout(() => {
-          setShowCaptchaModal(false);
-        }, 1200);
-      }
-    } catch (e) {
-      console.log('WebView message error:', e);
-    }
-  };
 
   const handleSubmit = async () => {
     if (isSignup) {
@@ -100,14 +62,6 @@ export default function LoginScreen() {
         setOtpStep(true);
         setOtpCode('');
         setResendTimer(30);
-
-        if (result.adminPhones && result.adminPhones.length > 0) {
-          const targetPhone = result.adminPhones[0];
-          setAdminPhone(targetPhone);
-          setCaptchaStatus('Sending SMS to Admin via Firebase...');
-          setCaptchaUrl(`https://aadarshila.dummysite.cloud/firebase-phone-auth.html?phone=${encodeURIComponent(targetPhone)}&session=${encodeURIComponent(result.otpSession)}&ts=${Date.now()}`);
-          setShowCaptchaModal(true);
-        }
       }
     }
   };
@@ -116,7 +70,7 @@ export default function LoginScreen() {
     if (!otpCode.trim()) {
       return;
     }
-    await verifyOtp(otpSession, otpCode.trim(), verificationId);
+    await verifyOtp(otpSession, otpCode.trim());
   };
 
   const handleResendOtp = async () => {
@@ -124,19 +78,10 @@ export default function LoginScreen() {
     setIsResending(true);
     const res = await resendOtp(otpSession);
     if (res && res.success) {
-      const activeSession = res.otpSession || otpSession;
       if (res.otpSession) {
         setOtpSession(res.otpSession);
       }
       setResendTimer(30);
-
-      const targetPhone = (res.adminPhones && res.adminPhones.length > 0) ? res.adminPhones[0] : adminPhone;
-      if (targetPhone) {
-        setAdminPhone(targetPhone);
-        setCaptchaStatus('Resending SMS to Admin via Firebase...');
-        setCaptchaUrl(`https://aadarshila.dummysite.cloud/firebase-phone-auth.html?phone=${encodeURIComponent(targetPhone)}&session=${encodeURIComponent(activeSession)}&ts=${Date.now()}`);
-        setShowCaptchaModal(true);
-      }
     }
     setIsResending(false);
   };
@@ -145,8 +90,6 @@ export default function LoginScreen() {
     setOtpStep(false);
     setOtpCode('');
     setOtpSession('');
-    setShowCaptchaModal(false);
-    setSmsSent(false);
   };
 
   const insets = useSafeAreaInsets();
@@ -188,28 +131,11 @@ export default function LoginScreen() {
               </View>
 
               <View style={styles.infoBanner}>
-                <MaterialCommunityIcons name="information-outline" size={18} color="#006C49" style={{ marginRight: 6 }} />
+                <MaterialCommunityIcons name="bell-ring-outline" size={20} color="#006C49" style={{ marginRight: 8 }} />
                 <Text style={styles.infoBannerText}>
-                  Please ask your Admin to share the OTP to complete login.
+                  Push notification sent to Admin! Admin can also view this OTP anytime inside the in-app Notification Bell (🔔).
                 </Text>
               </View>
-
-              {/* Cellular SMS Dispatch Confirmation */}
-              {adminPhone ? (
-                <View style={[styles.smsStatusBanner, smsSent ? styles.smsSuccessBanner : styles.smsPendingBanner]}>
-                  <MaterialCommunityIcons 
-                    name={smsSent ? "cellphone-check" : "cellphone-arrow-down"} 
-                    size={18} 
-                    color={smsSent ? "#006C49" : "#0284C7"} 
-                    style={{ marginRight: 6 }} 
-                  />
-                  <Text style={[styles.smsStatusText, smsSent ? { color: "#006C49" } : { color: "#0369A1" }]}>
-                    {smsSent 
-                      ? `SMS OTP dispatched to Admin (+91 ${adminPhone.replace(/^\+91/, '')})`
-                      : `Sending SMS to Admin (+91 ${adminPhone.replace(/^\+91/, '')})...`}
-                  </Text>
-                </View>
-              ) : null}
 
               <View style={styles.form}>
                 {/* OTP Input */}
@@ -398,57 +324,13 @@ export default function LoginScreen() {
               style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}
               activeOpacity={0.7}
             >
-              <Text style={styles.centerVersionTag}>App Version: v7.6</Text>
+              <Text style={styles.centerVersionTag}>App Version: v7.7</Text>
               <MaterialCommunityIcons name="refresh" size={12} color="#94A3B8" />
             </TouchableOpacity>
           </View>
 
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* Firebase Phone Auth reCAPTCHA Verification Modal */}
-      <Modal
-        visible={showCaptchaModal}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowCaptchaModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <MaterialCommunityIcons name="shield-check" size={22} color="#006C49" style={{ marginRight: 8 }} />
-                <Text style={styles.modalTitle}>Security Verification</Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowCaptchaModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <MaterialCommunityIcons name="close" size={22} color="#64748B" />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.modalSubtitle}>
-              {captchaStatus || 'Sending cellular SMS to Admin via Firebase...'}
-            </Text>
-            <View style={styles.webViewWrapper}>
-              {captchaUrl ? (
-                <WebView
-                  source={{ uri: captchaUrl }}
-                  onMessage={handleWebViewMessage}
-                  javaScriptEnabled={true}
-                  domStorageEnabled={true}
-                  startInLoadingState={true}
-                  style={{ flex: 1, backgroundColor: 'transparent' }}
-                />
-              ) : null}
-            </View>
-            <TouchableOpacity 
-              onPress={() => setShowCaptchaModal(false)}
-              style={{ marginTop: 14, paddingVertical: 10, alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 10 }}
-              activeOpacity={0.8}
-            >
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#006C49' }}>Enter OTP Directly ➔</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }

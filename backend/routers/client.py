@@ -204,17 +204,48 @@ def create_client_transaction(
     db: Session = Depends(dependencies.get_db),
     current_user: User = Depends(dependencies.get_current_active_user)
 ):
+    import re
     client = db.query(Client).filter(Client.id == txn_in.client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
+    notes_str = txn_in.notes.strip() if txn_in.notes else None
+    t_type = txn_in.txn_type.upper()
+
+    # Deduplicate / update existing Trip #<id> billing entry in Khata when a validated trip is edited
+    if notes_str and t_type in ["BILLED", "SALE", "RECEIVED", "PURCHASE"]:
+        m_trip = re.search(r"^Trip #(\d+)(?!\d)", notes_str)
+        if m_trip:
+            t_id = int(m_trip.group(1))
+            candidates = db.query(ClientTransaction).filter(
+                ClientTransaction.notes.like(f"Trip #{t_id}%")
+            ).all()
+            matching = [
+                c for c in candidates
+                if re.search(rf"^Trip #{t_id}(?!\d)", c.notes or "") and (c.txn_type or "").upper() in ["BILLED", "SALE", "RECEIVED", "PURCHASE"]
+            ]
+            if matching:
+                existing_txn = matching[0]
+                for dup in matching[1:]:
+                    db.delete(dup)
+                existing_txn.client_id = txn_in.client_id
+                existing_txn.txn_type = t_type
+                existing_txn.amount = float(txn_in.amount)
+                if txn_in.date:
+                    existing_txn.date = txn_in.date
+                existing_txn.payment_mode = txn_in.payment_mode or existing_txn.payment_mode or "CREDIT"
+                existing_txn.notes = notes_str
+                db.commit()
+                db.refresh(existing_txn)
+                return existing_txn
+
     new_txn = ClientTransaction(
         client_id=txn_in.client_id,
-        txn_type=txn_in.txn_type.upper(),
+        txn_type=t_type,
         amount=float(txn_in.amount),
         date=txn_in.date,
         payment_mode=txn_in.payment_mode or "CASH",
-        notes=txn_in.notes.strip() if txn_in.notes else None,
+        notes=notes_str,
         created_at=datetime.datetime.utcnow(),
         created_by=current_user.full_name or current_user.username
     )

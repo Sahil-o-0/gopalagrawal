@@ -322,7 +322,7 @@ def get_my_trips(
     return trips
 
 
-# Managers can validate a trip
+# Managers and Admins can validate or edit a trip
 @router.patch("/{trip_id}/status", response_model=schemas.trip.TripLogResponse)
 def update_trip_status(
     trip_id: int, 
@@ -330,15 +330,51 @@ def update_trip_status(
     db: Session = Depends(dependencies.get_db),
     current_user: User = Depends(dependencies.get_manager_user) # Only Manager+
 ):
+    import re
+    from models.workforce import FinancialLedger
+    from models.client import Client, ClientTransaction
+
     trip = db.query(TripLog).filter(TripLog.id == trip_id).first()
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
         
     trip.status = status_update.status
+    if status_update.vehicle_number is not None and status_update.vehicle_number.strip():
+        trip.vehicle_number = status_update.vehicle_number.strip().upper()
+    if status_update.origin is not None:
+        trip.origin = status_update.origin.strip()
+    if status_update.destination is not None:
+        trip.destination = status_update.destination.strip()
+    if status_update.material_type is not None:
+        trip.material_type = status_update.material_type.strip()
+    if status_update.start_meter_reading is not None:
+        trip.start_meter_reading = status_update.start_meter_reading
+    if status_update.end_meter_reading is not None:
+        trip.end_meter_reading = status_update.end_meter_reading
+    if status_update.start_meter_reading is not None or status_update.end_meter_reading is not None:
+        s_meter = float(trip.start_meter_reading or 0.0)
+        e_meter = float(trip.end_meter_reading or 0.0)
+        if e_meter > s_meter:
+            trip.total_km = round(e_meter - s_meter, 2)
+        elif e_meter == 0 and s_meter == 0:
+            trip.total_km = 0.0
+
+    if status_update.diesel_liters is not None:
+        trip.diesel_liters = status_update.diesel_liters
+    if status_update.diesel_rate is not None:
+        trip.diesel_rate = status_update.diesel_rate
+    if status_update.diesel_cost is not None:
+        trip.diesel_cost = status_update.diesel_cost
+    elif status_update.diesel_liters is not None or status_update.diesel_rate is not None:
+        d_liters = float(trip.diesel_liters or 0.0)
+        d_rate = float(trip.diesel_rate or 0.0)
+        if d_liters > 0 and d_rate > 0:
+            trip.diesel_cost = round(d_liters * d_rate, 2)
+
     if status_update.bhada is not None:
         trip.bhada = status_update.bhada
     if status_update.freight_notes is not None:
-        trip.freight_notes = status_update.freight_notes
+        trip.freight_notes = status_update.freight_notes.strip()
     if status_update.weight_tons is not None:
         trip.weight_tons = status_update.weight_tons
     if status_update.rate_type is not None:
@@ -349,33 +385,136 @@ def update_trip_status(
         trip.hourly_rate = status_update.hourly_rate
     if status_update.total_minutes is not None:
         trip.total_minutes = status_update.total_minutes
+    if status_update.advance_freight_received is not None:
+        trip.advance_freight_received = status_update.advance_freight_received
 
-    # If hourly rate is selected, auto-calculate bhada per minute: minutes * (hourly_rate / 60)
-    if trip.rate_type == "HOURLY":
+    # If hourly rate is selected and bhada wasn't explicitly overridden, auto-calculate bhada per minute
+    if trip.rate_type == "HOURLY" and status_update.bhada is None:
         h_rate = status_update.hourly_rate if status_update.hourly_rate is not None else (trip.hourly_rate or 0.0)
         t_mins = status_update.total_minutes if status_update.total_minutes is not None else (trip.total_minutes or 0.0)
         if h_rate > 0 and t_mins > 0:
             trip.bhada = round(t_mins * (h_rate / 60.0), 2)
 
-    # When validating a trip, ensure diesel expense is logged in DailyLedger if present
+    # Recalculate pending_freight and freight_status whenever bhada or advance changes
+    bhada_val = float(trip.bhada or 0.0)
+    adv_val = float(trip.advance_freight_received or 0.0)
+    trip.pending_freight = max(0.0, round(bhada_val - adv_val, 2))
+    if bhada_val > 0:
+        if adv_val >= bhada_val:
+            trip.freight_status = "PAID"
+        elif adv_val > 0:
+            trip.freight_status = "PARTIAL"
+        else:
+            trip.freight_status = "PENDING"
+    else:
+        trip.freight_status = "PENDING"
+
+    # 1. Sync Diesel (FUEL) in DailyLedger
+    existing_fuel = db.query(DailyLedger).filter(
+        DailyLedger.reference_id == trip.id,
+        DailyLedger.reference_type == "TRIP",
+        DailyLedger.category == "FUEL"
+    ).first()
     if trip.diesel_cost and float(trip.diesel_cost) > 0:
-        existing_fuel = db.query(DailyLedger).filter(
-            DailyLedger.reference_id == trip.id,
-            DailyLedger.reference_type == "TRIP",
-            DailyLedger.category == "FUEL"
-        ).first()
-        if not existing_fuel:
+        rate_str = f" @ ₹{float(trip.diesel_rate):g}/L" if (trip.diesel_rate and float(trip.diesel_rate) > 0) else ""
+        fuel_desc = f"Trip #{trip.id} Diesel: {float(trip.diesel_liters or 0):g}L{rate_str} - {trip.vehicle_number}"
+        if existing_fuel:
+            existing_fuel.amount = float(trip.diesel_cost)
+            existing_fuel.description = fuel_desc
+            existing_fuel.site_id = trip.site_id or 1
+        else:
             fuel_entry = DailyLedger(
                 date=trip.created_at.date() if trip.created_at else datetime.date.today(),
                 site_id=trip.site_id or 1,
                 transaction_type="EXPENSE",
                 category="FUEL",
                 amount=float(trip.diesel_cost),
-                description=f"Trip #{trip.id} Diesel: {float(trip.diesel_liters or 0):g}L - {trip.vehicle_number}",
+                description=fuel_desc,
                 reference_id=trip.id,
                 reference_type="TRIP"
             )
             db.add(fuel_entry)
+    elif existing_fuel and status_update.diesel_cost is not None and float(status_update.diesel_cost) <= 0:
+        db.delete(existing_fuel)
+
+    # 2. Sync Trip Freight (TRIP_INCOME / TRIP_EXPENSE) in DailyLedger if an entry already exists
+    existing_trip_ledger = db.query(DailyLedger).filter(
+        DailyLedger.reference_id == trip.id,
+        DailyLedger.reference_type == "TRIP",
+        DailyLedger.category.in_(["TRIP_INCOME", "TRIP_EXPENSE"])
+    ).first()
+    if existing_trip_ledger:
+        if bhada_val > 0:
+            l_type = status_update.ledger_type if status_update.ledger_type in ["INCOME", "EXPENSE"] else existing_trip_ledger.transaction_type
+            cat = "TRIP_EXPENSE" if l_type == "EXPENSE" else "TRIP_INCOME"
+            party_str = f" [{trip.freight_notes}]" if trip.freight_notes else ""
+            existing_trip_ledger.transaction_type = l_type
+            existing_trip_ledger.category = cat
+            existing_trip_ledger.amount = bhada_val
+            existing_trip_ledger.description = f"Trip #{trip.id} ({trip.vehicle_number}): {trip.origin or 'Site'} -> {trip.destination or 'Dest'}{party_str}"
+            existing_trip_ledger.site_id = trip.site_id or 1
+        elif status_update.bhada is not None and bhada_val <= 0:
+            db.delete(existing_trip_ledger)
+
+    # 3. Sync FinancialLedger if an entry exists for this trip
+    existing_fin_ledger = db.query(FinancialLedger).filter(FinancialLedger.trip_id == trip.id).first()
+    if existing_fin_ledger and status_update.bhada is not None:
+        existing_fin_ledger.total_amount_billed = bhada_val
+        existing_fin_ledger.amount_pending = max(0.0, round(bhada_val - float(existing_fin_ledger.amount_received or 0.0), 2))
+
+    # 4. Sync ClientTransaction (Khata) for this trip (update existing, create if party added, or delete if party cleared)
+    candidate_txns = db.query(ClientTransaction).filter(
+        ClientTransaction.notes.like(f"%Trip #{trip.id}%")
+    ).all()
+    matching_txns = [
+        t for t in candidate_txns
+        if re.search(rf"\bTrip #{trip.id}(?!\d)", t.notes or "") and (t.txn_type or "").upper() in ["BILLED", "SALE", "RECEIVED", "PURCHASE"]
+    ]
+    party_name = (trip.freight_notes or "").strip()
+    if not party_name or bhada_val <= 0:
+        for m_txn in matching_txns:
+            db.delete(m_txn)
+    else:
+        target_client = db.query(Client).filter(Client.name.ilike(party_name)).first()
+        if not target_client:
+            target_client = Client(
+                name=party_name,
+                site_id=trip.site_id or 1,
+                is_active=True,
+                created_at=datetime.datetime.utcnow(),
+                created_by=current_user.full_name or current_user.username
+            )
+            db.add(target_client)
+            db.flush()
+        r_mode = trip.rate_type or "TON"
+        r_val = float(trip.hourly_rate or trip.rate or 0.0) if r_mode == "HOURLY" else float(trip.rate or 0.0)
+        rate_desc = f"{float(trip.total_minutes or 0):g} Mins @ ₹{r_val:g}/hr" if r_mode == "HOURLY" else (
+            f"{float(trip.weight_tons or 0):g} Tons @ ₹{r_val:g}/T" if r_mode == "TON" else f"Fixed Trip Rate ₹{bhada_val:g}"
+        )
+        l_type_eff = status_update.ledger_type or "INCOME"
+        txn_type_eff = "BILLED" if l_type_eff == "INCOME" else "RECEIVED"
+        notes_eff = f"Trip #{trip.id} {'Bhada' if l_type_eff == 'INCOME' else 'Expense'} ({trip.vehicle_number}): {trip.origin or 'Start'} to {trip.destination or 'End'} [{rate_desc}]"
+        if matching_txns:
+            primary_txn = matching_txns[0]
+            for extra_txn in matching_txns[1:]:
+                db.delete(extra_txn)
+            primary_txn.client_id = target_client.id
+            primary_txn.amount = bhada_val
+            if status_update.ledger_type in ["INCOME", "EXPENSE"]:
+                primary_txn.txn_type = txn_type_eff
+            primary_txn.notes = notes_eff
+        elif trip.status in ["VALIDATED", "APPROVED"]:
+            new_c_txn = ClientTransaction(
+                client_id=target_client.id,
+                txn_type=txn_type_eff,
+                amount=bhada_val,
+                date=(trip.created_at.strftime("%Y-%m-%d") if trip.created_at else datetime.date.today().strftime("%Y-%m-%d")),
+                payment_mode="CREDIT",
+                notes=notes_eff,
+                created_at=datetime.datetime.utcnow(),
+                created_by=current_user.full_name or current_user.username
+            )
+            db.add(new_c_txn)
 
     db.commit()
     db.refresh(trip)

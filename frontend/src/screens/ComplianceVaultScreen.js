@@ -350,7 +350,7 @@ export default function ComplianceVaultScreen({ navigation }) {
       service_hours: serviceHours !== '' ? parseFloat(serviceHours) : null,
       next_service_hours: nextServiceHours !== '' ? parseFloat(nextServiceHours) : null,
       current_hours: currentHours !== '' ? parseFloat(currentHours) : null,
-      service_type: serviceTab || 'DATE',
+      service_type: 'ALL',
       notes: notes.trim() || null,
       document_url: documentUrl,
       site_id: selectedSite?.id || 1,
@@ -742,188 +742,167 @@ export default function ComplianceVaultScreen({ navigation }) {
       title: 'Service & Maintenance Schedule',
       icon: 'wrench-clock',
       color: '#0284C7',
-      height: serviceTab === 'DATE' ? 142 : 210,
-      renderContent: () => {
-        const hasDateData = !!serviceDate || !!nextServiceDate;
-        const hasKmData = !!serviceKm || !!nextServiceKm;
-        const hasHrsData = !!serviceHours || !!nextServiceHours;
+      height: 398,
+      renderContent: () => (
+        <View>
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+            backgroundColor: '#F0F9FF',
+            borderRadius: 6,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            marginBottom: 8,
+            borderWidth: 1,
+            borderColor: '#BAE6FD',
+          }}>
+            <MaterialCommunityIcons name="lightning-bolt" size={13} color="#0284C7" />
+            <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#0369A1', flex: 1 }}>
+              Fill any or all 3 schedules (Date, KM, Hours) — whichever reaches first will be used.
+            </Text>
+          </View>
 
-        return (
-          <View>
-            {/* Mode selection tabs: Date, KM, Hours */}
-            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+          {/* 1. Date-based fields */}
+          <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1', marginBottom: 4 }}>
+            📅 1. BY DATE (CALENDAR)
+          </Text>
+          <View style={styles.formRow}>
+            <View style={{ flex: 1, marginRight: 6 }}>
+              <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>LAST SERVICE DATE</Text>
               <TouchableOpacity
-                style={[styles.serviceModeTab, serviceTab === 'DATE' && styles.serviceModeTabActive]}
-                onPress={() => handleServiceTabChange('DATE')}
-                activeOpacity={0.7}
+                style={styles.datePickerBtn}
+                onPress={() => setActiveDatePicker('serviceDate')}
               >
-                <MaterialCommunityIcons name="calendar-clock" size={14} color={serviceTab === 'DATE' ? '#FFFFFF' : '#0284C7'} />
-                <Text style={[styles.serviceModeTabText, serviceTab === 'DATE' && styles.serviceModeTabTextActive]}>
-                  By Date {hasDateData ? '•' : ''}
+                <Text style={styles.datePickerBtnText} numberOfLines={1}>
+                  {serviceDate ? formatDisplayDate(serviceDate) : 'Pick Date'}
                 </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.serviceModeTab, serviceTab === 'KM' && styles.serviceModeTabActive]}
-                onPress={() => handleServiceTabChange('KM')}
-                activeOpacity={0.7}
-              >
-                <MaterialCommunityIcons name="speedometer" size={14} color={serviceTab === 'KM' ? '#FFFFFF' : '#0284C7'} />
-                <Text style={[styles.serviceModeTabText, serviceTab === 'KM' && styles.serviceModeTabTextActive]}>
-                  By KM {hasKmData ? '•' : ''}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.serviceModeTab, serviceTab === 'HOURS' && styles.serviceModeTabActive]}
-                onPress={() => handleServiceTabChange('HOURS')}
-                activeOpacity={0.7}
-              >
-                <MaterialCommunityIcons name="clock-outline" size={14} color={serviceTab === 'HOURS' ? '#FFFFFF' : '#0284C7'} />
-                <Text style={[styles.serviceModeTabText, serviceTab === 'HOURS' && styles.serviceModeTabTextActive]}>
-                  By Hours {hasHrsData ? '•' : ''}
-                </Text>
+                <MaterialCommunityIcons name="wrench" size={16} color="#0284C7" />
               </TouchableOpacity>
             </View>
-
-            {/* Date-based fields */}
-            {serviceTab === 'DATE' && (
-              <View style={styles.formRow}>
-                <View style={{ flex: 1, marginRight: 6 }}>
-                  <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>LAST SERVICE DATE</Text>
-                  <TouchableOpacity
-                    style={styles.datePickerBtn}
-                    onPress={() => setActiveDatePicker('serviceDate')}
-                  >
-                    <Text style={styles.datePickerBtnText} numberOfLines={1}>
-                      {serviceDate ? formatDisplayDate(serviceDate) : 'Pick Date'}
-                    </Text>
-                    <MaterialCommunityIcons name="wrench" size={16} color="#0284C7" />
-                  </TouchableOpacity>
-                </View>
-                <View style={{ flex: 1, marginLeft: 6 }}>
-                  <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>NEXT SERVICE DUE</Text>
-                  <TouchableOpacity
-                    style={styles.datePickerBtn}
-                    onPress={() => setActiveDatePicker('nextServiceDate')}
-                  >
-                    <Text style={styles.datePickerBtnText} numberOfLines={1}>
-                      {nextServiceDate ? formatDisplayDate(nextServiceDate) : 'Pick Date'}
-                    </Text>
-                    <MaterialCommunityIcons name="calendar-clock" size={16} color="#0284C7" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* KM-based fields */}
-            {serviceTab === 'KM' && (
-              <View>
-                <View style={styles.formRow}>
-                  <View style={{ flex: 1, marginRight: 6 }}>
-                    <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>LAST SERVICE KM</Text>
-                    <TextInput
-                      style={[styles.input, { marginBottom: 0, height: 40 }]}
-                      placeholder="e.g. 45000"
-                      placeholderTextColor="#94A3B8"
-                      keyboardType="numeric"
-                      value={serviceKm}
-                      onChangeText={setServiceKm}
-                    />
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 6 }}>
-                    <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>NEXT DUE AT KM</Text>
-                    <TextInput
-                      style={[styles.input, { marginBottom: 0, height: 40 }]}
-                      placeholder="e.g. 55000"
-                      placeholderTextColor="#94A3B8"
-                      keyboardType="numeric"
-                      value={nextServiceKm}
-                      onChangeText={setNextServiceKm}
-                    />
-                  </View>
-                </View>
-                <View style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  marginTop: 8,
-                  paddingHorizontal: 8,
-                  paddingVertical: 5,
-                  backgroundColor: '#F0F9FF',
-                  borderRadius: 7,
-                  borderWidth: 1,
-                  borderColor: '#BAE6FD',
-                  gap: 8,
-                }}>
-                  <MaterialCommunityIcons name="speedometer" size={16} color="#0284C7" />
-                  <Text style={[styles.label, { fontSize: 10, fontWeight: '700', color: '#0369A1', minWidth: 80, marginBottom: 0 }]}>CURRENT ODO:</Text>
-                  <TextInput
-                    style={[styles.input, { flex: 1, marginBottom: 0, height: 34, paddingVertical: 2, backgroundColor: '#FFFFFF' }]}
-                    placeholder="Current KM (e.g. 52000)"
-                    placeholderTextColor="#94A3B8"
-                    keyboardType="numeric"
-                    value={currentKm}
-                    onChangeText={setCurrentKm}
-                  />
-                </View>
-              </View>
-            )}
-
-            {/* Hours-based fields */}
-            {serviceTab === 'HOURS' && (
-              <View>
-                <View style={styles.formRow}>
-                  <View style={{ flex: 1, marginRight: 6 }}>
-                    <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>LAST SERVICE HRS</Text>
-                    <TextInput
-                      style={[styles.input, { marginBottom: 0, height: 40 }]}
-                      placeholder="e.g. 500"
-                      placeholderTextColor="#94A3B8"
-                      keyboardType="numeric"
-                      value={serviceHours}
-                      onChangeText={setServiceHours}
-                    />
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 6 }}>
-                    <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>NEXT DUE AT HRS</Text>
-                    <TextInput
-                      style={[styles.input, { marginBottom: 0, height: 40 }]}
-                      placeholder="e.g. 750"
-                      placeholderTextColor="#94A3B8"
-                      keyboardType="numeric"
-                      value={nextServiceHours}
-                      onChangeText={setNextServiceHours}
-                    />
-                  </View>
-                </View>
-                <View style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  marginTop: 8,
-                  paddingHorizontal: 8,
-                  paddingVertical: 5,
-                  backgroundColor: '#F0F9FF',
-                  borderRadius: 7,
-                  borderWidth: 1,
-                  borderColor: '#BAE6FD',
-                  gap: 8,
-                }}>
-                  <MaterialCommunityIcons name="clock-outline" size={16} color="#0284C7" />
-                  <Text style={[styles.label, { fontSize: 10, fontWeight: '700', color: '#0369A1', minWidth: 80, marginBottom: 0 }]}>CURRENT HRS:</Text>
-                  <TextInput
-                    style={[styles.input, { flex: 1, marginBottom: 0, height: 34, paddingVertical: 2, backgroundColor: '#FFFFFF' }]}
-                    placeholder="Current Hours (e.g. 710)"
-                    placeholderTextColor="#94A3B8"
-                    keyboardType="numeric"
-                    value={currentHours}
-                    onChangeText={setCurrentHours}
-                  />
-                </View>
-              </View>
-            )}
+            <View style={{ flex: 1, marginLeft: 6 }}>
+              <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>NEXT SERVICE DUE</Text>
+              <TouchableOpacity
+                style={styles.datePickerBtn}
+                onPress={() => setActiveDatePicker('nextServiceDate')}
+              >
+                <Text style={styles.datePickerBtnText} numberOfLines={1}>
+                  {nextServiceDate ? formatDisplayDate(nextServiceDate) : 'Pick Date'}
+                </Text>
+                <MaterialCommunityIcons name="calendar-clock" size={16} color="#0284C7" />
+              </TouchableOpacity>
+            </View>
           </View>
-        );
-      },
+
+          {/* 2. KM-based fields */}
+          <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderColor: '#E2E8F0' }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1', marginBottom: 4 }}>
+              🛣️ 2. BY ODOMETER (KM)
+            </Text>
+            <View style={styles.formRow}>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>LAST SERVICE KM</Text>
+                <TextInput
+                  style={[styles.input, { marginBottom: 0, height: 38 }]}
+                  placeholder="e.g. 45000"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="numeric"
+                  value={serviceKm}
+                  onChangeText={setServiceKm}
+                />
+              </View>
+              <View style={{ flex: 1, marginLeft: 6 }}>
+                <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>NEXT DUE AT KM</Text>
+                <TextInput
+                  style={[styles.input, { marginBottom: 0, height: 38 }]}
+                  placeholder="e.g. 55000"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="numeric"
+                  value={nextServiceKm}
+                  onChangeText={setNextServiceKm}
+                />
+              </View>
+            </View>
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginTop: 6,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              backgroundColor: '#F0F9FF',
+              borderRadius: 7,
+              borderWidth: 1,
+              borderColor: '#BAE6FD',
+              gap: 8,
+            }}>
+              <MaterialCommunityIcons name="speedometer" size={15} color="#0284C7" />
+              <Text style={[styles.label, { fontSize: 10, fontWeight: '700', color: '#0369A1', minWidth: 80, marginBottom: 0 }]}>CURRENT ODO:</Text>
+              <TextInput
+                style={[styles.input, { flex: 1, marginBottom: 0, height: 32, paddingVertical: 2, backgroundColor: '#FFFFFF' }]}
+                placeholder="Current KM (e.g. 52000)"
+                placeholderTextColor="#94A3B8"
+                keyboardType="numeric"
+                value={currentKm}
+                onChangeText={setCurrentKm}
+              />
+            </View>
+          </View>
+
+          {/* 3. Hours-based fields */}
+          <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderColor: '#E2E8F0' }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1', marginBottom: 4 }}>
+              ⏱️ 3. BY ENGINE HOURS
+            </Text>
+            <View style={styles.formRow}>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>LAST SERVICE HRS</Text>
+                <TextInput
+                  style={[styles.input, { marginBottom: 0, height: 38 }]}
+                  placeholder="e.g. 500"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="numeric"
+                  value={serviceHours}
+                  onChangeText={setServiceHours}
+                />
+              </View>
+              <View style={{ flex: 1, marginLeft: 6 }}>
+                <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>NEXT DUE AT HRS</Text>
+                <TextInput
+                  style={[styles.input, { marginBottom: 0, height: 38 }]}
+                  placeholder="e.g. 750"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="numeric"
+                  value={nextServiceHours}
+                  onChangeText={setNextServiceHours}
+                />
+              </View>
+            </View>
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginTop: 6,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              backgroundColor: '#F0F9FF',
+              borderRadius: 7,
+              borderWidth: 1,
+              borderColor: '#BAE6FD',
+              gap: 8,
+            }}>
+              <MaterialCommunityIcons name="clock-outline" size={15} color="#0284C7" />
+              <Text style={[styles.label, { fontSize: 10, fontWeight: '700', color: '#0369A1', minWidth: 80, marginBottom: 0 }]}>CURRENT HRS:</Text>
+              <TextInput
+                style={[styles.input, { flex: 1, marginBottom: 0, height: 32, paddingVertical: 2, backgroundColor: '#FFFFFF' }]}
+                placeholder="Current Hours (e.g. 710)"
+                placeholderTextColor="#94A3B8"
+                keyboardType="numeric"
+                value={currentHours}
+                onChangeText={setCurrentHours}
+              />
+            </View>
+          </View>
+        </View>
+      ),
     },
     {
       id: 'notes_doc',
@@ -1285,6 +1264,23 @@ export default function ComplianceVaultScreen({ navigation }) {
               }
             }
 
+            // Determine which service criterion (Date, KM, or Hours) reaches first
+            const serviceCandidates = [];
+            if (rec.next_service_date && srvBadge) {
+              const ratio = srvDays !== null ? (srvDays / 30.0) : 999;
+              serviceCandidates.push({ key: 'DATE', label: 'Service', badge: srvBadge, ratio });
+            }
+            if (rec.next_service_km != null && kmBadge) {
+              const ratio = kmDiff !== null ? (kmDiff / 2000.0) : 999;
+              serviceCandidates.push({ key: 'KM', label: 'Srv KM', badge: kmBadge, ratio });
+            }
+            if (rec.next_service_hours != null && hrsBadge) {
+              const ratio = hrsDiff !== null ? (hrsDiff / 100.0) : 999;
+              serviceCandidates.push({ key: 'HOURS', label: 'Srv Hrs', badge: hrsBadge, ratio });
+            }
+            serviceCandidates.sort((a, b) => a.ratio - b.ratio);
+            const primaryService = serviceCandidates.length > 0 ? serviceCandidates[0] : null;
+
             const isKmUrgent = kmDiff !== null && kmDiff <= 500;
             const isHrsUrgent = hrsDiff !== null && hrsDiff <= 25;
             const hasUrgent = (emiDays !== null && emiDays <= 7) ||
@@ -1454,19 +1450,11 @@ export default function ComplianceVaultScreen({ navigation }) {
                         <View style={[styles.miniChip, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
                           <MaterialCommunityIcons name="wrench-clock" size={12} color="#0284C7" />
                           <Text style={[styles.miniChipText, { color: '#0369A1' }]}>
-                            {hasServiceKm && !hasServiceDate ? 'Srv KM' : (hasServiceHours && !hasServiceDate ? 'Srv Hrs' : 'Service')}
+                            {primaryService ? primaryService.label : 'Service'}
                           </Text>
-                          {srvBadge && rec.next_service_date ? (
-                            <View style={[styles.miniPillBadge, { backgroundColor: srvBadge.bg }]}>
-                              <Text style={[styles.miniPillBadgeText, { color: srvBadge.color }]}>{srvBadge.text}</Text>
-                            </View>
-                          ) : kmBadge ? (
-                            <View style={[styles.miniPillBadge, { backgroundColor: kmBadge.bg }]}>
-                              <Text style={[styles.miniPillBadgeText, { color: kmBadge.color }]}>{kmBadge.text}</Text>
-                            </View>
-                          ) : hrsBadge ? (
-                            <View style={[styles.miniPillBadge, { backgroundColor: hrsBadge.bg }]}>
-                              <Text style={[styles.miniPillBadgeText, { color: hrsBadge.color }]}>{hrsBadge.text}</Text>
+                          {primaryService && primaryService.badge ? (
+                            <View style={[styles.miniPillBadge, { backgroundColor: primaryService.badge.bg }]}>
+                              <Text style={[styles.miniPillBadgeText, { color: primaryService.badge.color }]}>{primaryService.badge.text}</Text>
                             </View>
                           ) : null}
                         </View>
@@ -1734,7 +1722,7 @@ export default function ComplianceVaultScreen({ navigation }) {
                       </View>
                     )}
 
-                    {/* Section 8: Vehicle Service & Maintenance (Date, KM, Hours) */}
+                    {/* Section 8: Vehicle Service & Maintenance (Date, KM, Hours - Whichever Reaches First) */}
                     {hasService && (
                       <View style={[styles.costBlock, hasAnyCompliance && { marginTop: 10 }]}>
                         <View style={styles.sectionHeaderRow}>
@@ -1742,17 +1730,9 @@ export default function ComplianceVaultScreen({ navigation }) {
                             <MaterialCommunityIcons name="wrench-clock" size={16} color="#0284C7" />
                             <Text style={styles.sectionHeading}>SERVICE & MAINTENANCE</Text>
                           </View>
-                          {kmBadge ? (
-                            <View style={[styles.badge, { backgroundColor: kmBadge.bg }]}>
-                              <Text style={[styles.badgeText, { color: kmBadge.color }]}>{kmBadge.text}</Text>
-                            </View>
-                          ) : hrsBadge ? (
-                            <View style={[styles.badge, { backgroundColor: hrsBadge.bg }]}>
-                              <Text style={[styles.badgeText, { color: hrsBadge.color }]}>{hrsBadge.text}</Text>
-                            </View>
-                          ) : rec.next_service_date ? (
-                            <View style={[styles.badge, { backgroundColor: srvBadge.bg }]}>
-                              <Text style={[styles.badgeText, { color: srvBadge.color }]}>{srvBadge.text}</Text>
+                          {primaryService && primaryService.badge ? (
+                            <View style={[styles.badge, { backgroundColor: primaryService.badge.bg }]}>
+                              <Text style={[styles.badgeText, { color: primaryService.badge.color }]}>{primaryService.badge.text}</Text>
                             </View>
                           ) : null}
                         </View>
@@ -1761,7 +1741,14 @@ export default function ComplianceVaultScreen({ navigation }) {
                         {hasServiceDate && (
                           <View style={{ marginTop: 4 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                              <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>📅 CALENDAR SCHEDULE</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>📅 CALENDAR SCHEDULE</Text>
+                                {serviceCandidates.length > 1 && primaryService?.key === 'DATE' && (
+                                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, borderWidth: 1, borderColor: '#FDE68A' }}>
+                                    <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#B45309' }}>⚡ REACHES FIRST</Text>
+                                  </View>
+                                )}
+                              </View>
                               {rec.next_service_date && (
                                 <View style={[styles.badge, { backgroundColor: srvBadge.bg, paddingVertical: 1, paddingHorizontal: 6 }]}>
                                   <Text style={[styles.badgeText, { color: srvBadge.color, fontSize: 10 }]}>{srvBadge.text}</Text>
@@ -1787,7 +1774,14 @@ export default function ComplianceVaultScreen({ navigation }) {
                         {hasServiceKm && (
                           <View style={[hasServiceDate && { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderColor: '#F1F5F9' }]}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                              <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>🛣️ ODOMETER SCHEDULE</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>🛣️ ODOMETER SCHEDULE</Text>
+                                {serviceCandidates.length > 1 && primaryService?.key === 'KM' && (
+                                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, borderWidth: 1, borderColor: '#FDE68A' }}>
+                                    <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#B45309' }}>⚡ REACHES FIRST</Text>
+                                  </View>
+                                )}
+                              </View>
                               {kmBadge && (
                                 <View style={[styles.badge, { backgroundColor: kmBadge.bg, paddingVertical: 1, paddingHorizontal: 6 }]}>
                                   <Text style={[styles.badgeText, { color: kmBadge.color, fontSize: 10 }]}>{kmBadge.text}</Text>
@@ -1819,7 +1813,14 @@ export default function ComplianceVaultScreen({ navigation }) {
                         {hasServiceHours && (
                           <View style={[(hasServiceDate || hasServiceKm) && { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderColor: '#F1F5F9' }]}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                              <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>⏱️ ENGINE HOURS SCHEDULE</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>⏱️ ENGINE HOURS SCHEDULE</Text>
+                                {serviceCandidates.length > 1 && primaryService?.key === 'HOURS' && (
+                                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, borderWidth: 1, borderColor: '#FDE68A' }}>
+                                    <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#B45309' }}>⚡ REACHES FIRST</Text>
+                                  </View>
+                                )}
+                              </View>
                               {hrsBadge && (
                                 <View style={[styles.badge, { backgroundColor: hrsBadge.bg, paddingVertical: 1, paddingHorizontal: 6 }]}>
                                   <Text style={[styles.badgeText, { color: hrsBadge.color, fontSize: 10 }]}>{hrsBadge.text}</Text>

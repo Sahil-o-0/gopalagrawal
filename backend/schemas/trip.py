@@ -60,7 +60,7 @@ class TripLogResponse(TripLogBase):
         from_attributes = True
 
 class TripLogUpdateStatus(BaseModel):
-    status: str # e.g. "VALIDATED", "REJECTED"
+    status: str # e.g. "VALIDATED", "APPROVED", "REJECTED", "PENDING"
     bhada: Optional[float] = None
     freight_notes: Optional[str] = None
     weight_tons: Optional[float] = None
@@ -68,6 +68,17 @@ class TripLogUpdateStatus(BaseModel):
     rate: Optional[float] = None
     hourly_rate: Optional[float] = None
     total_minutes: Optional[float] = None
+    vehicle_number: Optional[str] = None
+    origin: Optional[str] = None
+    destination: Optional[str] = None
+    material_type: Optional[str] = None
+    start_meter_reading: Optional[float] = None
+    end_meter_reading: Optional[float] = None
+    diesel_liters: Optional[float] = None
+    diesel_rate: Optional[float] = None
+    diesel_cost: Optional[float] = None
+    advance_freight_received: Optional[float] = None
+    ledger_type: Optional[str] = None # "INCOME" or "EXPENSE"
 
 class TripCompleteDriver(BaseModel):
     start_meter_reading: float

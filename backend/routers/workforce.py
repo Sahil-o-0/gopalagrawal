@@ -558,15 +558,21 @@ def create_daily_ledger_entry(
     ref_type = ledger_data.get("reference_type")
     cat = ledger_data.get("category")
     if ref_id and ref_type:
+        cat_filter = (
+            DailyLedger.category.in_(["TRIP_INCOME", "TRIP_EXPENSE"])
+            if ref_type == "TRIP" and cat in ["TRIP_INCOME", "TRIP_EXPENSE"]
+            else (DailyLedger.category == cat)
+        )
         existing = db.query(DailyLedger).filter(
             DailyLedger.reference_id == ref_id,
             DailyLedger.reference_type == ref_type,
-            DailyLedger.category == cat
+            cat_filter
         ).first()
         if existing:
             # Update existing entry rather than creating a duplicate
             existing.amount = ledger_data.get("amount", existing.amount)
             existing.transaction_type = ledger_data.get("transaction_type", existing.transaction_type)
+            existing.category = cat or existing.category
             existing.description = ledger_data.get("description", existing.description)
             if ledger_data.get("date"):
                 existing.date = ledger_data.get("date")
@@ -918,13 +924,29 @@ def send_due_compliance_reminders(
             send_expo_push_notification(push_tokens, title, body, {"screen": "ComplianceVault", "id": item.id})
             alerts_triggered.append({"vehicle": item.vehicle_number, "type": "FITNESS", "days_left": days_left})
 
-        # Check Service Schedule
+        # Check Service Schedule (Date, KM, Hours - whichever reaches first or is due)
         if getattr(item, 'next_service_date', None) and today <= item.next_service_date <= target_date:
             days_left = (item.next_service_date - today).days
-            title = f"🔧 Service Due: {item.vehicle_number}"
+            title = f"🔧 Service Due (Date): {item.vehicle_number}"
             body = f"Vehicle service scheduled in {days_left} day(s) on {item.next_service_date}."
             send_expo_push_notification(push_tokens, title, body, {"screen": "ComplianceVault", "id": item.id})
-            alerts_triggered.append({"vehicle": item.vehicle_number, "type": "SERVICE", "days_left": days_left})
+            alerts_triggered.append({"vehicle": item.vehicle_number, "type": "SERVICE_DATE", "days_left": days_left})
+
+        if getattr(item, 'next_service_km', None) is not None and getattr(item, 'current_km', None) is not None:
+            km_left = float(item.next_service_km) - float(item.current_km)
+            if km_left <= 500:
+                title = f"🔧 Service Due (KM): {item.vehicle_number}"
+                body = f"Odometer service {'overdue by ' + str(round(abs(km_left))) + ' KM' if km_left <= 0 else 'due in ' + str(round(km_left)) + ' KM'} (Target: {item.next_service_km:g} KM)."
+                send_expo_push_notification(push_tokens, title, body, {"screen": "ComplianceVault", "id": item.id})
+                alerts_triggered.append({"vehicle": item.vehicle_number, "type": "SERVICE_KM", "km_left": km_left})
+
+        if getattr(item, 'next_service_hours', None) is not None and getattr(item, 'current_hours', None) is not None:
+            hrs_left = float(item.next_service_hours) - float(item.current_hours)
+            if hrs_left <= 25:
+                title = f"🔧 Service Due (Hours): {item.vehicle_number}"
+                body = f"Engine hours service {'overdue by ' + str(round(abs(hrs_left), 1)) + ' hrs' if hrs_left <= 0 else 'due in ' + str(round(hrs_left, 1)) + ' hrs'} (Target: {item.next_service_hours:g} hrs)."
+                send_expo_push_notification(push_tokens, title, body, {"screen": "ComplianceVault", "id": item.id})
+                alerts_triggered.append({"vehicle": item.vehicle_number, "type": "SERVICE_HOURS", "hrs_left": hrs_left})
             
     return {
         "message": f"Processed compliance alerts. {len(alerts_triggered)} alert(s) sent.",
@@ -943,30 +965,38 @@ def create_ledger_entry(
     if not trip: raise HTTPException(status_code=404, detail="Trip not found")
     
     # Sync income and status to TripLog
-    trip.status = "VALIDATED"
+    if trip.status == "PENDING":
+        trip.status = "VALIDATED"
     trip.bhada = ledger.total_amount_billed
     
-    existing_ledger = db.query(FinancialLedger).filter(FinancialLedger.trip_id == ledger.trip_id).first()
-    if existing_ledger: raise HTTPException(status_code=400, detail="Ledger already exists")
-
-    calculated_pending = ledger.total_amount_billed - ledger.amount_received
     target_site_id = ledger.site_id or trip.site_id or 1
+    existing_ledger = db.query(FinancialLedger).filter(FinancialLedger.trip_id == ledger.trip_id).first()
+    if existing_ledger:
+        existing_ledger.total_amount_billed = ledger.total_amount_billed
+        if ledger.amount_received is not None and ledger.amount_received > 0:
+            existing_ledger.amount_received = ledger.amount_received
+        existing_ledger.amount_pending = max(0.0, float(existing_ledger.total_amount_billed or 0.0) - float(existing_ledger.amount_received or 0.0))
+        existing_ledger.site_id = target_site_id
+        new_ledger = existing_ledger
+    else:
+        calculated_pending = ledger.total_amount_billed - ledger.amount_received
+        ledger_data = ledger.model_dump()
+        ledger_data["site_id"] = target_site_id
+        new_ledger = FinancialLedger(**ledger_data, amount_pending=calculated_pending)
+        db.add(new_ledger)
+        db.flush()
 
-    ledger_data = ledger.model_dump()
-    ledger_data["site_id"] = target_site_id
-
-    new_ledger = FinancialLedger(**ledger_data, amount_pending=calculated_pending)
-    db.add(new_ledger)
-    db.flush()
-
-    # INTEGRATION: Daily Ledger (Trip Income) - Only if not already logged
+    # INTEGRATION: Daily Ledger (Trip Income) - Update if exists, otherwise create
     import datetime
     existing_daily = db.query(DailyLedger).filter(
         DailyLedger.reference_id == trip.id,
         DailyLedger.reference_type == "TRIP",
         DailyLedger.category.in_(["TRIP_INCOME", "TRIP_EXPENSE"])
     ).first()
-    if not existing_daily:
+    if existing_daily:
+        existing_daily.amount = ledger.total_amount_billed
+        existing_daily.site_id = target_site_id
+    else:
         daily_entry = DailyLedger(
             date=datetime.date.today(),
             site_id=target_site_id,

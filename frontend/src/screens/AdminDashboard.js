@@ -169,6 +169,14 @@ export default function AdminDashboard({ navigation, route }) {
   const [validationTripCount, setValidationTripCount] = useState('1');
   const [validationTotalMinutes, setValidationTotalMinutes] = useState('');
   const [validationLedgerType, setValidationLedgerType] = useState('INCOME'); // 'INCOME' | 'EXPENSE'
+  const [validationVehicleNumber, setValidationVehicleNumber] = useState('');
+  const [validationOrigin, setValidationOrigin] = useState('');
+  const [validationDestination, setValidationDestination] = useState('');
+  const [validationMaterialType, setValidationMaterialType] = useState('');
+  const [validationStartMeter, setValidationStartMeter] = useState('');
+  const [validationEndMeter, setValidationEndMeter] = useState('');
+  const [validationDieselLiters, setValidationDieselLiters] = useState('');
+  const [validationDieselCost, setValidationDieselCost] = useState('');
   const [showValidationClientDropdown, setShowValidationClientDropdown] = useState(false);
   const [clients, setClients] = useState([]);
   const [viewerUrl, setViewerUrl] = useState('');
@@ -271,12 +279,19 @@ export default function AdminDashboard({ navigation, route }) {
     }
 
     try {
+      const isEditingValidated = selectedTrip?.status === 'VALIDATED' || selectedTrip?.status === 'APPROVED';
+      const targetStatus = selectedTrip?.status === 'APPROVED' ? 'APPROVED' : 'VALIDATED';
       const incomeVal = parseFloat(bookedAmount);
       const party = validationPartyName.trim();
       const todayStr = formatLocalDate(new Date());
-      const vehNum = selectedTrip?.vehicle_number || '';
-      const rOrigin = selectedTrip?.origin || '';
-      const rDest = selectedTrip?.destination || '';
+      const vehNum = (validationVehicleNumber || selectedTrip?.vehicle_number || '').trim().toUpperCase();
+      const rOrigin = (validationOrigin !== '' ? validationOrigin : (selectedTrip?.origin || '')).trim();
+      const rDest = (validationDestination !== '' ? validationDestination : (selectedTrip?.destination || '')).trim();
+      const matType = (validationMaterialType !== '' ? validationMaterialType : (selectedTrip?.material_type || '')).trim();
+      const sMeter = validationStartMeter !== '' ? parseFloat(validationStartMeter) : (selectedTrip?.start_meter_reading ?? 0);
+      const eMeter = validationEndMeter !== '' ? parseFloat(validationEndMeter) : (selectedTrip?.end_meter_reading ?? 0);
+      const dLiters = validationDieselLiters !== '' ? parseFloat(validationDieselLiters) : (selectedTrip?.diesel_liters ?? 0);
+      const dCost = validationDieselCost !== '' ? parseFloat(validationDieselCost) : (selectedTrip?.diesel_cost ?? 0);
       const rateVal = parseFloat(validationRate) || 0;
       const qtyVal = parseFloat(validationQuantity) || selectedTrip?.weight_tons || 0;
       const tripCountVal = parseFloat(validationTripCount) || 1;
@@ -288,23 +303,32 @@ export default function AdminDashboard({ navigation, route }) {
         ? `${tripCountVal} Trips @ ₹${rateVal}/Trip`
         : `${minsVal} Mins @ ₹${rateVal}/Hr (₹${(rateVal / 60).toFixed(2)}/m)`;
 
-      // 1. Update Trip Status, Bhada, Party, and Weight
+      // 1. Update Trip Status, Trip Details, Bhada, Party, Weight, and Sync Linked Ledgers
       await fetch(`${API_BASE_URL}/trips/${tripId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
         body: JSON.stringify({
-          status: 'VALIDATED',
+          status: targetStatus,
+          vehicle_number: vehNum || undefined,
+          origin: rOrigin,
+          destination: rDest,
+          material_type: matType,
+          start_meter_reading: !isNaN(sMeter) ? sMeter : undefined,
+          end_meter_reading: !isNaN(eMeter) ? eMeter : undefined,
+          diesel_liters: !isNaN(dLiters) ? dLiters : undefined,
+          diesel_cost: !isNaN(dCost) ? dCost : undefined,
           bhada: incomeVal,
-          freight_notes: party || null,
+          freight_notes: party,
           weight_tons: qtyVal,
           rate_type: validationRateType,
           rate: rateVal,
           hourly_rate: validationRateType === 'HOURLY' ? rateVal : 0,
-          total_minutes: minsVal
+          total_minutes: minsVal,
+          ledger_type: validationLedgerType
         })
       });
 
-      // 2. Add to Daily Ledger (TRIP_INCOME or TRIP_EXPENSE)
+      // 2. Add or Update in Daily Ledger (TRIP_INCOME or TRIP_EXPENSE)
       try {
         await fetch(`${API_BASE_URL}/workforce/daily-ledger`, {
           method: 'POST',
@@ -324,7 +348,7 @@ export default function AdminDashboard({ navigation, route }) {
         console.warn("Daily ledger sync notice:", dlErr);
       }
 
-      // 3. Add to Client Khata if party name is provided
+      // 3. Add or Update in Client Khata if party name is provided
       if (party) {
         try {
           let targetClient = clients.find(c => c.name.toLowerCase() === party.toLowerCase());
@@ -361,8 +385,8 @@ export default function AdminDashboard({ navigation, route }) {
       } catch (lErr) {}
 
       Alert.alert(
-        "Trip Validated",
-        `Trip #${tripId} approved! ${isIncome ? 'Income' : 'Expense'} (₹${incomeVal.toLocaleString('en-IN')}) synced to Daily Ledger${party ? ` & Client Khata (${party})` : ''}.`
+        isEditingValidated ? "Validated Log Updated" : "Trip Validated",
+        `Trip #${tripId} ${isEditingValidated ? 'updated' : 'approved'}! ${isIncome ? 'Income' : 'Expense'} (₹${incomeVal.toLocaleString('en-IN')}) synced across Operational Logs, Daily Ledger${party ? ` & Client Khata (${party})` : ''}.`
       );
       setIsValidationModalVisible(false);
       setBookedAmount('');
@@ -376,13 +400,21 @@ export default function AdminDashboard({ navigation, route }) {
       setShowValidationClientDropdown(false);
       fetchData();
     } catch (error) {
-      Alert.alert("Error", "Validation failed");
+      Alert.alert("Error", "Failed to save and sync trip log");
     }
   };
 
   const openValidationModal = (trip) => {
     setSelectedTrip(trip);
     setValidationLedgerType('INCOME');
+    setValidationVehicleNumber(trip?.vehicle_number || '');
+    setValidationOrigin(trip?.origin || '');
+    setValidationDestination(trip?.destination || '');
+    setValidationMaterialType(trip?.material_type || '');
+    setValidationStartMeter(trip?.start_meter_reading != null ? String(trip.start_meter_reading) : '');
+    setValidationEndMeter(trip?.end_meter_reading != null ? String(trip.end_meter_reading) : '');
+    setValidationDieselLiters(trip?.diesel_liters != null && Number(trip.diesel_liters) > 0 ? String(trip.diesel_liters) : '');
+    setValidationDieselCost(trip?.diesel_cost != null && Number(trip.diesel_cost) > 0 ? String(trip.diesel_cost) : '');
     const isHourly = trip?.rate_type === 'HOURLY' || (trip?.total_minutes && trip.total_minutes > 0);
     const isTripWise = trip?.rate_type === 'TRIP';
     const initRateType = isHourly ? 'HOURLY' : (isTripWise ? 'TRIP' : 'TON');
@@ -1532,7 +1564,7 @@ export default function AdminDashboard({ navigation, route }) {
                   </View>
                 </View>
 
-                {t.status === 'PENDING' && (
+                {t.status === 'PENDING' ? (
                   <TouchableOpacity 
                     style={styles.tripValidateBtn} 
                     onPress={() => openValidationModal(t)}
@@ -1541,7 +1573,16 @@ export default function AdminDashboard({ navigation, route }) {
                     <MaterialCommunityIcons name="check-decagram" size={18} color="white" />
                     <Text style={styles.tripValidateBtnText}>VALIDATE & APPROVE TRIP</Text>
                   </TouchableOpacity>
-                )}
+                ) : (t.status === 'VALIDATED' || t.status === 'APPROVED') ? (
+                  <TouchableOpacity 
+                    style={[styles.tripValidateBtn, { backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155' }]} 
+                    onPress={() => openValidationModal(t)}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons name="pencil-outline" size={17} color="#93C5FD" />
+                    <Text style={[styles.tripValidateBtnText, { color: '#F8FAFC' }]}>EDIT VALIDATED LOG</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             );
           })
@@ -1627,9 +1668,9 @@ export default function AdminDashboard({ navigation, route }) {
 
               {/* Compliance Badges Row */}
               {(e.insurance_expiry || e.fitness_expiry || e.next_service_date || e.next_service_km || e.next_service_hours) && (
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderColor: '#F1F5F9' }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderColor: '#F1F5F9' }}>
                   {e.insurance_expiry && (
-                    <View style={{ flex: 1, backgroundColor: '#EFF6FF', padding: 6, borderRadius: 6 }}>
+                    <View style={{ flexGrow: 1, minWidth: '30%', backgroundColor: '#EFF6FF', padding: 6, borderRadius: 6 }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#1E40AF' }}>INSURANCE</Text>
                       <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{formatDisplayDate(e.insurance_expiry)}</Text>
                       <Text style={{ fontSize: 9, color: insDays <= 7 ? '#DC2626' : '#2563EB', fontWeight: '700' }}>
@@ -1638,7 +1679,7 @@ export default function AdminDashboard({ navigation, route }) {
                     </View>
                   )}
                   {e.fitness_expiry && (
-                    <View style={{ flex: 1, backgroundColor: '#F0FDF4', padding: 6, borderRadius: 6 }}>
+                    <View style={{ flexGrow: 1, minWidth: '30%', backgroundColor: '#F0FDF4', padding: 6, borderRadius: 6 }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#166534' }}>FITNESS EXPIRY</Text>
                       <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{formatDisplayDate(e.fitness_expiry)}</Text>
                       <Text style={{ fontSize: 9, color: fitDays <= 7 ? '#DC2626' : '#16A34A', fontWeight: '700' }}>
@@ -1647,30 +1688,30 @@ export default function AdminDashboard({ navigation, route }) {
                     </View>
                   )}
                   {e.next_service_date && (
-                    <View style={{ flex: 1, backgroundColor: '#F0F9FF', padding: 6, borderRadius: 6 }}>
-                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#0369A1' }}>NEXT SERVICE</Text>
+                    <View style={{ flexGrow: 1, minWidth: '30%', backgroundColor: '#F0F9FF', padding: 6, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#0369A1' }}>SERVICE (DATE)</Text>
                       <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{formatDisplayDate(e.next_service_date)}</Text>
                       <Text style={{ fontSize: 9, color: srvDays <= 7 ? '#DC2626' : '#0284C7', fontWeight: '700' }}>
                         {srvDays !== null ? (srvDays < 0 ? `${Math.abs(srvDays)}d Overdue` : `${srvDays}d left`) : ''}
                       </Text>
                     </View>
                   )}
-                  {e.next_service_km && !e.next_service_date && (
-                    <View style={{ flex: 1, backgroundColor: '#F0F9FF', padding: 6, borderRadius: 6 }}>
+                  {e.next_service_km != null && (
+                    <View style={{ flexGrow: 1, minWidth: '30%', backgroundColor: '#F0F9FF', padding: 6, borderRadius: 6 }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#0369A1' }}>SERVICE DUE (KM)</Text>
                       <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{`${Number(e.next_service_km).toLocaleString()} KM`}</Text>
-                      {e.current_km ? (
-                        <Text style={{ fontSize: 9, color: (e.next_service_km - e.current_km) <= 500 ? '#DC2626' : '#0284C7', fontWeight: '700' }}>
-                          {(e.next_service_km - e.current_km) <= 0 ? `${Math.abs(Math.round(e.next_service_km - e.current_km))} KM Overdue` : `${Math.round(e.next_service_km - e.current_km)} KM left`}
+                      {(e.current_km ?? e.latest_trip_km) != null ? (
+                        <Text style={{ fontSize: 9, color: (e.next_service_km - (e.current_km ?? e.latest_trip_km)) <= 500 ? '#DC2626' : '#0284C7', fontWeight: '700' }}>
+                          {(e.next_service_km - (e.current_km ?? e.latest_trip_km)) <= 0 ? `${Math.abs(Math.round(e.next_service_km - (e.current_km ?? e.latest_trip_km)))} KM Overdue` : `${Math.round(e.next_service_km - (e.current_km ?? e.latest_trip_km))} KM left`}
                         </Text>
                       ) : null}
                     </View>
                   )}
-                  {e.next_service_hours && !e.next_service_date && !e.next_service_km && (
-                    <View style={{ flex: 1, backgroundColor: '#F0F9FF', padding: 6, borderRadius: 6 }}>
+                  {e.next_service_hours != null && (
+                    <View style={{ flexGrow: 1, minWidth: '30%', backgroundColor: '#F0F9FF', padding: 6, borderRadius: 6 }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#0369A1' }}>SERVICE DUE (HRS)</Text>
                       <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E293B' }}>{`${Number(e.next_service_hours).toLocaleString()} hrs`}</Text>
-                      {e.current_hours ? (
+                      {e.current_hours != null ? (
                         <Text style={{ fontSize: 9, color: (e.next_service_hours - e.current_hours) <= 25 ? '#DC2626' : '#0284C7', fontWeight: '700' }}>
                           {(e.next_service_hours - e.current_hours) <= 0 ? `${Math.abs(e.next_service_hours - e.current_hours).toFixed(1)}h Overdue` : `${(e.next_service_hours - e.current_hours).toFixed(1)}h left`}
                         </Text>
@@ -1763,8 +1804,10 @@ export default function AdminDashboard({ navigation, route }) {
           <View style={[styles.modalContent, { maxHeight: '85%' }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <View>
-                <Text style={[styles.modalTitle, { textAlign: 'left', marginBottom: 2 }]}>Validate & Approve Trip</Text>
-                <Text style={{ fontSize: 13, color: '#64748B', fontWeight: '700' }}>Trip #{selectedTrip?.id} • {selectedTrip?.vehicle_number}</Text>
+                <Text style={[styles.modalTitle, { textAlign: 'left', marginBottom: 2 }]}>
+                  {selectedTrip?.status === 'PENDING' ? 'Validate & Approve Trip' : 'Edit Validated Trip Log'}
+                </Text>
+                <Text style={{ fontSize: 13, color: '#64748B', fontWeight: '700' }}>Trip #{selectedTrip?.id} • {validationVehicleNumber || selectedTrip?.vehicle_number}</Text>
               </View>
               <TouchableOpacity onPress={() => setIsValidationModalVisible(false)} style={{ padding: 4 }}>
                 <MaterialCommunityIcons name="close" size={22} color="#64748B" />
@@ -1772,38 +1815,118 @@ export default function AdminDashboard({ navigation, route }) {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* Trip Quick Summary Card */}
+              {/* Editable Trip Details Card */}
               <View style={{ backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                  <MaterialCommunityIcons name="map-marker-distance" size={16} color="#059669" style={{ marginRight: 6 }} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B' }}>
-                    {selectedTrip?.origin || 'Start'} ➔ {selectedTrip?.destination || 'End'}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontSize: 12, color: '#64748B' }}>Material: <Text style={{ fontWeight: '700', color: '#1E293B' }}>{selectedTrip?.material_type || 'N/A'}</Text> ({selectedTrip?.weight_tons || 0}T)</Text>
-                  <Text style={{ fontSize: 12, color: '#64748B' }}>Distance: <Text style={{ fontWeight: '700', color: '#1E293B' }}>{selectedTrip?.total_km || 0} KM</Text></Text>
-                </View>
-                {(Number(selectedTrip?.diesel_cost || 0) > 0 || Number(selectedTrip?.diesel_liters || 0) > 0) && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, marginTop: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <MaterialCommunityIcons name="gas-station" size={14} color="#D97706" style={{ marginRight: 6 }} />
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>
-                        Diesel Logged: {selectedTrip.diesel_liters || 0} L
-                      </Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#B45309' }}>
-                        ₹{Number(selectedTrip.diesel_cost || 0).toLocaleString('en-IN')} (Fuel Expense)
-                      </Text>
-                      {selectedTrip?.receipt_photo_url ? (
-                        <TouchableOpacity onPress={() => openImage(selectedTrip.receipt_photo_url)} style={{ marginLeft: 6 }}>
-                          <MaterialCommunityIcons name="receipt" size={16} color="#B45309" />
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E293B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                  Trip & Route Details (Editable)
+                </Text>
+
+                {/* Row 1: Vehicle Number & Material Type */}
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 3 }}>Vehicle Number</Text>
+                    <TextInput
+                      style={{ backgroundColor: '#FFFFFF', borderRadius: 7, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 8, height: 36, fontSize: 13, fontWeight: '700', color: '#0F172A' }}
+                      placeholder="e.g. CG04AB1234"
+                      placeholderTextColor="#94A3B8"
+                      autoCapitalize="characters"
+                      value={validationVehicleNumber}
+                      onChangeText={setValidationVehicleNumber}
+                    />
                   </View>
-                )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 3 }}>Material Type</Text>
+                    <TextInput
+                      style={{ backgroundColor: '#FFFFFF', borderRadius: 7, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 8, height: 36, fontSize: 13, fontWeight: '700', color: '#0F172A' }}
+                      placeholder="e.g. Sand / Gitti"
+                      placeholderTextColor="#94A3B8"
+                      value={validationMaterialType}
+                      onChangeText={setValidationMaterialType}
+                    />
+                  </View>
+                </View>
+
+                {/* Row 2: Origin & Destination */}
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 3 }}>Origin (From)</Text>
+                    <TextInput
+                      style={{ backgroundColor: '#FFFFFF', borderRadius: 7, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 8, height: 36, fontSize: 13, fontWeight: '600', color: '#0F172A' }}
+                      placeholder="Start Location"
+                      placeholderTextColor="#94A3B8"
+                      value={validationOrigin}
+                      onChangeText={setValidationOrigin}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 3 }}>Destination (To)</Text>
+                    <TextInput
+                      style={{ backgroundColor: '#FFFFFF', borderRadius: 7, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 8, height: 36, fontSize: 13, fontWeight: '600', color: '#0F172A' }}
+                      placeholder="End Location"
+                      placeholderTextColor="#94A3B8"
+                      value={validationDestination}
+                      onChangeText={setValidationDestination}
+                    />
+                  </View>
+                </View>
+
+                {/* Row 3: Start Odometer, End Odometer & Diesel */}
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 3 }}>Start KM</Text>
+                    <TextInput
+                      style={{ backgroundColor: '#FFFFFF', borderRadius: 7, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 8, height: 36, fontSize: 12, fontWeight: '600', color: '#0F172A' }}
+                      placeholder="0"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                      value={validationStartMeter}
+                      onChangeText={setValidationStartMeter}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 3 }}>End KM</Text>
+                    <TextInput
+                      style={{ backgroundColor: '#FFFFFF', borderRadius: 7, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 8, height: 36, fontSize: 12, fontWeight: '600', color: '#0F172A' }}
+                      placeholder="0"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                      value={validationEndMeter}
+                      onChangeText={setValidationEndMeter}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#92400E', marginBottom: 3 }}>Diesel (L)</Text>
+                    <TextInput
+                      style={{ backgroundColor: '#FFFBEB', borderRadius: 7, borderWidth: 1, borderColor: '#FDE68A', paddingHorizontal: 8, height: 36, fontSize: 12, fontWeight: '700', color: '#92400E' }}
+                      placeholder="0 L"
+                      placeholderTextColor="#D97706"
+                      keyboardType="numeric"
+                      value={validationDieselLiters}
+                      onChangeText={setValidationDieselLiters}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#92400E', marginBottom: 3 }}>Diesel ₹</Text>
+                    <TextInput
+                      style={{ backgroundColor: '#FFFBEB', borderRadius: 7, borderWidth: 1, borderColor: '#FDE68A', paddingHorizontal: 8, height: 36, fontSize: 12, fontWeight: '700', color: '#92400E' }}
+                      placeholder="₹0"
+                      placeholderTextColor="#D97706"
+                      keyboardType="numeric"
+                      value={validationDieselCost}
+                      onChangeText={setValidationDieselCost}
+                    />
+                  </View>
+                </View>
+
+                {selectedTrip?.receipt_photo_url ? (
+                  <TouchableOpacity
+                    onPress={() => openImage(selectedTrip.receipt_photo_url)}
+                    style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 6 }}
+                  >
+                    <MaterialCommunityIcons name="receipt" size={14} color="#B45309" style={{ marginRight: 4 }} />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#B45309' }}>View Diesel Receipt</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
 
               {/* Billing Party / Client Selection */}
@@ -2267,7 +2390,7 @@ export default function AdminDashboard({ navigation, route }) {
                   style={{ marginRight: 8 }} 
                 />
                 <Text style={{ fontSize: 11, fontWeight: '700', color: validationLedgerType === 'INCOME' ? '#166534' : '#991B1B', flex: 1 }}>
-                  Validating will log this as {validationLedgerType === 'INCOME' ? 'Trip Income (+)' : 'Trip Expense (-)'} in Daily Ledger{validationPartyName.trim() ? ` and update Client Khata (${validationPartyName.trim()}).` : '.'}
+                  {selectedTrip?.status === 'PENDING' ? 'Validating will log' : 'Saving will update'} this as {validationLedgerType === 'INCOME' ? 'Trip Income (+)' : 'Trip Expense (-)'} in Daily Ledger{validationPartyName.trim() ? ` and sync Client Khata (${validationPartyName.trim()}).` : '.'}
                 </Text>
               </View>
             </ScrollView>
@@ -2277,7 +2400,9 @@ export default function AdminDashboard({ navigation, route }) {
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.confirmBtn, { flex: 2 }]} onPress={() => validateTrip(selectedTrip?.id)}>
-                <Text style={styles.confirmBtnText}>Validate & Sync Ledger</Text>
+                <Text style={styles.confirmBtnText}>
+                  {selectedTrip?.status === 'PENDING' ? 'Validate & Sync Ledger' : 'Save & Sync Changes'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

@@ -288,6 +288,23 @@ def get_pending_admin_otps(
         })
     return results
 
+@router.post("/admin/clear-otps")
+def clear_pending_admin_otps(
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_admin_user)
+):
+    """
+    Marks all recent OTP notifications as read/cleared in the Admin Notification Bell
+    without breaking any currently active login session verification.
+    """
+    cutoff_time = datetime.datetime.utcnow() - timedelta(minutes=60)
+    archived_time = datetime.datetime.utcnow() - timedelta(hours=2)
+    db.query(LoginOTP).filter(
+        LoginOTP.created_at >= cutoff_time
+    ).update({"created_at": archived_time}, synchronize_session=False)
+    db.commit()
+    return {"status": "cleared"}
+
 
 # --- ADMIN SIGNUP & USER MANAGEMENT ---
 

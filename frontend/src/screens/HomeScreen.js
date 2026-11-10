@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContext } from '../context/AuthContext';
 import { useSite } from '../context/SiteContext';
 import SiteSelector from '../components/SiteSelector';
@@ -125,9 +126,21 @@ export default function HomeScreen({ navigation }) {
   const [alertsSummary, setAlertsSummary] = useState(null);
   const [showBellModal, setShowBellModal] = useState(false);
   const [pendingOtps, setPendingOtps] = useState([]);
+  const [dismissedAlertIds, setDismissedAlertIds] = useState([]);
   const [loadingBell, setLoadingBell] = useState(false);
   const scrollViewRef = useRef(null);
   const scrollYRef = useRef(0);
+
+  useEffect(() => {
+    AsyncStorage.getItem('dismissedBellAlertIds_v1')
+      .then((val) => {
+        if (val) {
+          const parsed = JSON.parse(val);
+          if (Array.isArray(parsed)) setDismissedAlertIds(parsed);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchBellNotifications = useCallback(async (silent = false) => {
     if (!userToken) return;
@@ -190,7 +203,35 @@ export default function HomeScreen({ navigation }) {
     const expStr = otp.expires_at ? (otp.expires_at.endsWith('Z') ? otp.expires_at : `${otp.expires_at}Z`) : null;
     return expStr ? new Date(expStr).getTime() > nowUtcMs : true;
   }).length;
-  const totalAlertCount = activeOtpCount + (alertsSummary?.alerts?.length || 0);
+  const visibleComplianceAlerts = (alertsSummary?.alerts || []).filter(
+    (a, idx) => !dismissedAlertIds.includes(a.id || `${a.vehicle_number}_${a.type}_${idx}`)
+  );
+  const totalAlertCount = activeOtpCount + visibleComplianceAlerts.length;
+  const hasAnyBellHistory = pendingOtps.length > 0 || visibleComplianceAlerts.length > 0;
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      setLoadingBell(true);
+      if (user?.role === 'ADMIN' && userToken) {
+        await fetch(`${API_BASE_URL}/auth/admin/clear-otps`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${userToken}`,
+            'bypass-tunnel-reminder': 'true',
+          },
+        }).catch(() => {});
+        setPendingOtps([]);
+      }
+      const allIds = (alertsSummary?.alerts || []).map(
+        (a, idx) => a.id || `${a.vehicle_number}_${a.type}_${idx}`
+      );
+      const mergedIds = Array.from(new Set([...dismissedAlertIds, ...allIds]));
+      setDismissedAlertIds(mergedIds);
+      await AsyncStorage.setItem('dismissedBellAlertIds_v1', JSON.stringify(mergedIds)).catch(() => {});
+    } finally {
+      setLoadingBell(false);
+    }
+  };
 
   const allowedCards = getNavCards(user?.role).filter(card => card.roles.includes(user?.role));
   const insets = useSafeAreaInsets();
@@ -234,7 +275,7 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.username} numberOfLines={1}>{user?.full_name || user?.username}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
               <Text style={styles.roleTag}>{user?.role}</Text>
-              <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '800' }}>• v7.7</Text>
+              <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '800' }}>• v7.8</Text>
             </View>
           </View>
         </View>
@@ -385,6 +426,16 @@ export default function HomeScreen({ navigation }) {
                 </View>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {hasAnyBellHistory && (
+                  <TouchableOpacity
+                    onPress={handleMarkAllAsRead}
+                    style={styles.markAllReadBtn}
+                    activeOpacity={0.75}
+                  >
+                    <MaterialCommunityIcons name="check-all" size={16} color="#006C49" />
+                    <Text style={styles.markAllReadBtnText}>Mark All as Read</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   onPress={() => fetchBellNotifications(false)}
                   style={styles.bellRefreshBtn}
@@ -511,13 +562,13 @@ export default function HomeScreen({ navigation }) {
                   <Text style={styles.bellSectionTitle}>FLEET & COMPLIANCE REMINDERS</Text>
                 </View>
 
-                {!alertsSummary?.alerts || alertsSummary.alerts.length === 0 ? (
+                {visibleComplianceAlerts.length === 0 ? (
                   <View style={styles.emptyBellBox}>
                     <MaterialCommunityIcons name="check-decagram-outline" size={24} color="#10B981" />
                     <Text style={styles.emptyBellText}>All fleet EMIs and compliance certificates are up to date!</Text>
                   </View>
                 ) : (
-                  alertsSummary.alerts.map((alertItem, idx) => {
+                  visibleComplianceAlerts.map((alertItem, idx) => {
                     const isCrit = alertItem.severity === 'CRITICAL' || alertItem.days_until_due < 0;
                     return (
                       <TouchableOpacity
@@ -711,6 +762,22 @@ const styles = StyleSheet.create({
     borderColor: '#A7F3D0',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  markAllReadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#6EE7B7',
+  },
+  markAllReadBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#006C49',
   },
   bellCloseBtn: {
     width: 36,

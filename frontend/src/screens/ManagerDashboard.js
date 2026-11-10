@@ -1313,32 +1313,33 @@ export default function ManagerDashboard({ navigation, route }) {
                 </View>
 
                 {/* Rate Mode Selector: Ton Wise vs Trip Wise vs Hourly */}
-                <View style={{ flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 8, padding: 3, marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
                   <TouchableOpacity
                     onPress={() => handleRateTypeChange('TON')}
                     style={{
                       flex: 1,
-                      flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      paddingVertical: 7,
-                      borderRadius: 6,
-                      backgroundColor: validationRateType === 'TON' ? '#FFFFFF' : 'transparent',
-                      elevation: validationRateType === 'TON' ? 1 : 0,
-                      shadowColor: '#000',
-                      shadowOpacity: validationRateType === 'TON' ? 0.08 : 0,
-                      shadowOffset: { width: 0, height: 1 }
+                      paddingVertical: 8,
+                      paddingHorizontal: 4,
+                      borderRadius: 8,
+                      borderWidth: 1.5,
+                      borderColor: validationRateType === 'TON' ? '#2563EB' : '#CBD5E1',
+                      backgroundColor: validationRateType === 'TON' ? '#EFF6FF' : '#FFFFFF',
                     }}
                     activeOpacity={0.7}
                   >
                     <MaterialCommunityIcons 
                       name="scale" 
-                      size={14} 
+                      size={16} 
                       color={validationRateType === 'TON' ? '#2563EB' : '#64748B'} 
-                      style={{ marginRight: 4 }} 
+                      style={{ marginBottom: 2 }} 
                     />
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: validationRateType === 'TON' ? '#2563EB' : '#64748B' }}>
-                      Ton Wise (₹/Ton)
+                    <Text numberOfLines={1} style={{ fontSize: 11.5, fontWeight: '800', color: validationRateType === 'TON' ? '#1E40AF' : '#334155' }}>
+                      Ton Wise
+                    </Text>
+                    <Text numberOfLines={1} style={{ fontSize: 9.5, fontWeight: '700', color: validationRateType === 'TON' ? '#2563EB' : '#94A3B8' }}>
+                      ₹ / Ton
                     </Text>
                   </TouchableOpacity>
 
@@ -1346,27 +1347,28 @@ export default function ManagerDashboard({ navigation, route }) {
                     onPress={() => handleRateTypeChange('TRIP')}
                     style={{
                       flex: 1,
-                      flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      paddingVertical: 7,
-                      borderRadius: 6,
-                      backgroundColor: validationRateType === 'TRIP' ? '#FFFFFF' : 'transparent',
-                      elevation: validationRateType === 'TRIP' ? 1 : 0,
-                      shadowColor: '#000',
-                      shadowOpacity: validationRateType === 'TRIP' ? 0.08 : 0,
-                      shadowOffset: { width: 0, height: 1 }
+                      paddingVertical: 8,
+                      paddingHorizontal: 4,
+                      borderRadius: 8,
+                      borderWidth: 1.5,
+                      borderColor: validationRateType === 'TRIP' ? '#2563EB' : '#CBD5E1',
+                      backgroundColor: validationRateType === 'TRIP' ? '#EFF6FF' : '#FFFFFF',
                     }}
                     activeOpacity={0.7}
                   >
                     <MaterialCommunityIcons 
                       name="truck-fast" 
-                      size={14} 
+                      size={16} 
                       color={validationRateType === 'TRIP' ? '#2563EB' : '#64748B'} 
-                      style={{ marginRight: 4 }} 
+                      style={{ marginBottom: 2 }} 
                     />
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: validationRateType === 'TRIP' ? '#2563EB' : '#64748B' }}>
-                      Trip Wise (₹/Trip)
+                    <Text numberOfLines={1} style={{ fontSize: 11.5, fontWeight: '800', color: validationRateType === 'TRIP' ? '#1E40AF' : '#334155' }}>
+                      Trip Wise
+                    </Text>
+                    <Text numberOfLines={1} style={{ fontSize: 9.5, fontWeight: '700', color: validationRateType === 'TRIP' ? '#2563EB' : '#94A3B8' }}>
+                      ₹ / Trip
                     </Text>
                   </TouchableOpacity>
 
@@ -1374,27 +1376,28 @@ export default function ManagerDashboard({ navigation, route }) {
                     onPress={() => handleRateTypeChange('HOURLY')}
                     style={{
                       flex: 1,
-                      flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      paddingVertical: 7,
-                      borderRadius: 6,
-                      backgroundColor: validationRateType === 'HOURLY' ? '#FFFFFF' : 'transparent',
-                      elevation: validationRateType === 'HOURLY' ? 1 : 0,
-                      shadowColor: '#000',
-                      shadowOpacity: validationRateType === 'HOURLY' ? 0.08 : 0,
-                      shadowOffset: { width: 0, height: 1 }
+                      paddingVertical: 8,
+                      paddingHorizontal: 4,
+                      borderRadius: 8,
+                      borderWidth: 1.5,
+                      borderColor: validationRateType === 'HOURLY' ? '#2563EB' : '#CBD5E1',
+                      backgroundColor: validationRateType === 'HOURLY' ? '#EFF6FF' : '#FFFFFF',
                     }}
                     activeOpacity={0.7}
                   >
                     <MaterialCommunityIcons 
                       name="clock-outline" 
-                      size={14} 
+                      size={16} 
                       color={validationRateType === 'HOURLY' ? '#2563EB' : '#64748B'} 
-                      style={{ marginRight: 4 }} 
+                      style={{ marginBottom: 2 }} 
                     />
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: validationRateType === 'HOURLY' ? '#2563EB' : '#64748B' }}>
-                      Hourly (₹/Hr)
+                    <Text numberOfLines={1} style={{ fontSize: 11.5, fontWeight: '800', color: validationRateType === 'HOURLY' ? '#1E40AF' : '#334155' }}>
+                      Hourly
+                    </Text>
+                    <Text numberOfLines={1} style={{ fontSize: 9.5, fontWeight: '700', color: validationRateType === 'HOURLY' ? '#2563EB' : '#94A3B8' }}>
+                      ₹ / Hour
                     </Text>
                   </TouchableOpacity>
                 </View>

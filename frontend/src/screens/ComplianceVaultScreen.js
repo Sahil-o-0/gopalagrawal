@@ -742,7 +742,7 @@ export default function ComplianceVaultScreen({ navigation }) {
       title: 'Service & Maintenance Schedule',
       icon: 'wrench-clock',
       color: '#0284C7',
-      height: 398,
+      height: 455,
       renderContent: () => (
         <View>
           <View style={{
@@ -767,11 +767,11 @@ export default function ComplianceVaultScreen({ navigation }) {
           <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1', marginBottom: 4 }}>
             📅 1. BY DATE (CALENDAR)
           </Text>
-          <View style={styles.formRow}>
+          <View style={[styles.formRow, { marginBottom: 0 }]}>
             <View style={{ flex: 1, marginRight: 6 }}>
               <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>LAST SERVICE DATE</Text>
               <TouchableOpacity
-                style={styles.datePickerBtn}
+                style={[styles.datePickerBtn, { marginBottom: 0, height: 38 }]}
                 onPress={() => setActiveDatePicker('serviceDate')}
               >
                 <Text style={styles.datePickerBtnText} numberOfLines={1}>
@@ -783,7 +783,7 @@ export default function ComplianceVaultScreen({ navigation }) {
             <View style={{ flex: 1, marginLeft: 6 }}>
               <Text style={[styles.label, { marginBottom: 3, fontSize: 9 }]}>NEXT SERVICE DUE</Text>
               <TouchableOpacity
-                style={styles.datePickerBtn}
+                style={[styles.datePickerBtn, { marginBottom: 0, height: 38 }]}
                 onPress={() => setActiveDatePicker('nextServiceDate')}
               >
                 <Text style={styles.datePickerBtnText} numberOfLines={1}>
@@ -1907,8 +1907,11 @@ export default function ComplianceVaultScreen({ navigation }) {
 
             <ScrollView
               ref={modalScrollViewRef}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled={true}
               style={{ maxHeight: 540 }}
+              contentContainerStyle={{ paddingBottom: 24 }}
               onScroll={(e) => {
                 modalScrollYRef.current = e.nativeEvent.contentOffset.y;
               }}

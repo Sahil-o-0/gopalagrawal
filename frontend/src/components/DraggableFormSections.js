@@ -19,14 +19,15 @@ export default function DraggableFormSections({
   scrollViewRef,
   scrollYRef,
 }) {
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
   const [orderedSections, setOrderedSections] = useState([]);
   const [activeDragId, setActiveDragId] = useState(null);
 
   const containerRef = useRef(null);
   const containerBoundsRef = useRef({ pageY: 150, height: 500 });
 
-  const positionsRef = useRef({}); // id -> { currentSlot, pan: Animated.ValueXY, scale: Animated.Value, height }
+  const positionsRef = useRef({}); // id -> { currentSlotIndex, pan: Animated.ValueXY, scale: Animated.Value, height }
+  const measuredHeightsRef = useRef({}); // id -> actual rendered height from onLayout
   const currentOrderRef = useRef([]); // array of ids
   const activeDragIdRef = useRef(null);
   const startDragCoordRef = useRef({ x: 0, y: 0 });
@@ -49,17 +50,29 @@ export default function DraggableFormSections({
     }
   };
 
-  // Calculate cumulative Y for each slot
-  const getSlotY = useCallback((slotIndex) => {
-    let currentY = 0;
-    for (let i = 0; i < slotIndex; i++) {
-      const id = currentOrderRef.current[i];
+  const getSectionHeight = useCallback(
+    (id) => {
+      const measured = measuredHeightsRef.current[id];
+      if (measured && measured > 0) return measured;
       const section = sections.find((s) => s.id === id);
-      const h = section?.height || 92;
-      currentY += h + GAP;
-    }
-    return currentY;
-  }, [sections]);
+      return section?.height || 92;
+    },
+    [sections]
+  );
+
+  // Calculate cumulative Y for each slot
+  const getSlotY = useCallback(
+    (slotIndex) => {
+      let currentY = 0;
+      for (let i = 0; i < slotIndex; i++) {
+        const id = currentOrderRef.current[i];
+        const h = getSectionHeight(id);
+        currentY += h + GAP;
+      }
+      return currentY;
+    },
+    [getSectionHeight]
+  );
 
   // Load saved order from AsyncStorage once on mount or when section IDs change
   const sectionIdsKey = sections.map((s) => s.id).join(',');
@@ -112,8 +125,7 @@ export default function DraggableFormSections({
 
   // Initialize Animated values for each section
   orderedSections.forEach((sec, index) => {
-    const secDef = sections.find((s) => s.id === sec.id) || sec;
-    const h = secDef.height || 92;
+    const h = getSectionHeight(sec.id);
     if (!positionsRef.current[sec.id]) {
       const y = getSlotY(index);
       positionsRef.current[sec.id] = {
@@ -128,40 +140,13 @@ export default function DraggableFormSections({
     }
   });
 
-  // Re-sync positions when orderedSections changes and not dragging
-  useEffect(() => {
-    if (activeDragIdRef.current) return;
-
-    orderedSections.forEach((sec, index) => {
-      const posObj = positionsRef.current[sec.id];
-      if (posObj) {
-        posObj.currentSlotIndex = index;
-        const targetY = getSlotY(index);
-        Animated.parallel([
-          Animated.spring(posObj.pan, {
-            toValue: { x: 0, y: targetY },
-            friction: 8,
-            tension: 65,
-            useNativeDriver: false,
-          }),
-          Animated.spring(posObj.scale, {
-            toValue: 1,
-            friction: 7,
-            useNativeDriver: false,
-          }),
-        ]).start();
-      }
-    });
-  }, [orderedSections, getSlotY]);
-
   // Calculate closest slot index for a given Y coordinate
   const findClosestSlot = (y) => {
     const totalSlots = orderedSections.length;
     let accumulatedY = 0;
     for (let i = 0; i < totalSlots; i++) {
       const id = currentOrderRef.current[i];
-      const sec = sections.find((s) => s.id === id);
-      const h = sec?.height || 92;
+      const h = getSectionHeight(id);
       const mid = accumulatedY + h / 2;
       if (y < mid) {
         return Math.max(0, i);
@@ -182,8 +167,7 @@ export default function DraggableFormSections({
 
     let accumY = 0;
     newOrderIds.forEach((id, slotIndex) => {
-      const sec = sections.find((s) => s.id === id);
-      const h = sec?.height || 92;
+      const h = getSectionHeight(id);
 
       if (id !== draggedId && positionsRef.current[id]) {
         positionsRef.current[id].currentSlotIndex = slotIndex;
@@ -220,7 +204,6 @@ export default function DraggableFormSections({
     const { pageY } = lastTouchRef.current;
     const { pageY: containerTop, height: containerHeight } = containerBoundsRef.current;
 
-    // Trigger auto-scroll when within 140px of visible top or bottom of container
     const topScrollZone = Math.max(80, containerTop + 130);
     const bottomScrollZone = Math.min(windowHeight - 80, containerTop + containerHeight - 110);
 
@@ -283,6 +266,15 @@ export default function DraggableFormSections({
 
     measureContainer();
 
+    // Sync all slot Y positions from measured heights before switching to absolute layout
+    currentOrderRef.current.forEach((id, idx) => {
+      if (positionsRef.current[id]) {
+        positionsRef.current[id].currentSlotIndex = idx;
+        positionsRef.current[id].pan.setValue({ x: 0, y: getSlotY(idx) });
+        positionsRef.current[id].scale.setValue(1);
+      }
+    });
+
     const slotIndex = currentOrderRef.current.indexOf(sec.id);
     const resolvedSlot = slotIndex >= 0 ? slotIndex : index;
     const startY = getSlotY(resolvedSlot);
@@ -299,7 +291,7 @@ export default function DraggableFormSections({
     const posObj = positionsRef.current[sec.id];
     if (posObj) {
       Animated.spring(posObj.scale, {
-        toValue: 1.04,
+        toValue: 1.03,
         friction: 6,
         tension: 80,
         useNativeDriver: false,
@@ -325,39 +317,12 @@ export default function DraggableFormSections({
     setActiveDragId(null);
 
     if (wasDragging && targetId) {
-      const currentPos = positionsRef.current[targetId];
-      const finalSlot = currentHoverSlotRef.current;
-      const finalY = getSlotY(finalSlot);
-
-      if (currentPos) {
-        Animated.parallel([
-          Animated.spring(currentPos.pan, {
-            toValue: { x: 0, y: finalY },
-            friction: 7,
-            tension: 70,
-            useNativeDriver: false,
-          }),
-          Animated.spring(currentPos.scale, {
-            toValue: 1,
-            friction: 7,
-            tension: 70,
-            useNativeDriver: false,
-          }),
-        ]).start();
-      }
-
-      // Reset scales
       Object.keys(positionsRef.current).forEach((id) => {
         if (positionsRef.current[id]) {
-          Animated.spring(positionsRef.current[id].scale, {
-            toValue: 1,
-            friction: 7,
-            useNativeDriver: false,
-          }).start();
+          positionsRef.current[id].scale.setValue(1);
         }
       });
 
-      // Commit state
       const secMap = new Map(orderedSections.map((s) => [s.id, s]));
       const updatedList = currentOrderRef.current
         .map((id) => secMap.get(id))
@@ -375,16 +340,6 @@ export default function DraggableFormSections({
       try {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (_) {}
-    } else {
-      Object.keys(positionsRef.current).forEach((id) => {
-        if (positionsRef.current[id]) {
-          Animated.spring(positionsRef.current[id].scale, {
-            toValue: 1,
-            friction: 7,
-            useNativeDriver: false,
-          }).start();
-        }
-      });
     }
   };
 
@@ -398,7 +353,7 @@ export default function DraggableFormSections({
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
       activateDrag(sec, index);
-    }, 200);
+    }, 320);
   };
 
   const handleTouchMove = (sec, index, evt) => {
@@ -410,7 +365,7 @@ export default function DraggableFormSections({
         pageX - startTouchRef.current.pageX,
         pageY - startTouchRef.current.pageY
       );
-      if (dist > 6) {
+      if (dist > 5) {
         if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
@@ -450,11 +405,12 @@ export default function DraggableFormSections({
     finalizeDrag(sec.id);
   };
 
-  // Calculate container height dynamically using latest section heights
+  // Calculate container height dynamically when dragging
   const containerHeight = orderedSections.reduce((acc, s) => {
-    const secDef = sections.find((x) => x.id === s.id) || s;
-    return acc + (secDef.height || 92) + GAP;
+    return acc + getSectionHeight(s.id) + GAP;
   }, 0);
+
+  const isAnyDragging = activeDragId !== null;
 
   return (
     <View
@@ -468,38 +424,47 @@ export default function DraggableFormSections({
         <Text style={styles.rearrangeText}>Hold & drag header to rearrange form fields</Text>
       </View>
 
-      <View style={[styles.container, { height: containerHeight }]}>
+      <View style={[styles.container, isAnyDragging && { height: containerHeight }]}>
         {orderedSections.map((sec, index) => {
           const isDragging = activeDragId === sec.id;
           const posObj = positionsRef.current[sec.id];
           const secDef = sections.find((s) => s.id === sec.id) || sec;
-          const secHeight = secDef.height || 92;
+          const secHeight = getSectionHeight(sec.id);
 
-          const panStyle = posObj
+          const dragStyle = isAnyDragging
             ? {
-                transform: [
-                  { translateY: posObj.pan.y },
-                  { scale: posObj.scale },
-                ],
+                position: 'absolute',
+                height: secHeight,
+                transform: posObj
+                  ? [{ translateY: posObj.pan.y }, { scale: posObj.scale }]
+                  : [{ translateY: getSlotY(index) }],
                 zIndex: isDragging ? 9999 : 1,
                 elevation: isDragging ? 14 : 1,
               }
             : {
-                top: getSlotY(index),
+                position: 'relative',
+                marginBottom: GAP,
                 zIndex: 1,
               };
 
           return (
             <Animated.View
               key={sec.id}
+              onLayout={(e) => {
+                if (!activeDragIdRef.current) {
+                  const h = Math.ceil(e.nativeEvent.layout.height);
+                  if (h > 0) {
+                    measuredHeightsRef.current[sec.id] = h;
+                  }
+                }
+              }}
               style={[
                 styles.sectionCard,
                 {
-                  height: secHeight,
                   borderColor: isDragging ? sec.color || '#2563EB' : '#E2E8F0',
                   borderWidth: isDragging ? 2 : 1,
                 },
-                panStyle,
+                dragStyle,
                 isDragging && styles.sectionCardDragging,
               ]}
             >
@@ -568,7 +533,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   sectionCard: {
-    position: 'absolute',
     width: '100%',
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -589,7 +553,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
@@ -606,8 +570,7 @@ const styles = StyleSheet.create({
   },
   sectionBody: {
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    flex: 1,
-    justifyContent: 'center',
+    paddingVertical: 8,
+    justifyContent: 'flex-start',
   },
 });
